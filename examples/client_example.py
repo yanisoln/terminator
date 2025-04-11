@@ -1,211 +1,134 @@
-import http.client
-import json
+"""Example usage of the Terminator Python SDK from the root examples folder."""
+
+import logging
 import sys
+import os
 import time
 
-BASE_URL = "127.0.0.1:3000"
+# Add the python-sdk directory to the path to find the terminator_sdk module
+SDK_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python-sdk'))
+if SDK_PATH not in sys.path:
+    sys.path.insert(0, SDK_PATH)
 
-class ApiError(Exception):
-    """Custom exception for API errors."""
-    def __init__(self, message, status=None):
-        super().__init__(message)
-        self.status = status
+# Now we can import the SDK
+from desktop_use import DesktopUseClient, ApiError, ConnectionError, sleep
 
-class TerminatorClient:
-    """Client for interacting with the Terminator API server."""
-    def __init__(self, base_url=BASE_URL):
-        self.base_url = base_url
-        self._conn_host = base_url.split(':')[0]
-        self._conn_port = int(base_url.split(':')[1])
+# --- Configuration --- #
+# Optional: Configure logging for more detailed output
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO,
+                    format='%(levelname)s: %(message)s')
 
-    def _make_request(self, endpoint, payload):
-        """Internal helper to make POST requests."""
-        try:
-            conn = http.client.HTTPConnection(self._conn_host, self._conn_port)
-            headers = {'Content-type': 'application/json'}
-            json_payload = json.dumps(payload)
-            
-            print(f"Sending POST to {endpoint} with payload: {json_payload}")
-            conn.request("POST", endpoint, json_payload, headers)
-            
-            response = conn.getresponse()
-            status = response.status
-            data = response.read().decode()
-            conn.close()
-            
-            print(f"Response Status: {status}")
-            print(f"Response Data: {data}")
+# Ensure the Terminator server (e.g., `cargo run --example server`) is running!
 
-            if 200 <= status < 300:
-                try:
-                    return json.loads(data)
-                except json.JSONDecodeError:
-                    # Some successful responses might have no body (e.g., simple message)
-                    # Check if data is empty or just contains the success message
-                    if not data or "opened" in data or "successfully" in data:
-                         return {"message": data} # Return a dict for consistency
-                    print("Error: Could not decode JSON response.")
-                    raise ApiError("Invalid JSON response from server", status=status)
-            else:
-                error_message = f"Server returned status {status}"
-                try:
-                    error_data = json.loads(data)
-                    error_message = error_data.get('message', error_message)
-                except json.JSONDecodeError:
-                    pass # Use the generic error message
-                raise ApiError(error_message, status=status)
-                
-        except ConnectionRefusedError:
-            print(f"Error: Connection refused. Is the server running at {self.base_url}?")
-            raise ApiError(f"Connection refused to {self.base_url}")
-        except ApiError: # Re-raise ApiErrors
-             raise
-        except Exception as e:
-            print(f"An unexpected error occurred during the request: {e}")
-            raise ApiError(f"Unexpected request error: {e}")
+def run_example():
+    """Runs the calculator automation example."""
+    # Ensure the package is installed or path is set correctly
+    try:
+        from desktop_use import DesktopUseClient, ApiError, ConnectionError, sleep
+    except ImportError:
+        print("Error: Could not import desktop_use.", file=sys.stderr)
+        print(f"Ensure the SDK is installed (pip install -e ../python-sdk) or SDK path is correct ({SDK_PATH}).", file=sys.stderr)
+        sys.exit(1)
 
-    def locator(self, selector: str):
-        """Creates a new Locator instance starting a chain."""
-        return Locator(self, [selector])
-
-    def open_application(self, app_name: str):
-        """Opens an application."""
-        payload = {"app_name": app_name}
-        return self._make_request("/open_application", payload)
-
-    def open_url(self, url: str, browser: str = None):
-        """Opens a URL."""
-        payload = {"url": url, "browser": browser}
-        return self._make_request("/open_url", payload)
-
-class Locator:
-    """Represents a locator chain, similar to Playwright's Locator."""
-    def __init__(self, client: TerminatorClient, selector_chain: list):
-        self._client = client
-        self._selector_chain = selector_chain
-
-    def locator(self, selector: str):
-        """Creates a new locator by appending a selector to the current chain."""
-        new_chain = self._selector_chain + [selector]
-        return Locator(self._client, new_chain)
-
-    # --- Action Methods --- 
-    # These methods send the current selector_chain to the server
-
-    def find_element(self):
-        """Finds the first element matching the chain."""
-        payload = {"selector_chain": self._selector_chain}
-        return self._client._make_request("/find_element", payload)
-
-    def find_elements(self):
-        """Finds all elements matching the chain."""
-        payload = {"selector_chain": self._selector_chain}
-        return self._client._make_request("/find_elements", payload)
-        
-    def click(self):
-        """Clicks the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain}
-        return self._client._make_request("/click", payload)
-
-    def type_text(self, text: str):
-        """Types text into the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain, "text": text}
-        return self._client._make_request("/type_text", payload)
-
-    def get_text(self, max_depth: int = None):
-        """Gets text from the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain, "max_depth": max_depth}
-        return self._client._make_request("/get_text", payload)
-        
-    def get_attributes(self):
-        """Gets attributes of the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain}
-        return self._client._make_request("/get_attributes", payload)
-
-    def get_bounds(self):
-        """Gets bounds of the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain}
-        return self._client._make_request("/get_bounds", payload)
-
-    def is_visible(self):
-        """Checks if the element matching the chain is visible."""
-        payload = {"selector_chain": self._selector_chain}
-        response = self._client._make_request("/is_visible", payload)
-        return response.get('result', False) # Return boolean directly
-        
-    def press_key(self, key: str):
-        """Presses a key on the element matching the chain."""
-        payload = {"selector_chain": self._selector_chain, "key": key}
-        return self._client._make_request("/press_key", payload)
-
-# --- Example Usage using the SDK ---
-
-if __name__ == "__main__":
-    client = TerminatorClient()
+    client = DesktopUseClient() # Connects to "http://127.0.0.1:3000" by default
 
     try:
         # 1. Open Calculator
         print("\n--- 1. Opening Application ---")
+        # Adjust app name if necessary (e.g., 'Calculator' or 'calc' on Windows)
         client.open_application("Calc")
-        time.sleep(2)
+        sleep(2.0) # Allow app to open
 
         # 2. Create locators using chaining
         print("\n--- 2. Defining Locators ---")
-        calculator_window = client.locator("window:Calc")
-        display_element = calculator_window.locator("Name:Display is 0")
+        # Adjust window selector if title is different (e.g., "Calculator" vs "Calc")
+        calculator_window = client.locator("window:Calculator")
+        # Locators relative to the calculator window
+        # IMPORTANT: Selectors might differ on non-Windows platforms or even Win versions
+        display_element = calculator_window.locator("Id:CalculatorResults") # Using AutomationId is often more stable
         button_1 = calculator_window.locator("Name:One")
         button_plus = calculator_window.locator("Name:Plus")
         button_2 = calculator_window.locator("Name:Two")
         button_equals = calculator_window.locator("Name:Equals")
-        final_display = calculator_window.locator("Name:Display is 3")
-        fallback_display = calculator_window.locator("Id:CalculatorResults")
 
-        # 3. Get initial text
+        # 3. Get initial text (with expect_visible)
         print("\n--- 3. Getting Initial Text ---")
-        initial_text_response = display_element.get_text()
-        print(f"Initial display text: {initial_text_response.get('text')}")
+        try:
+            display_element.expect_visible(timeout=3000) # Wait up to 3 seconds
+            initial_text = display_element.get_text()
+            print(f"Initial display text: {initial_text.text}")
+        except ApiError as e:
+            print(f"Warning: Could not get initial display text: {e}", file=sys.stderr)
 
         # 4. Perform clicks (1 + 2 =)
-        print("\n--- 4. Performing Clicks ---")
+        print("\n--- 4. Performing Clicks --- (1 + 2 =)")
         button_1.click()
-        time.sleep(0.5)
+        sleep(0.5)
         button_plus.click()
-        time.sleep(0.5)
+        sleep(0.5)
         button_2.click()
-        time.sleep(0.5)
+        sleep(0.5)
         button_equals.click()
-        time.sleep(1)
+        sleep(1.0) # Wait for calculation
 
-        # 5. Get final text
-        print("\n--- 5. Getting Final Text ---")
+        # 5. Verify final text using expect
+        print("\n--- 5. Verifying Final Text --- (Expecting 3)")
         try:
-             final_text_response = final_display.get_text() # Try selector for expected result
-             print(f"Final display text: {final_text_response.get('text')}")
+            # Note: Calculator display might show 'Display is 3' or just '3'.
+            # We'll expect the exact text content '3'.
+            display_element.expect_text_equals("3", timeout=5000, max_depth=1)
+            print("Final display text is verified to be '3'")
+
+            # Optionally get text again after verification
+            final_text = display_element.get_text()
+            print(f"Final display text (raw): {final_text.text}")
+
         except ApiError as e:
-            print(f"Could not find element by expected final name ({final_display._selector_chain}): {e}. Trying fallback...")
-            # Fallback: try getting text using the AutomationId 
-            fallback_text_response = fallback_display.get_text()
-            print(f"Final display text (fallback by ID): {fallback_text_response.get('text')}")
-            
-        # Example: Get attributes of the equals button
+            print(f"Verification failed or could not get final text: {e}", file=sys.stderr)
+            # Try getting raw text anyway on failure for debugging
+            try:
+                raw_text = display_element.get_text()
+                print(f"Raw text on failure: {raw_text.text}", file=sys.stderr)
+            except ApiError as inner_e:
+                print(f"Could not get raw text after verification failure: {inner_e}", file=sys.stderr)
+
+        # Example: Get attributes
         print("\n--- Example: Get Attributes of '=' button ---")
         attrs = button_equals.get_attributes()
-        print(f"Equals button attributes: {attrs}")
+        print(f"Equals button attributes: {attrs}") # Dataclasses have a nice __repr__
 
-        # Example: Check visibility of the equals button
+        # Example: Check visibility
         print("\n--- Example: Check Visibility of '=' button ---")
-        visible = button_equals.is_visible()
-        print(f"Is Equals button visible? {visible}")
+        is_visible = button_equals.is_visible()
+        print(f"Is Equals button visible? {is_visible}")
 
         # Optional: Close the calculator
         # print("\n--- Optional: Closing Calculator ---")
-        # calculator_window.press_key("%{F4}") # Alt+F4 on Windows
+        # try:
+        #     calculator_window.press_key("%{F4}") # Alt+F4 on Windows
+        #     print("Sent close command.")
+        # except ApiError as e:
+        #     print(f"Warning: Could not send close command: {e}", file=sys.stderr)
 
+    except ConnectionError as e:
+        print(f"\n{e}", file=sys.stderr)
+        print("Please ensure the Terminator server (`cargo run --example server`) is running.", file=sys.stderr)
+        sys.exit(1)
     except ApiError as e:
-        print(f"\nAPI Error occurred: {e} (Status: {e.status})")
+        print(f"\nAPI Error occurred: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ImportError as e:
+        print(f"\nImport Error: {e}", file=sys.stderr)
+        print(f"Ensure the SDK path is correct ({SDK_PATH}) and dependencies are installed.", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+        print(f"\nAn unexpected error occurred: {e}", file=sys.stderr)
+        logging.exception("Unexpected error details:") # Log stack trace for unexpected errors
         sys.exit(1)
-        
-    print("\n--- Example Finished ---") 
+
+    print("\n--- Example Finished ---")
+
+if __name__ == "__main__":
+    run_example() 
