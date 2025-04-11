@@ -1,8 +1,16 @@
 # terminator 🤖
 
+high level demo:
+
 https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0
 
+dev demo 1:
+
 https://github.com/user-attachments/assets/890d6842-782c-4b2b-8920-224bd63c4545
+
+dev demo 2:
+
+https://github.com/user-attachments/assets/c9f472f7-79ed-49c6-a4d0-93608fa1ce55
 
 **terminator** is an AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
 
@@ -64,6 +72,26 @@ python3 .\examples\client_example.py
 ```
 
 make sure to have python installed
+
+## next steps & potential experiments
+
+if you want to understand better how your desktop data is structured on windows, [check out this app](https://accessibilityinsights.io/downloads/)
+
+now that you have a grasp of the basics, here are some exciting avenues to explore with **terminator**:
+
+*   **ai-driven automation loop:**
+    *   imagine an ai agent observing an application's state using terminator's element discovery features.
+    *   the agent could then generate python (or eventually javascript) code on the fly using the `terminator` sdk to interact with the ui.
+    *   this code gets executed, the agent observes the result, and the loop continues, enabling complex, adaptive automation. this could automate tedious data entry, testing, or even user support tasks.
+
+*   **pdf to legacy form filler:**
+    *   extract data from a pdf document.
+    *   leverage **terminator** to navigate and fill this data into a legacy windows application (or any gui app) that lacks a modern api. this bridges the gap between old and new systems.
+
+*   **javascript/typescript integration (future):**
+    *   once the js sdk is ready, explore integrating **terminator** into web-based tools or electron apps. imagine browser extensions that can interact with native desktop applications or node.js scripts automating cross-application workflows.
+
+we encourage you to experiment! how can **terminator** automate *your* specific workflows? what unique integrations can you build? share your ideas and contributions!
 
 ## todos
 
