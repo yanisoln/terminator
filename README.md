@@ -1,5 +1,8 @@
 # terminator 🤖
 
+https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0
+
+
 **terminator** is a AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more, enabling the creation of automation scripts, testing tools, and assistive technologies.
@@ -155,10 +158,18 @@ cargo test
 
 - [ ] JS SDK
 - [ ] Python SDK
+- [ ] switch to `cidre` on macos
+- [ ] optional support for [screenshots](https://github.com/nashaofu/xcap), [OCR](https://github.com/mediar-ai/uniOCR), & example vision usage on top of low level usage
+- [ ] Linux support?
 - [ ] More to come...
 
 ## contributing
 
 contributions are welcome! please feel free to submit issues and pull requests.
+
+many stuff are experimental, we'd love any help in fixing stuff!
+
+we use this on windows: https://github.com/leexgone/uiautomation-rs  
+and we'd like to switch to this on macos: https://github.com/yury/cidre/blob/main/cidre/examples/ax-tree/main.rs
 
 *(add contribution guidelines if you have specific requirements)*
