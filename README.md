@@ -1,6 +1,6 @@
 # terminator 🤖
 
-**terminator** is a cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
+**terminator** is a AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more, enabling the creation of automation scripts, testing tools, and assistive technologies.
 
