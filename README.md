@@ -33,29 +33,14 @@ for detailed information on features, installation, usage, and the api, please v
     cd terminator
     ```
 2.  **download & unzip the server (windows cli):**
-    *   use `Invoke-WebRequest` (or `curl` alias if available) to download the latest windows server release:
     ```powershell
-    # PowerShell 5.1+ (comes with Windows)
     Invoke-WebRequest -Uri https://github.com/mediar-ai/terminator/releases/latest/download/terminator-server-windows-x86_64.zip -OutFile terminator-server-windows-x86_64.zip
-
-    # If you have actual curl installed (e.g., via Git Bash or manually), you can use:
-    # curl -L -o terminator-server-windows-x86_64.zip https://github.com/mediar-ai/terminator/releases/latest/download/terminator-server-windows-x86_64.zip
-    ```
-    *   unzip the archive (using built-in powershell command):
-    ```powershell
     Expand-Archive -Path terminator-server-windows-x86_64.zip -DestinationPath .\server_release
-    # Or using tar if available:
-    # mkdir server_release
-    # tar -xzf terminator-server-windows-x86_64.zip -C server_release
+    ```
     ```
 3.  **run the server:**
-    *   navigate to where you unzipped the server:
-    ```bash
-    cd server_release
-    ```
-    *   run the server:
-    ```bash
-    ./server.exe --debug
+    ```powershell
+    ./server_release/server.exe --debug
     ```
 4.  **run an example client (in another terminal):**
     ```bash
