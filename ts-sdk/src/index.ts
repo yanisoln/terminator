@@ -107,7 +107,7 @@ export class ApiError extends Error {
 
 // --- Client and Locator Classes --- //
 
-export class TerminatorClient {
+export class DesktopUseClient {
     private host: string;
     private port: number;
 
@@ -240,12 +240,12 @@ export class TerminatorClient {
 export class Locator {
     // Marked internal, though technically public for access
     /** @internal */
-    public readonly _client: TerminatorClient;
+    public readonly _client: DesktopUseClient;
     /** @internal */
     public readonly _selector_chain: string[];
 
     /** @internal */
-    constructor(client: TerminatorClient, selectorChain: string[]) {
+    constructor(client: DesktopUseClient, selectorChain: string[]) {
         this._client = client;
         this._selector_chain = selectorChain;
     }
