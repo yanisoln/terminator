@@ -69,9 +69,11 @@ in another terminal:
 
 ```bash
 python3 .\examples\client_example.py
+# or 
+npx tsx .\examples\client_example.ts
 ```
 
-make sure to have python installed
+make sure to have python/nodejs installed
 
 ## next steps & potential experiments
 
@@ -95,7 +97,7 @@ we encourage you to experiment! how can **terminator** automate *your* specific 
 
 ## todos
 
-- [ ] JS SDK
+- [x] JS/TS SDK
 - [x] Python SDK
 - [ ] switch to `cidre` on macos
 - [ ] optional support for [screenshots](https://github.com/nashaofu/xcap), [OCR](https://github.com/mediar-ai/uniOCR), & example vision usage on top of low level usage
