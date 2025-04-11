@@ -3,6 +3,12 @@
 https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0
 
 
+
+https://github.com/user-attachments/assets/890d6842-782c-4b2b-8920-224bd63c4545
+
+
+
+
 **terminator** is a AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more, enabling the creation of automation scripts, testing tools, and assistive technologies.
@@ -39,11 +45,11 @@ because it's using OS level APIs, it is 100x faster and more reliable for AI com
 
 ## installation
 
-add `terminator` to your `cargo.toml`:
-
-```toml
-[dependencies]
-terminator = "0.1.0" # replace with the desired version
+```
+# download the repo
+git clone https://github.com/mediar-ai/terminator
+# install rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ## quick start
