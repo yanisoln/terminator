@@ -32,19 +32,35 @@ for detailed information on features, installation, usage, and the api, please v
     git clone https://github.com/mediar-ai/terminator
     cd terminator
     ```
-2.  **install rust:** (if you haven't already)
-    ```bash
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    source "$HOME/.cargo/env" # or restart terminal
+2.  **download & unzip the server (windows cli):**
+    *   use `Invoke-WebRequest` (or `curl` alias if available) to download the latest windows server release:
+    ```powershell
+    # PowerShell 5.1+ (comes with Windows)
+    Invoke-WebRequest -Uri https://github.com/mediar-ai/terminator/releases/latest/download/terminator-server-windows-x86_64.zip -OutFile terminator-server-windows-x86_64.zip
+
+    # If you have actual curl installed (e.g., via Git Bash or manually), you can use:
+    # curl -L -o terminator-server-windows-x86_64.zip https://github.com/mediar-ai/terminator/releases/latest/download/terminator-server-windows-x86_64.zip
+    ```
+    *   unzip the archive (using built-in powershell command):
+    ```powershell
+    Expand-Archive -Path terminator-server-windows-x86_64.zip -DestinationPath .\server_release
+    # Or using tar if available:
+    # mkdir server_release
+    # tar -xzf terminator-server-windows-x86_64.zip -C server_release
     ```
 3.  **run the server:**
+    *   navigate to where you unzipped the server:
     ```bash
-    cargo run --example server -- --debug
+    cd server_release
+    ```
+    *   run the server:
+    ```bash
+    ./server.exe --debug
     ```
 4.  **run an example client (in another terminal):**
     ```bash
     # make sure node.js/bun is installed
-    cd examples
+    cd examples # navigate back to the examples directory in the cloned repo
     npm i # or bun/yarn
     npx tsx client_example.ts
     # or python:
