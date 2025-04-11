@@ -1,0 +1,46 @@
+name: Build Windows Server on Push
+
+on:
+  push:
+    paths:
+      - 'src/**.rs'
+      - 'examples/server.rs' # Also trigger if the server example itself changes
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/build-release.yml' # Trigger if the workflow changes
+
+jobs:
+  build:
+    name: Build Server (Windows)
+    runs-on: windows-latest
+    # No permissions needed for just uploading artifacts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+
+      - name: Build server example
+        run: cargo build --verbose --release --example server --target x86_64-pc-windows-msvc
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Package executable
+        shell: pwsh
+        run: |
+          $exePath = "target/x86_64-pc-windows-msvc/release/examples/server.exe"
+          $zipPath = "terminator-server-windows-x86_64.zip"
+          Compress-Archive -Path $exePath -DestinationPath $zipPath
+          echo "ASSET_PATH=$zipPath" >> $env:GITHUB_ENV
+          echo "ASSET_NAME=$zipPath" >> $env:GITHUB_ENV
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: ${{ env.ASSET_PATH }} 
