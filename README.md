@@ -2,14 +2,9 @@
 
 https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0
 
-
-
 https://github.com/user-attachments/assets/890d6842-782c-4b2b-8920-224bd63c4545
 
-
-
-
-**terminator** is a AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
+**terminator** is an AI-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a Playwright-like API.
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more, enabling the creation of automation scripts, testing tools, and assistive technologies.
 
@@ -57,9 +52,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 this example opens notepad on macos (or notepad on windows), types text, and retrieves it.
 
 ```rust
-// src/main.rs
 use std::{thread, time::Duration};
-use terminator::{platforms, AutomationError, Selector}; // Ensure terminator is in scope
+use terminator::{platforms, AutomationError}; // Ensure terminator is in scope
 
 fn main() -> Result<(), AutomationError> {
     println!("starting simple automation...");
@@ -92,47 +86,13 @@ fn main() -> Result<(), AutomationError> {
     println!("{} should be open/focused.", app_name);
     thread::sleep(Duration::from_secs(2)); // wait for app
 
-    // --- find text area ---
-    println!("finding text area...");
-    #[cfg(target_os = "macos")]
-    // macos: often AXTextArea or AXTextView within a scroll area
-    let text_area_selector = Selector::Role { role: "AXTextArea".to_string(), name: None }; // Adjust role if needed
-    #[cfg(target_os = "windows")]
-    // windows: often an "edit" control, sometimes with a specific name
-    let text_area_selector = Selector::Role { role: "edit".to_string(), name: None }; // Adjust role/name if needed
-
-    // use locator().first() to find the element
-    let text_area = app.locator(text_area_selector)?
-                     .first()?
-                     .ok_or_else(|| AutomationError::element_not_found("could not find text area"))?;
-
-    println!("found text area: role={:?}", text_area.role());
-    thread::sleep(Duration::from_millis(500));
-
-    // --- interact ---
-    let text_to_type = "hello from terminator!";
-    println!("typing text: '{}'", text_to_type);
-    text_area.focus()?;
-    thread::sleep(Duration::from_millis(200));
-    text_area.type_text(text_to_type)?;
+    app.type_text("Hello")?;
     println!("text typed.");
     thread::sleep(Duration::from_millis(500));
-
-    // --- verify ---
-    println!("extracting text...");
-    let extracted_text = text_area.attributes().value.unwrap_or_default();
-    println!("extracted: '{}'", extracted_text);
-
-    if extracted_text.contains(text_to_type) {
-         println!("verification successful!");
-    } else {
-         println!("verification failed!");
-    }
 
     println!("automation example finished.");
     Ok(())
 }
-
 ```
 
 *(remember to handle potential errors more robustly in real applications)*
