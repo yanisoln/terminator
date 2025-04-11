@@ -732,13 +732,14 @@ impl UIElementImpl for WindowsUIElement {
             .get_control_type()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         // check if element accepts input
-        println!("control_type: {:#?}", control_type);
+        debug!("typing text with control_type: {:#?}", control_type);
+        self.element.0.send_text(text, 50).map_err(|e| AutomationError::PlatformError(e.to_string()))
         // if control_type == ControlType::Edit {
-        let keyboard = Keyboard::default();
-        keyboard
-            .send_text(text)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        Ok(())
+        // let keyboard = Keyboard::default();
+        // keyboard
+        //     .send_text(text, 50)
+        //     .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        // Ok(())
         // } else {
         //     Err(AutomationError::PlatformError("Element is not editable".to_string()))
         // }
@@ -751,12 +752,14 @@ impl UIElementImpl for WindowsUIElement {
             .get_control_type()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         // check if element accepts input, similar :D
+        debug!("pressing key with control_type: {:#?}", control_type);
         // if control_type == ControlType::Edit {
-        let keyboard = Keyboard::default();
-        keyboard
-            .send_keys(key)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        Ok(())
+        self.element.0.send_keys(key, 50).map_err(|e| AutomationError::PlatformError(e.to_string()))
+        // let keyboard = Keyboard::default();
+        // keyboard
+        //     .send_keys(key)
+        //     .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        // Ok(())
         // } else {
         //     Err(AutomationError::PlatformError("Element is not editable".to_string()))
         // }

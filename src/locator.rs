@@ -1,7 +1,7 @@
 use crate::platforms::AccessibilityEngine;
 use crate::{AutomationError, Selector, UIElement};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::ClickResult;
 
@@ -115,5 +115,112 @@ impl Locator {
     /// Get text from the first matching element
     pub async fn text(&self, max_depth: usize) -> Result<String, AutomationError> {
         self.wait().await?.text(max_depth)
+    }
+
+    /// Waits for the element matched by the locator to be enabled.
+    pub async fn expect_enabled(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+        let start = Instant::now();
+
+        loop {
+            // Try to find the element first
+            // We use find_element directly instead of self.wait() to control the loop precisely
+            match self.engine.find_element(&self.selector, self.root.as_ref()) {
+                Ok(element) => {
+                    // Element found, check if it's enabled
+                    match element.is_enabled() {
+                        Ok(true) => return Ok(element), // Success! Return the element
+                        Ok(false) => { /* Condition not met, continue loop */ }
+                        Err(e) => {
+                            // Propagate errors other than "not found" immediately
+                            // If the element disappears while checking, we might get an error here
+                            if !matches!(e, AutomationError::ElementNotFound(_)) {
+                                return Err(e);
+                            }
+                            // Otherwise, element might have changed, continue loop
+                        }
+                    }
+                }
+                Err(AutomationError::ElementNotFound(_)) => { /* Element not found yet, continue loop */ }
+                Err(e) => return Err(e), // Propagate other find errors
+            }
+
+            // Check timeout
+            if start.elapsed() >= effective_timeout {
+                return Err(AutomationError::Timeout(format!(
+                    "Timed out after {:?} waiting for element {:?} to be enabled",
+                    effective_timeout, self.selector
+                )));
+            }
+
+            // Wait before next check
+            tokio::time::sleep(Duration::from_millis(100)).await; // Adjust poll interval as needed
+        }
+    }
+
+    /// Waits for the element matched by the locator to be visible.
+    pub async fn expect_visible(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+        let start = Instant::now();
+
+        loop {
+            match self.engine.find_element(&self.selector, self.root.as_ref()) {
+                Ok(element) => {
+                    match element.is_visible() {
+                        Ok(true) => return Ok(element), // Success!
+                        Ok(false) => { /* Condition not met, continue loop */ }
+                         Err(e) => {
+                            if !matches!(e, AutomationError::ElementNotFound(_)) {
+                                return Err(e);
+                            }
+                         }
+                    }
+                }
+                Err(AutomationError::ElementNotFound(_)) => { /* Element not found yet, continue loop */ }
+                Err(e) => return Err(e),
+            }
+
+            if start.elapsed() >= effective_timeout {
+                return Err(AutomationError::Timeout(format!(
+                    "Timed out after {:?} waiting for element {:?} to be visible",
+                    effective_timeout, self.selector
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    /// Waits for the element's text content (potentially including children) to match the expected text.
+    /// Note: Uses element.text(max_depth), adjust depth as needed.
+    pub async fn expect_text_equals(&self, expected_text: &str, max_depth: usize, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+        let start = Instant::now();
+
+        loop {
+            match self.engine.find_element(&self.selector, self.root.as_ref()) {
+                Ok(element) => {
+                    match element.text(max_depth) {
+                         // Compare trimmed text to handle potential whitespace differences
+                        Ok(actual_text) if actual_text.trim() == expected_text.trim() => return Ok(element), // Success!
+                        Ok(_) => { /* Text doesn't match, continue loop */ }
+                         Err(e) => {
+                            if !matches!(e, AutomationError::ElementNotFound(_)) {
+                                return Err(e);
+                            }
+                         }
+                    }
+                }
+                Err(AutomationError::ElementNotFound(_)) => { /* Element not found yet, continue loop */ }
+                Err(e) => return Err(e),
+            }
+
+            if start.elapsed() >= effective_timeout {
+                 return Err(AutomationError::Timeout(format!(
+                    "Timed out after {:?} waiting for element {:?} text to equal '{}'",
+                    effective_timeout, self.selector, expected_text
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }

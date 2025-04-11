@@ -17,6 +17,7 @@ use terminator::{
     UIElement,
 };
 use tracing::{info, Level};
+use std::time::Duration;
 
 // Shared application state
 struct AppState {
@@ -61,6 +62,23 @@ struct OpenApplicationRequest {
 struct OpenUrlRequest {
     url: String,
     browser: Option<String>,
+}
+
+// Request structure for expectations (can often reuse ChainedRequest)
+// Add optional timeout
+#[derive(Deserialize)]
+struct ExpectRequest {
+    selector_chain: Vec<String>,
+    timeout_ms: Option<u64>,
+}
+
+// Specific request for expecting text
+#[derive(Deserialize)]
+struct ExpectTextRequest {
+    selector_chain: Vec<String>,
+    expected_text: String,
+    max_depth: Option<usize>, // Needed for element.text() call within expect_text_equals
+    timeout_ms: Option<u64>,
 }
 
 // Basic response structure
@@ -164,6 +182,13 @@ enum ApiError {
     BadRequest(String),
 }
 
+// Implement the From trait to allow automatic conversion
+impl From<AutomationError> for ApiError {
+    fn from(err: AutomationError) -> Self {
+        ApiError::Automation(err)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
@@ -182,50 +207,33 @@ async fn root() -> &'static str {
     "Terminator API Server Ready"
 }
 
-// New Helper: Resolve selector chain step-by-step
-async fn resolve_element_from_chain(
+// Helper to get timeout duration from optional ms
+fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
+    timeout_ms.map(Duration::from_millis)
+}
+
+// Helper function to create a locator from the full chain (DIFFERENT from resolve_element_from_chain)
+// This locator will be used for the expect methods which handle their own waiting.
+fn create_locator_for_chain(
     state: &Arc<AppState>,
     selector_chain: &[String],
-) -> Result<UIElement, ApiError> {
+) -> Result<Locator, ApiError> {
     if selector_chain.is_empty() {
         return Err(ApiError::BadRequest("selector_chain cannot be empty".to_string()));
     }
 
     let selectors: Vec<Selector> = selector_chain.iter().map(|s| s.as_str().into()).collect();
 
-    // Find the first element from the desktop root
-    info!(selector = ?selectors[0], "Resolving first element in chain");
-    let mut current_element = state.desktop.locator(selectors[0].clone())
-        .wait() 
-        .await
-        .map_err(|e| {
-            info!("Failed finding first element in chain: {:?}, error: {}", selectors[0], e);
-            ApiError::Automation(e)
-        })?;
+    // Create locator for the first element
+    let mut locator = state.desktop.locator(selectors[0].clone());
 
-    // Sequentially find subsequent elements within the previous one
-    for (index, selector) in selectors.iter().skip(1).enumerate() {
-        info!(selector = ?selector, parent_role = current_element.role(), parent_id = ?current_element.id(), "Resolving next element in chain (step {})", index + 2);
-        
-        // 1. Get the locator for the next step relative to the current element.
-        let next_locator = current_element.locator(selector.clone())
-            .map_err(|e| {
-                info!("Failed creating locator for step {} in chain: {:?}, error: {}", index + 2, selector, e);
-                ApiError::Automation(e)
-            })?;
-            
-        // 2. Wait for the element using the new locator.
-        current_element = next_locator
-            .wait() 
-            .await
-            .map_err(|e| {
-                 info!("Failed waiting for element in step {} in chain: {:?}, error: {}", index + 2, selector, e);
-                 ApiError::Automation(e)
-            })?;
+    // Chain subsequent locators
+    for selector in selectors.iter().skip(1) {
+        // Note: Locator::locator creates a new locator, not finding the element yet
+        locator = locator.locator(selector.clone());
     }
-    
-    info!("Successfully resolved element chain");
-    Ok(current_element)
+
+    Ok(locator)
 }
 
 // Handler for finding an element
@@ -233,10 +241,20 @@ async fn find_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to find element by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    info!(element_id = ?element.id(), role = element.role(), "Element found via chain");
-    Ok(Json(ElementResponse::from_element(&element)))
+    info!(chain = ?payload.selector_chain, "Attempting to find element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    // Use the locator's wait() method - timeout is handled by locator's default or could be added to request
+    match locator.wait().await {
+         Ok(element) => {
+            info!(element_id = ?element.id(), role = element.role(), "Element found");
+            Ok(Json(ElementResponse::from_element(&element)))
+         }
+         Err(e) => {
+            info!("Failed finding element: {}", e);
+            Err(ApiError::Automation(e))
+         }
+    }
 }
 
 // Handler for clicking an element
@@ -244,15 +262,16 @@ async fn click_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ClickResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to click element by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.click() {
+    info!(chain = ?payload.selector_chain, "Attempting to click element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    match locator.click().await { // locator.click() already includes wait()
         Ok(result) => {
             info!("Element clicked successfully");
             Ok(Json(result.into()))
         }
         Err(e) => {
-            info!("Failed to click resolved element: {}", e);
+            info!("Failed to click element: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -263,15 +282,16 @@ async fn type_text_into_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TypeTextRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.text, "Attempting to type text by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.type_text(&payload.text) {
+    info!(chain = ?payload.selector_chain, text = %payload.text, "Attempting to type text");
+     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    match locator.type_text(&payload.text).await { // locator.type_text() includes wait()
         Ok(_) => {
             info!("Text typed successfully");
             Ok(Json(BasicResponse { message: "Text typed successfully".to_string() }))
         }
         Err(e) => {
-            info!("Failed to type text into resolved element: {}", e);
+            info!("Failed to type text into element: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -283,15 +303,16 @@ async fn get_element_text(
     Json(payload): Json<GetTextRequest>,
 ) -> Result<Json<TextResponse>, ApiError> {
     let max_depth = payload.max_depth.unwrap_or(5);
-    info!(chain = ?payload.selector_chain, max_depth, "Attempting to get text by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.text(max_depth) {
+    info!(chain = ?payload.selector_chain, max_depth, "Attempting to get text");
+     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    match locator.text(max_depth).await { // locator.text() includes wait()
         Ok(text) => {
             info!("Text retrieved successfully");
             Ok(Json(TextResponse { text }))
         }
         Err(e) => {
-            info!("Failed to get text from resolved element: {}", e);
+            info!("Failed to get text from element: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -302,34 +323,15 @@ async fn find_elements(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to find elements by chaining");
-    
-    if payload.selector_chain.len() < 1 {
-         return Err(ApiError::BadRequest("selector_chain must have at least one selector".to_string()));
-    }
-    
-    let parent_element = if payload.selector_chain.len() == 1 {
-        // If only one selector, the "parent" is the desktop root conceptually
-        // We find elements relative to the desktop root using the single selector
-        None 
-    } else {
-        // Resolve the chain up to the second-to-last element
-        Some(resolve_element_from_chain(&state, &payload.selector_chain[..payload.selector_chain.len()-1]).await?)
-    };
+    info!(chain = ?payload.selector_chain, "Attempting to find elements");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
 
-    // Get the last selector for the final step
-    let last_selector_str = payload.selector_chain.last().unwrap(); // Safe due to len check
-    let last_selector: Selector = last_selector_str.as_str().into();
-
-    let locator = match parent_element {
-        Some(ref parent) => parent.locator(last_selector).map_err(ApiError::Automation)?,
-        None => state.desktop.locator(last_selector), // Find from desktop root
-    };
-
-    // Use locator.all() to find matching elements within the final context
+    // Use locator.all() - Note: This typically doesn't wait like other actions.
+    // If waiting is desired before finding all, the client would need separate 'wait' then 'find_elements' calls,
+    // or we could add a specific 'wait_and_find_all' endpoint. Keeping it simple for now.
     match locator.all() {
         Ok(elements) => {
-            info!("Found {} elements matching last step in chain", elements.len());
+            info!("Found {} elements matching chain", elements.len());
             let response_elements = elements
                 .iter()
                 .map(ElementResponse::from_element)
@@ -337,7 +339,7 @@ async fn find_elements(
             Ok(Json(ElementsResponse { elements: response_elements }))
         }
         Err(e) => {
-            info!("Failed to find elements in last step of chain: {}", e);
+            info!("Failed to find elements: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -348,10 +350,27 @@ async fn get_element_attributes(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<AttributesResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to get attributes by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
+    info!(chain = ?payload.selector_chain, "Attempting to get attributes");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    // Wait for the element first, handling potential errors
+    let element = locator.wait().await?;
+
+    // Get attributes (this doesn't return a Result)
+    let attrs = element.attributes();
+    let element_id = element.id(); // Get ID from the element we already have
+
     info!("Attributes retrieved successfully");
-    Ok(Json(AttributesResponse::from_element(&element)))
+
+    // Construct and return the response
+    Ok(Json(AttributesResponse {
+        role: attrs.role,
+        label: attrs.label,
+        value: attrs.value,
+        description: attrs.description,
+        properties: attrs.properties,
+        id: element_id, // Use the ID obtained earlier
+    }))
 }
 
 // Handler for getting element bounds
@@ -359,15 +378,16 @@ async fn get_element_bounds(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<BoundsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to get bounds by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.bounds() {
+    info!(chain = ?payload.selector_chain, "Attempting to get bounds");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    match locator.wait().await?.bounds() { // Wait first, then get bounds
         Ok((x, y, width, height)) => {
             info!("Bounds retrieved successfully");
             Ok(Json(BoundsResponse { x, y, width, height }))
         }
         Err(e) => {
-            info!("Failed to get bounds for resolved element: {}", e);
+            info!("Failed to get bounds: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -378,16 +398,26 @@ async fn is_element_visible(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<BooleanResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to check visibility by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.is_visible() {
+    info!(chain = ?payload.selector_chain, "Attempting to check visibility");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    // Use expect_visible with a very short timeout (or zero) for a non-waiting check
+    // Or, call the underlying element method after waiting. Let's wait then check.
+    match locator.wait().await?.is_visible() {
         Ok(result) => {
             info!("Visibility check successful: {}", result);
             Ok(Json(BooleanResponse { result }))
         }
         Err(e) => {
-            info!("Failed to check visibility for resolved element: {}", e);
-            Err(ApiError::Automation(e))
+             // Distinguish between element not found during wait vs. error calling is_visible
+            if matches!(e, AutomationError::Timeout(_)) {
+                 info!("Element not found while checking visibility: {}", e);
+                 // Return false if the element wasn't found within default timeout
+                 Ok(Json(BooleanResponse { result: false }))
+            } else {
+                 info!("Failed to check visibility: {}", e);
+                 Err(ApiError::Automation(e))
+            }
         }
     }
 }
@@ -397,15 +427,16 @@ async fn press_key_on_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<PressKeyRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, key = %payload.key, "Attempting to press key by chaining");
-    let element = resolve_element_from_chain(&state, &payload.selector_chain).await?;
-    match element.press_key(&payload.key) {
+    info!(chain = ?payload.selector_chain, key = %payload.key, "Attempting to press key");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    match locator.press_key(&payload.key).await { // locator.press_key() includes wait()
         Ok(_) => {
             info!("Key pressed successfully");
             Ok(Json(BasicResponse { message: "Key pressed successfully".to_string() }))
         }
         Err(e) => {
-            info!("Failed to press key on resolved element: {}", e);
+            info!("Failed to press key: {}", e);
             Err(ApiError::Automation(e))
         }
     }
@@ -447,6 +478,69 @@ async fn open_url(
     }
 }
 
+// --- NEW EXPECT HANDLERS ---
+
+async fn expect_element_visible(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element visible");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms); // Uses Locator's default if None
+
+    match locator.expect_visible(timeout).await {
+        Ok(element) => {
+            info!("Element found and is visible");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            info!("Expect visible failed: {}", e);
+            Err(ApiError::Automation(e)) // Includes Timeout error
+        }
+    }
+}
+
+async fn expect_element_enabled(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element enabled");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+     let timeout = get_timeout(payload.timeout_ms);
+
+    match locator.expect_enabled(timeout).await {
+        Ok(element) => {
+            info!("Element found and is enabled");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            info!("Expect enabled failed: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+async fn expect_element_text_equals(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectTextRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, text = %payload.expected_text, depth = ?payload.max_depth, timeout = ?payload.timeout_ms, "Attempting to expect text equals");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let max_depth = payload.max_depth.unwrap_or(5); // Use default or provided depth
+    let timeout = get_timeout(payload.timeout_ms);
+
+    match locator.expect_text_equals(&payload.expected_text, max_depth, timeout).await {
+        Ok(element) => {
+            info!("Element found and text matches");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            info!("Expect text equals failed: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -475,6 +569,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/press_key", post(press_key_on_element))
         .route("/open_application", post(open_application))
         .route("/open_url", post(open_url))
+        .route("/expect_visible", post(expect_element_visible))
+        .route("/expect_enabled", post(expect_element_enabled))
+        .route("/expect_text_equals", post(expect_element_text_equals))
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
