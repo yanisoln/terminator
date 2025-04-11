@@ -47,8 +47,9 @@ for detailed information on features, installation, usage, and the api, please v
     cd examples
     npm i # or bun/yarn
     npx tsx client_example.ts
+    # or python:
+    python client_example.py
     ```
-    (python examples are also available)
 
 *check the [getting started guide](https://docs.screenpi.pe/terminator/getting-started) in the docs for more details.*
 
