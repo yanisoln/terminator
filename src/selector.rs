@@ -36,6 +36,10 @@ impl From<&str> for Selector {
                 role: s.to_string(),
                 name: None,
             },
+            _ if s.contains("Name:") || s.contains("name:") => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::Name(parts[1].to_string())
+            }
             _ if s.contains(':') => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {

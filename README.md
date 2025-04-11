@@ -10,6 +10,8 @@ it provides a unified api to find and control ui elements like buttons, text fie
 
 because it's using OS level APIs, it is 100x faster and more reliable for AI computer use than OpenAI Operator, Anthropic Computer Use, and acting at a lower level than a browser it can easily drop-in replace BrowserUse, BrowserBase, Playwright, etc.
 
+> **Note:** While we support MacOS and Windows, we are focusing right now on Windows so if you are on MacOS you'll have to look into the code and figure out yourself.
+
 ## features
 
 *   **cross-platform:** experimentally supports **windows** and **macos** with a consistent api.
@@ -49,84 +51,26 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 ## quick start
 
-this example opens notepad on macos (or notepad on windows), types text, and retrieves it.
-
-```rust
-use std::{thread, time::Duration};
-use terminator::{platforms, AutomationError}; // Ensure terminator is in scope
-
-fn main() -> Result<(), AutomationError> {
-    println!("starting simple automation...");
-
-    // initialize the engine (false, false disables debug/accessibility mode)
-    let engine = platforms::create_engine(false, false)?;
-    println!("engine created.");
-
-    // --- target application ---
-    #[cfg(target_os = "macos")]
-    let app_name = "TextEdit";
-    #[cfg(target_os = "windows")]
-    let app_name = "Notepad";
-
-    println!("targeting application: {}", app_name);
-
-    // try to get or open the application
-    let app = match engine.get_application_by_name(app_name) {
-        Ok(app) => {
-            println!("{} already running, focusing.", app_name);
-            app.focus()?;
-            app
-        }
-        Err(_) => {
-            println!("{} not running, attempting to open.", app_name);
-            engine.open_application(app_name)?
-        }
-    };
-
-    println!("{} should be open/focused.", app_name);
-    thread::sleep(Duration::from_secs(2)); // wait for app
-
-    app.type_text("Hello")?;
-    println!("text typed.");
-    thread::sleep(Duration::from_millis(500));
-
-    println!("automation example finished.");
-    Ok(())
-}
-```
-
-*(remember to handle potential errors more robustly in real applications)*
-
-## examples
-
-more detailed examples can be found in the [`examples/`](./examples) directory:
-
-*   `win_automation.rs`: demonstrates various windows-specific interactions.
-*   `windows_pdf_to_legacy.rs`: simulates filling a legacy windows form.
-
-run an example using:
+this example opens calc on windows, types buttons, and get the result.
 
 ```bash
-cargo run --example <example_name> # e.g., cargo run --example mac_automation
+cargo run --example server -- --debug
 ```
 
-## tests
-
-unit and integration tests are located in `src/tests.rs`. run them with:
+in another terminal:
 
 ```bash
-cargo test
+python3 .\examples\client_example.py
 ```
 
-*(note: some tests interact with live ui elements and might require specific applications to be running or be ignored (`#[ignore]`) by default).*
+make sure to have python installed
 
 ## todos
 
 - [ ] JS SDK
-- [ ] Python SDK
+- [x] Python SDK
 - [ ] switch to `cidre` on macos
 - [ ] optional support for [screenshots](https://github.com/nashaofu/xcap), [OCR](https://github.com/mediar-ai/uniOCR), & example vision usage on top of low level usage
-- [ ] Linux support?
 - [ ] More to come...
 
 ## contributing

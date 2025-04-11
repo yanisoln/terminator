@@ -3,7 +3,6 @@ use crate::platforms::AccessibilityEngine;
 use crate::ClickResult;
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use std::collections::{hash_map::DefaultHasher, HashMap};
-use std::error::Error;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -13,7 +12,7 @@ use uiautomation::filters::{ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Keyboard;
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
-use uiautomation::types::{Point, PropertyConditionFlags, ScrollAmount, TreeScope, UIProperty};
+use uiautomation::types::{Point, ScrollAmount, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
 
@@ -352,6 +351,8 @@ impl AccessibilityEngine for WindowsEngine {
             }
             Selector::Name(name) => {
                 // find use create matcher api
+
+                debug!("searching element by name: {}", name);
 
                 let matcher = self
                     .automation

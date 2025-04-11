@@ -27,3 +27,10 @@ core-graphics = { version = "0.24.0", features = ["highsierra"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 uiautomation = { version = "0.18.0" }
+
+[[example]]
+name = "server"
+path = "examples/server.rs"
+
+[dev-dependencies]
+axum = "0.7.5"
