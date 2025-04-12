@@ -725,6 +725,13 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::PlatformError(e.to_string()))
     }
 
+    fn activate_window(&self) -> Result<(), AutomationError> {
+        // On Windows, setting focus on an element within the window
+        // typically brings the window to the foreground.
+        debug!("Activating window by focusing element: {:?}", self.element.0);
+        self.focus()
+    }
+
     fn type_text(&self, text: &str) -> Result<(), AutomationError> {
         let control_type = self
             .element

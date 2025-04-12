@@ -161,15 +161,15 @@ class Locator:
 
     # --- Action Methods --- #
 
-    def find_element(self) -> ElementResponse:
+    def first(self) -> ElementResponse:
         """Finds the first element matching the locator chain."""
         payload = ChainedRequest(selector_chain=self._selector_chain)
-        return self._client._make_request("/find_element", payload, ElementResponse)
+        return self._client._make_request("/first", payload, ElementResponse)
 
-    def find_elements(self) -> ElementsResponse:
+    def all(self) -> ElementsResponse:
         """Finds all elements matching the last selector in the chain."""
         payload = ChainedRequest(selector_chain=self._selector_chain)
-        return self._client._make_request("/find_elements", payload, ElementsResponse)
+        return self._client._make_request("/all", payload, ElementsResponse)
 
     def click(self) -> ClickResponse:
         """Clicks the element."""
@@ -206,6 +206,23 @@ class Locator:
         """Sends key presses to the element."""
         payload = PressKeyRequest(selector_chain=self._selector_chain, key=key)
         return self._client._make_request("/press_key", payload, BasicResponse)
+
+    def activate_app(self) -> 'Locator':
+        """
+        Activates the application window associated with the element.
+
+        This typically brings the window to the foreground.
+        Waits for the element first (handled server-side).
+
+        Returns:
+            The current Locator instance to allow for method chaining.
+        Raises:
+            ApiError: If the server fails to activate the application window.
+        """
+        payload = ChainedRequest(selector_chain=self._selector_chain)
+        # Calls the new /activate_app endpoint
+        self._client._make_request("/activate_app", payload, BasicResponse)
+        return self # Return self for chaining
 
     # --- Expectation Methods --- #
 

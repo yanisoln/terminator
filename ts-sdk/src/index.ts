@@ -270,9 +270,9 @@ export class Locator {
      * Waits for the element to appear if it's not immediately available (handled server-side).
      * @returns A promise resolving to the element's basic details.
      */
-    async findElement(): Promise<ElementResponse> {
+    async first(): Promise<ElementResponse> {
         const payload: ChainedRequest = { selector_chain: this._selector_chain };
-        return await this._client._makeRequest<ElementResponse>("/find_element", payload);
+        return await this._client._makeRequest<ElementResponse>("/first", payload);
     }
 
     /**
@@ -280,9 +280,9 @@ export class Locator {
      * established by the preceding selectors.
      * @returns A promise resolving to an array of element details.
      */
-    async findElements(): Promise<ElementsResponse> {
+    async all(): Promise<ElementsResponse> {
         const payload: ChainedRequest = { selector_chain: this._selector_chain };
-        return await this._client._makeRequest<ElementsResponse>("/find_elements", payload);
+        return await this._client._makeRequest<ElementsResponse>("/all", payload);
     }
 
     /**
@@ -355,6 +355,19 @@ export class Locator {
     async pressKey(key: string): Promise<BasicResponse> {
         const payload: PressKeyRequest = { selector_chain: this._selector_chain, key };
         return await this._client._makeRequest<BasicResponse>("/press_key", payload);
+    }
+
+    /**
+     * Activates the application window associated with the element identified by the locator chain.
+     * This typically brings the window to the foreground.
+     * Waits for the element first (handled server-side).
+     * @returns The current Locator instance to allow for method chaining.
+     * @throws {ApiError} If the server fails to activate the application window.
+     */
+    async activateApp(): Promise<this> {
+        const payload: ChainedRequest = { selector_chain: this._selector_chain };
+        await this._client._makeRequest<BasicResponse>("/activate_app", payload);
+        return this;
     }
 
     // --- Expectation Methods --- //

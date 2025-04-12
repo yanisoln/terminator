@@ -237,7 +237,7 @@ fn create_locator_for_chain(
 }
 
 // Handler for finding an element
-async fn find_element(
+async fn first(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
@@ -319,7 +319,7 @@ async fn get_element_text(
 }
 
 // Handler for finding multiple elements (Assuming find all matching last step within first match of prior steps)
-async fn find_elements(
+async fn all(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
@@ -541,6 +541,32 @@ async fn expect_element_text_equals(
     }
 }
 
+// --- NEW HANDLER for activating app window ---
+
+async fn activate_app_window(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ChainedRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, "Attempting to activate app window");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+
+    // First, find the element using wait() to ensure it exists.
+    let element = locator.wait().await?;
+
+    // Then, call the activate_window method.
+    // This method needs to be added to the UIElement and UIElementImpl trait.
+    match element.activate_window() {
+        Ok(_) => {
+            info!("App window activated successfully");
+            Ok(Json(BasicResponse { message: "App window activated successfully".to_string() }))
+        }
+        Err(e) => {
+            info!("Failed to activate app window: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -558,8 +584,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build our application with routes
     let app = Router::new()
         .route("/", get(root))
-        .route("/find_element", post(find_element))
-        .route("/find_elements", post(find_elements))
+        .route("/first", post(first))
+        .route("/all", post(all))
         .route("/click", post(click_element))
         .route("/type_text", post(type_text_into_element))
         .route("/get_text", post(get_element_text))
@@ -569,6 +595,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/press_key", post(press_key_on_element))
         .route("/open_application", post(open_application))
         .route("/open_url", post(open_url))
+        .route("/activate_app", post(activate_app_window))
         .route("/expect_visible", post(expect_element_visible))
         .route("/expect_enabled", post(expect_element_enabled))
         .route("/expect_text_equals", post(expect_element_text_equals))
