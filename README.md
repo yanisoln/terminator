@@ -34,9 +34,7 @@ for detailed information on features, installation, usage, and the api, please v
     ```
 2.  **download & unzip the server (windows cli):**
     ```powershell
-    Invoke-WebRequest -Uri https://github.com/mediar-ai/terminator/releases/latest/download/terminator-server-windows-x86_64.zip -OutFile terminator-server-windows-x86_64.zip
-    Expand-Archive -Path terminator-server-windows-x86_64.zip -DestinationPath .\server_release
-    ```
+    .\setup_windows.ps1
     ```
 3.  **run the server:**
     ```powershell
@@ -63,4 +61,3 @@ for detailed information on features, installation, usage, and the api, please v
 ## contributing
 
 contributions are welcome! please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. join our [discord](https://discord.gg/dU9EBuw7Uq) to discuss.
-
