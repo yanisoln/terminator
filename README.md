@@ -7,14 +7,6 @@ high level demo:
 
 <https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0>
 
-dev demo 1:
-
-<https://github.com/user-attachments/assets/890d6842-782c-4b2b-8920-224bd63c4545>
-
-dev demo 2:
-
-<https://github.com/user-attachments/assets/c9f472f7-79ed-49c6-a4d0-93608fa1ce55>
-
 **terminator** is an ai-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a playwright-like api.
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more. because it uses os-level accessibility apis, it is **100x faster and more reliable** for ai agents than vision-based approaches.
