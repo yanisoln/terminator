@@ -684,7 +684,7 @@ impl AccessibilityEngine for MacOSEngine {
                 // For now, only support role -> id pattern
                 if selectors.len() != 2 {
                     return Err(AutomationError::UnsupportedOperation(
-                        "Only role -> id chains are supported".to_string(),
+                        "Only role -> id and role -> role chains are supported".to_string(),
                     ));
                 }
 
@@ -716,9 +716,63 @@ impl AccessibilityEngine for MacOSEngine {
                         "No element found with role '{}' and id '{}'",
                         role, id
                     )));
+                }
+                // Check if it's a role -> role pattern
+                else if let (
+                    Selector::Role {
+                        role: role1,
+                        name: _,
+                    },
+                    Selector::Role {
+                        role: role2,
+                        name: _,
+                    },
+                ) = (&selectors[0], &selectors[1])
+                {
+                    debug!("Processing chain: role '{}' -> role '{}'", role1, role2);
+
+                    // First find elements matching the first role
+                    let first_role_elements = self.find_elements(&selectors[0], root)?;
+                    debug!(
+                        "Found {} elements matching first role '{}'",
+                        first_role_elements.len(),
+                        role1
+                    );
+
+                    // Iterate through the first role elements
+                    for first_element in first_role_elements {
+                        // For each element, find children matching the second role
+                        match self.find_elements(&selectors[1], Some(&first_element)) {
+                            Ok(second_role_elements) => {
+                                if !second_role_elements.is_empty() {
+                                    debug!(
+                                        "Found child element matching second role '{}' under element with role '{}'",
+                                        role2, role1
+                                    );
+                                    // Return the first match found
+                                    // We need to return the element matching the *second* role in the chain
+                                    return Ok(second_role_elements.into_iter().next().unwrap());
+                                }
+                            }
+                            Err(AutomationError::ElementNotFound(_)) => {
+                                // If no children match, just continue to the next parent candidate
+                                continue;
+                            }
+                            Err(e) => {
+                                // Propagate other errors
+                                return Err(e);
+                            }
+                        }
+                    }
+
+                    // If no match found after checking all candidates
+                    return Err(AutomationError::ElementNotFound(format!(
+                        "No element found matching chain role '{}' -> role '{}'",
+                        role1, role2
+                    )));
                 } else {
                     return Err(AutomationError::UnsupportedOperation(
-                        "Only role -> id chains are supported".to_string(),
+                        "Only role -> id and role -> role chains are supported".to_string(),
                     ));
                 }
             }
@@ -2048,6 +2102,16 @@ impl UIElementImpl for MacOSUIElement {
         );
 
         Ok(())
+    }
+
+    fn activate_window(&self) -> Result<(), AutomationError> {
+        // On macOS, focusing an element within the window
+        // using AXRaise or setting focus often brings the window forward.
+        debug!(
+            "Activating window by focusing element: {:?}",
+            self.element.0
+        );
+        self.focus()
     }
 }
 
