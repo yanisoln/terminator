@@ -13,4 +13,6 @@ __pycache__
 *.pyd
 *.pyw
 *.pyz
-
+*.egg-info
+build/
+dist/

@@ -268,10 +268,41 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Filter` selector not supported".to_string(),
                 ));
             }
-            Selector::Chain(_selectors) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`selectors` selector not supported".to_string(),
-                ));
+            Selector::Chain(selectors) => {
+                if selectors.is_empty() {
+                    return Err(AutomationError::InvalidArgument(
+                        "Selector chain cannot be empty".to_string(),
+                    ));
+                }
+
+                // Find the parent element based on all selectors except the last one.
+                let mut current_element_root = root.cloned();
+                if selectors.len() > 1 {
+                    for selector in &selectors[..selectors.len() - 1] {
+                         // Use find_element to traverse the chain up to the parent
+                        let found_parent = self.find_element(selector, current_element_root.as_ref())?;
+                        current_element_root = Some(found_parent);
+                    }
+                }
+
+                // Use the last selector to find all matching elements within the final parent.
+                if let Some(last_selector) = selectors.last() {
+                    // Call find_elements with the last selector and the found parent
+                    return self.find_elements(last_selector, current_element_root.as_ref());
+                } else {
+                    // Should not happen due to is_empty check, but handle defensively.
+                    // If there's only one selector, find_elements is called directly.
+                     // This branch essentially handles the case of a single-selector chain,
+                     // which shouldn't occur if selectors.len() > 1 condition is met above.
+                     // If len is 1, the last_selector will be the only selector.
+                     // Let's simplify: if len == 1, the loop is skipped, and we directly call find_elements.
+                     // If len > 1, we find the parent and then call find_elements.
+                     // The case selectors.last() is always Some here because of the is_empty check.
+                    // Therefore, this else branch is unreachable. We can remove it or log an error.
+                    // Let's return an empty vec for safety, though it indicates a logic issue if reached.
+                     debug!("Unreachable code reached in find_elements Selector::Chain");
+                     return Ok(Vec::new());
+                }
             }
         };
 
@@ -426,10 +457,24 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Filter` selector not supported".to_string(),
                 ));
             }
-            Selector::Chain(_selectors) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`selectors` selector not supported".to_string(),
-                ));
+            Selector::Chain(selectors) => {
+                if selectors.is_empty() {
+                    return Err(AutomationError::InvalidArgument(
+                        "Selector chain cannot be empty".to_string(),
+                    ));
+                }
+
+                // Recursively find the element by traversing the chain.
+                let mut current_element = root.cloned();
+                for selector in selectors {
+                    let found_element = self.find_element(selector, current_element.as_ref())?;
+                    current_element = Some(found_element);
+                }
+
+                // Return the final single element found after the full chain traversal.
+                return current_element.ok_or_else(|| {
+                    AutomationError::ElementNotFound("Element not found after traversing chain".to_string())
+                });
             }
         }
     }

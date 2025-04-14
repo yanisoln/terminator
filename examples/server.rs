@@ -147,19 +147,6 @@ struct AttributesResponse {
     id: Option<String>,
 }
 
-impl AttributesResponse {
-    fn from_element(element: &UIElement) -> Self {
-        let attrs = element.attributes();
-        Self {
-            role: attrs.role,
-            label: attrs.label,
-            value: attrs.value,
-            description: attrs.description,
-            properties: attrs.properties,
-            id: element.id(),
-        }
-    }
-}
 
 // Response structure for element bounds
 #[derive(Serialize)]
