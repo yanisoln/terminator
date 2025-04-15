@@ -117,6 +117,13 @@ impl AccessibilityEngine for WindowsEngine {
     fn get_application_by_name(&self, name: &str) -> Result<UIElement, AutomationError> {
         debug!("searching application from name: {}", name);
 
+        // Strip .exe suffix if present
+        let search_name = name
+            .strip_suffix(".exe")
+            .or_else(|| name.strip_suffix(".EXE")) // Also check uppercase
+            .unwrap_or(name);
+        debug!("using search name: {}", search_name);
+
         // first find element by matcher
         let root_ele = self.automation.0.get_root_element().unwrap();
         let automation = WindowsEngine::new(false, false)
@@ -126,7 +133,7 @@ impl AccessibilityEngine for WindowsEngine {
             .0
             .create_matcher()
             .control_type(ControlType::Window)
-            .contains_name(name)
+            .contains_name(search_name) // Use stripped name
             .from_ref(&root_ele)
             .depth(7)
             .timeout(5000);
@@ -138,12 +145,12 @@ impl AccessibilityEngine for WindowsEngine {
         let ele = match ele_res {
             Ok(ele) => ele,
             Err(_) => {
-                let pid = match get_pid_by_name(name) {
+                let pid = match get_pid_by_name(search_name) { // Use stripped name
                     Some(pid) => pid,
                     None => {
                         return Err(AutomationError::PlatformError(format!(
-                            "no running application found from name: {:?}",
-                            name
+                            "no running application found from name: {:?} (searched as: {:?})",
+                            name, search_name // Include original name in error
                         )));
                     }
                 };
@@ -506,7 +513,9 @@ impl AccessibilityEngine for WindowsEngine {
 
         std::thread::sleep(std::time::Duration::from_millis(200));
 
-        self.get_application_by_name(app_name)
+        let app = self.get_application_by_name(app_name).map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        app.activate_window().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        Ok(app)
     }
 
     fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
@@ -700,47 +709,25 @@ impl AccessibilityEngine for WindowsEngine {
 
     fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {
         info!("Attempting to activate browser window containing title: {}", title);
-        let root = self.automation.0.get_root_element()
+        let root = self.automation.0.get_root_element() // Cache root element lookup
             .map_err(|e| AutomationError::PlatformError(format!("Failed to get root element: {}", e)))?;
 
         // Find top-level windows
-        let window_condition = self.automation.0.create_property_condition(
-            UIProperty::ControlType,
-            Variant::from(ControlType::TabItem as i32),
-            None,
-        ).map_err(|e| AutomationError::PlatformError(format!("Failed to create window condition: {}", e)))?;
+        let window_matcher = self.automation.0.create_matcher()
+            .from_ref(&root)
+            .filter(Box::new(ControlTypeFilter { control_type: ControlType::TabItem }))
+            .contains_name(title)
+            .depth(10)
+            .timeout(500);
 
-        let windows = root.find_all(TreeScope::Children, &window_condition)
+        let window = window_matcher.find_first()
             .map_err(|e| AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e)))?;
 
+        // If find_first succeeds, 'window' is the UIElement. Now try to focus it.
+        window.set_focus()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to set focus on window/tab: {}", e)))?; // Map focus error
 
-        for window in windows {
-            // Search within this window for an element containing the title
-            // Use a matcher for potentially better performance and flexibility
-            let matcher = self.automation.0.create_matcher()
-                .from(window.clone()) // Search within the current window
-                .contains_name(title) // Check if any element's name contains the title
-                .depth(20) // Search reasonably deep within the window structure
-                .timeout(1000); // Short timeout for checking within each window
-
-            match matcher.find_first() {
-                Ok(_found_element_with_title) => {
-                    // Found an element with the title within this window.
-                    // Now, activate the main window itself.
-                    info!("Found title '{}' in window: {:?}. Activating window.", title, window.get_name());
-                    window.set_focus()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to focus window containing title '{}': {}", title, e)))?;
-                    return Ok(()); // Window activated, we're done.
-                }
-                Err(_) => {
-                    // Title not found in this window, continue to the next.
-                    continue;
-                }
-            }
-        }
-
-        // If the loop finishes without finding the title in any window
-        Err(AutomationError::ElementNotFound(format!("No window found containing the title: {}", title)))
+        Ok(()) // If focus succeeds, return Ok
     }
 }
 

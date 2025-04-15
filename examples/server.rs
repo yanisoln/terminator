@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -838,7 +839,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         desktop: Arc::new(desktop),
     });
 
-    // Build our application with routes
+    // Define a permissive CORS policy
+    let cors = CorsLayer::new()
+        .allow_origin(Any) // Allows any origin
+        .allow_methods(Any) // Allows any method (GET, POST, etc.)
+        .allow_headers(Any); // Allows any header
+
+    // Build our application with routes and the CORS layer
     let app = Router::new()
         .route("/", get(root))
         .route("/first", post(first))
@@ -864,7 +871,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/ocr_image_path", post(ocr_image_path))
         .route("/ocr_screenshot", post(ocr_screenshot_handler))
         .route("/activate_browser_window", post(activate_browser_window_handler))
-        .with_state(shared_state);
+        .with_state(shared_state)
+        .layer(cors); // Add the CORS layer here
 
     // Determine port
     let default_port = 9375;
