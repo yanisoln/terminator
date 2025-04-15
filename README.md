@@ -13,6 +13,8 @@ it provides a unified api to find and control ui elements like buttons, text fie
 
 > **Note:** while we support macos and windows, we are currently focusing development efforts on windows.
 
+> **⚠️ Note 2 ⚠️:** keep in mind it's very experimental, expect many bugs, report it and we'll fix in minutes.
+
 ## documentation
 
 for detailed information on features, installation, usage, and the api, please visit the **[official documentation](https://docs.screenpi.pe/terminator/introduction)**.
