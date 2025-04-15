@@ -40,12 +40,10 @@ for detailed information on features, installation, usage, and the api, please v
     ```
 4.  **run an example client (in another terminal):**
     ```bash
-    # make sure node.js/bun is installed
-    cd examples # navigate back to the examples directory in the cloned repo
-    npm i # or bun/yarn
-    npx tsx client_example.ts
-    # or python:
-    python client_example.py
+    cd examples/hello-world
+    npm i
+    npm run dev
+    # open http://localhost:3000
     ```
 
 *check the [getting started guide](https://docs.screenpi.pe/terminator/getting-started) in the docs for more details.*
