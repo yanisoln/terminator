@@ -57,3 +57,7 @@ for detailed information on features, installation, usage, and the api, please v
 ## contributing
 
 contributions are welcome! please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. join our [discord](https://discord.gg/dU9EBuw7Uq) to discuss.
+
+## businesses 
+
+if you want desktop automation at scale for your business, [let's talk](https://screenpi.pe/enterprise)
