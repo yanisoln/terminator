@@ -77,6 +77,29 @@ class OpenUrlRequest:
     url: str
     browser: Optional[str] = None
 
+@dataclass
+class OpenFileRequest:
+    file_path: str
+
+@dataclass
+class RunCommandRequest:
+    windows_command: Optional[str] = None
+    unix_command: Optional[str] = None
+
+@dataclass
+class CaptureMonitorRequest:
+    monitor_name: str
+
+@dataclass
+class OcrImagePathRequest:
+    image_path: str
+
+@dataclass
+class OcrScreenshotRequest:
+    image_base64: str
+    width: int
+    height: int
+
 # --- Expectation Requests --- #
 @dataclass
 class ExpectRequest(ChainedRequest):
@@ -86,4 +109,21 @@ class ExpectRequest(ChainedRequest):
 class ExpectTextRequest(ChainedRequest): # Inherit directly from ChainedRequest
     expected_text: str             # Non-default field
     timeout_ms: Optional[int] = None # Default field
-    max_depth: Optional[int] = None  # Default field 
+    max_depth: Optional[int] = None  # Default field
+
+# --- Response Types --- #
+@dataclass
+class CommandOutputResponse:
+    stdout: str
+    stderr: str
+    exit_code: Optional[int] # Match server response (was exit_status in core)
+
+@dataclass
+class ScreenshotResponse:
+    image_base64: str # Base64 encoded image data
+    width: int
+    height: int
+
+@dataclass
+class OcrResponse:
+    text: str 

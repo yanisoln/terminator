@@ -24,6 +24,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tracing::{debug, trace};
+use xcap::Monitor;
+use uniocr::{OcrEngine, OcrProvider};
+use tokio::runtime::Runtime;
+use image::{ImageBuffer, Rgba, DynamicImage};
 
 use super::tree_search::{
     ElementFinderWithWindows, ElementsCollectorWithWindows, TreeWalkerWithWindows,
@@ -313,655 +317,144 @@ impl MacOSEngine {
             app_name
         )))
     }
-}
 
-// Helper function to get PID from an AXUIElement
-fn get_pid_for_element(element: &ThreadSafeAXUIElement) -> i32 {
-    // Use accessibility API to get the PID
-    unsafe {
-        let element_ref = element.0.as_concrete_TypeRef() as *mut ::std::os::raw::c_void;
-
-        // Link with ApplicationServices framework
-        #[link(name = "ApplicationServices", kind = "framework")]
-        unsafe extern "C" {
-            fn AXUIElementGetPid(element: *mut ::std::os::raw::c_void, pid: *mut i32) -> i32;
-        }
-
-        let mut pid: i32 = 0;
-        let result = AXUIElementGetPid(element_ref, &mut pid);
-
-        if result == 0 {
-            return pid;
-        }
-
-        // Fallback to -1 if we couldn't get the PID
-        -1
-    }
-}
-
-// Modified to return Vec<String> for multiple possible role matches
-fn map_generic_role_to_macos_roles(role: &str) -> Vec<String> {
-    match role.to_lowercase().as_str() {
-        "window" => vec!["AXWindow".to_string()],
-        "button" => vec![
-            "AXButton".to_string(),
-            "AXMenuItem".to_string(),
-            "AXMenuBarItem".to_string(),
-            "AXStaticText".to_string(), // Some text might be clickable buttons
-            "AXImage".to_string(),      // Some images might be clickable buttons
-        ], // Button can be any of these
-        "checkbox" => vec!["AXCheckBox".to_string()],
-        "menu" => vec!["AXMenu".to_string()],
-        "menuitem" => vec!["AXMenuItem".to_string(), "AXMenuBarItem".to_string()], // Include both types
-        "dialog" => vec!["AXSheet".to_string(), "AXDialog".to_string()], // macOS often uses Sheet or Dialog
-        "text" | "textfield" | "input" | "textbox" => vec![
-            "AXTextField".to_string(),
-            "AXTextArea".to_string(),
-            "AXText".to_string(),
-            "AXComboBox".to_string(),
-            "AXTextEdit".to_string(),
-            "AXSearchField".to_string(),
-            "AXWebArea".to_string(), // Web content might contain inputs
-            "AXGroup".to_string(),   // Twitter uses groups that contain editable content
-            "AXGenericElement".to_string(), // Generic elements that might be inputs
-            "AXURIField".to_string(), // Explicit URL field type
-            "AXAddressField".to_string(), // Another common name for URL fields
-            "AXStaticText".to_string(), // Static text fields
-        ],
-        // Add specific support for URL fields
-        "url" | "urlfield" => vec![
-            "AXTextField".to_string(),    // URL fields are often text fields
-            "AXURIField".to_string(),     // Explicit URL field type
-            "AXAddressField".to_string(), // Another common name for URL fields
-        ],
-        "list" => vec!["AXList".to_string()],
-        "listitem" => vec!["AXCell".to_string()], // List items are often cells in macOS
-        "combobox" => vec!["AXPopUpButton".to_string(), "AXComboBox".to_string()],
-        "tab" => vec!["AXTabGroup".to_string()],
-        "tabitem" => vec!["AXRadioButton".to_string()], // Tab items are sometimes radio buttons
-        "toolbar" => vec!["AXToolbar".to_string()],
-
-        _ => vec![role.to_string()], // Keep as-is for unknown roles
-    }
-}
-
-fn macos_role_to_generic_role(role: &str) -> Vec<String> {
-    match role.to_lowercase().as_str() {
-        "AXWindow" => vec!["window".to_string()],
-        "AXButton" | "AXMenuItem" | "AXMenuBarItem" => vec!["button".to_string()],
-        "AXTextField" | "AXTextArea" | "AXTextEdit" | "AXSearchField" | "AXURIField"
-        | "AXAddressField" => vec![
-            "textfield".to_string(),
-            "input".to_string(),
-            "textbox".to_string(),
-            "url".to_string(),
-            "urlfield".to_string(),
-        ],
-        "AXList" => vec!["list".to_string()],
-        "AXCell" => vec!["listitem".to_string()],
-        "AXSheet" | "AXDialog" => vec!["dialog".to_string()],
-        "AXGroup" | "AXGenericElement" | "AXWebArea" => {
-            vec!["group".to_string(), "genericElement".to_string()]
-        }
-        _ => vec![role.to_string()],
-    }
-}
-// Helper function to get PIDs of running applications using NSWorkspace
-#[allow(clippy::unexpected_cfg_condition)]
-fn get_running_application_pids(use_background_apps: bool) -> Result<Vec<i32>, AutomationError> {
-    // Implementation using Objective-C bridging
-    unsafe {
-        use objc::{class, msg_send, sel, sel_impl};
-
-        let workspace_class = class!(NSWorkspace);
-        let shared_workspace: *mut objc::runtime::Object =
-            msg_send![workspace_class, sharedWorkspace];
-        let apps: *mut objc::runtime::Object = msg_send![shared_workspace, runningApplications];
-        let count: usize = msg_send![apps, count];
-
-        let mut pids = Vec::with_capacity(count);
-        for i in 0..count {
-            let app: *mut objc::runtime::Object = msg_send![apps, objectAtIndex:i];
-
-            if !use_background_apps {
-                let activation_policy: i32 = msg_send![app, activationPolicy];
-                // NSApplicationActivationPolicyRegular = 0
-                // NSApplicationActivationPolicyAccessory = 1
-                // NSApplicationActivationPolicyProhibited = 2 (background only)
-                if activation_policy == 2 || activation_policy == 1 {
-                    // NSApplicationActivationPolicyProhibited or NSApplicationActivationPolicyAccessory
-                    continue;
-                }
-            }
-            // Filter out common background workers by bundle identifier
-            let bundle_id: *mut objc::runtime::Object = msg_send![app, bundleIdentifier];
-            if !bundle_id.is_null() {
-                let bundle_id_str: &str = {
-                    let nsstring = bundle_id as *const objc::runtime::Object;
-                    let bytes: *const std::os::raw::c_char = msg_send![nsstring, UTF8String];
-                    let len: usize = msg_send![nsstring, lengthOfBytesUsingEncoding:4]; // NSUTF8StringEncoding = 4
-                    let bytes_slice = std::slice::from_raw_parts(bytes as *const u8, len);
-                    std::str::from_utf8_unchecked(bytes_slice)
-                };
-
-                // Skip common background processes and workers
-                if bundle_id_str.contains(".worker")
-                    || bundle_id_str.contains("com.apple.WebKit")
-                    || bundle_id_str.contains("com.apple.CoreServices")
-                    || bundle_id_str.contains(".helper")
-                    || bundle_id_str.contains(".agent")
-                {
-                    debug!("Filtered out background worker: {}", bundle_id_str);
-                    continue;
-                }
-            }
-
-            let pid: i32 = msg_send![app, processIdentifier];
-            pids.push(pid);
-        }
-
-        debug!("Found {} application PIDs", pids.len());
-        Ok(pids)
-    }
-}
-
-impl AccessibilityEngine for MacOSEngine {
-    fn get_applications(&self) -> Result<Vec<UIElement>, AutomationError> {
-        // Get running application PIDs using NSWorkspace
-        let pids = get_running_application_pids(self.use_background_apps)?;
-
-        debug!("Found {} running applications", pids.len());
-
-        // Create AXUIElements for each application
-        let mut app_elements = Vec::new();
-        for pid in pids {
-            trace!("Creating AXUIElement for application with PID: {}", pid);
-            let app_element = ThreadSafeAXUIElement::application(pid);
-
-            app_elements.push(self.wrap_element(app_element));
-        }
-
-        Ok(app_elements)
-    }
-    fn get_root_element(&self) -> UIElement {
-        self.wrap_element(self.system_wide.clone())
-    }
-
-    fn get_focused_element(&self) -> Result<UIElement, AutomationError> {
-        // not implemented
-        Err(AutomationError::UnsupportedOperation(
-            "get_focused_element not yet implemented for macOS".to_string(),
-        ))
-    }
-
-    fn get_application_by_name(&self, name: &str) -> Result<UIElement, AutomationError> {
-        // Refresh the accessibility tree before searching
-        self.refresh_accessibility_tree(Some(name))?;
-
-        // Get all applications first, then filter by name
-        let apps = self.get_applications()?;
-
-        debug!(
-            "Searching for application '{}' among {} applications",
-            name,
-            apps.len()
-        );
-
-        // Look for an application with a matching name
-        for app in apps {
-            let app_name = app.attributes().label.unwrap_or_default();
-            debug!("Checking application: '{}'", app_name);
-
-            // Case-insensitive comparison since macOS app names might have different casing
-            if app_name.to_lowercase() == name.to_lowercase() {
-                debug!("Found matching application: '{}'", app_name);
-                return Ok(app);
-            }
-        }
-
-        // No matching application found
-        Err(AutomationError::ElementNotFound(format!(
-            "Application '{}' not found",
-            name
-        )))
-    }
-
-    fn find_element(
+    fn run_command(
         &self,
-        selector: &Selector,
-        root: Option<&UIElement>,
-    ) -> Result<UIElement, AutomationError> {
-        // If we have a root element that's an application, refresh the tree for that app
-        if let Some(root_elem) = root {
-            if let Some(macos_el) = root_elem.as_any().downcast_ref::<MacOSUIElement>() {
-                if macos_el
-                    .element
-                    .0
-                    .role()
-                    .map_or(false, |r| r.to_string() == "AXApplication")
-                {
-                    if let Some(app_name) = root_elem.attributes().label {
-                        self.refresh_accessibility_tree(Some(&app_name))?;
-                    }
+        _windows_command: Option<&str>,
+        unix_command: Option<&str>,
+    ) -> Result<crate::CommandOutput, AutomationError> {
+        let command_str = unix_command.ok_or_else(|| {
+            AutomationError::InvalidArgument("Unix command must be provided".to_string())
+        })?;
+
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(command_str)
+            .output()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+
+        Ok(crate::CommandOutput {
+            exit_status: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+
+    fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+        let mut primary_monitor: Option<xcap::Monitor> = None;
+        for monitor in monitors {
+            match monitor.is_primary() {
+                Ok(true) => {
+                    primary_monitor = Some(monitor);
+                    break;
                 }
-            }
-        }
-
-        let start_element = root
-            .map(|el| {
-                if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
-                    &macos_el.element.0
-                } else {
-                    panic!("Root element is not a macOS element")
-                }
-            })
-            .unwrap_or(&self.system_wide.0);
-
-        // Regular element finding logic
-        match selector {
-            Selector::Role { role, name: _ } => {
-                // Get all possible macOS roles for this generic role
-                let macos_roles = map_generic_role_to_macos_roles(role);
-
-                let collector = ElementFinderWithWindows::new(
-                    &self.system_wide.0,
-                    move |e| {
-                        let element_role = e.role().unwrap_or(CFString::new("")).to_string();
-                        macos_roles.contains(&element_role)
-                    },
-                    None,
-                );
-                let walker: TreeWalkerWithWindows = TreeWalkerWithWindows::new();
-
-                walker.walk(start_element, &collector);
-
-                let ax_ui_element = match collector.find() {
-                    Ok(ax_ui_element) => ax_ui_element,
-                    Err(_) => {
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "Element with role '{}' not found",
-                            role
-                        )));
-                    }
-                };
-                Ok(self.wrap_element(ThreadSafeAXUIElement::new(ax_ui_element)))
-            }
-            Selector::Id(id) => {
-                let id_owned = id.clone(); // Create an owned copy
-                let collector = ElementFinderWithWindows::new(
-                    &self.system_wide.0,
-                    move |e| {
-                        // Create temporary MacOSUIElement to generate stable ID
-                        let element = MacOSUIElement {
-                            element: ThreadSafeAXUIElement::new(e.clone()),
-                            use_background_apps: false, // temporary value
-                            activate_app: false,        // temporary value
-                        };
-                        element.id().unwrap_or_default() == id_owned
-                    },
-                    None,
-                );
-                let walker: TreeWalkerWithWindows = TreeWalkerWithWindows::new();
-
-                walker.walk(start_element, &collector);
-
-                let ax_ui_element = match collector.find() {
-                    Ok(ax_ui_element) => ax_ui_element,
-                    Err(_) => {
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "Element with ID '{}' not found",
-                            id
-                        )));
-                    }
-                };
-                Ok(self.wrap_element(ThreadSafeAXUIElement::new(ax_ui_element)))
-            }
-            Selector::Name(name) => {
-                let name_owned = name.clone(); // Create an owned copy
-                let collector = ElementFinderWithWindows::new(
-                    &self.system_wide.0,
-                    move |e| {
-                        // Use move to take ownership of name_owned
-                        e.title().unwrap_or(CFString::new("")).to_string() == name_owned
-                    },
-                    None,
-                );
-                let walker: TreeWalkerWithWindows = TreeWalkerWithWindows::new();
-
-                walker.walk(start_element, &collector);
-
-                let ax_ui_element = match collector.find() {
-                    Ok(ax_ui_element) => ax_ui_element,
-                    Err(_) => {
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "Element with name '{}' not found",
-                            name
-                        )));
-                    }
-                };
-                Ok(self.wrap_element(ThreadSafeAXUIElement::new(ax_ui_element)))
-            }
-
-            Selector::Text(text) => {
-                let text_owned = text.clone(); // Create an owned copy
-
-                // Create a collector that recursively checks children
-                let collector = ElementFinderWithWindows::new(
-                    &self.system_wide.0,
-                    move |e| {
-                        // First check if element itself contains the text in any attribute
-                        if element_contains_text(e, &text_owned) {
-                            return true;
-                        }
-
-                        false
-                    },
-                    None,
-                );
-
-                let walker: TreeWalkerWithWindows = TreeWalkerWithWindows::new();
-
-                walker.walk(start_element, &collector);
-
-                let ax_ui_element = match collector.find() {
-                    Ok(ax_ui_element) => ax_ui_element,
-                    Err(_) => {
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "Element with text '{}' not found",
-                            text
-                        )));
-                    }
-                };
-                Ok(self.wrap_element(ThreadSafeAXUIElement::new(ax_ui_element)))
-            }
-            Selector::Attributes(_attrs) => Err(AutomationError::UnsupportedOperation(
-                "Attributes selector not implemented".to_string(),
-            )),
-            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
-                "Path selector not implemented".to_string(),
-            )),
-            Selector::Chain(selectors) => {
-                // For now, only support role -> id pattern
-                if selectors.len() != 2 {
-                    return Err(AutomationError::UnsupportedOperation(
-                        "Only role -> id and role -> role chains are supported".to_string(),
-                    ));
-                }
-
-                // Check if it's a role -> id pattern
-                if let (Selector::Role { role, name: _ }, Selector::Id(id)) =
-                    (&selectors[0], &selectors[1])
-                {
-                    debug!("Processing chain: role '{}' -> id '{}'", role, id);
-
-                    // First find elements matching the role
-                    let role_elements = self.find_elements(&selectors[0], root)?;
-                    debug!(
-                        "Found {} elements matching role '{}'",
-                        role_elements.len(),
-                        role
-                    );
-
-                    // Then find the one with matching id
-                    for element in role_elements {
-                        if let Some(element_id) = element.id() {
-                            if element_id == *id {
-                                debug!("Found matching element with id '{}'", id);
-                                return Ok(element);
-                            }
-                        }
-                    }
-
-                    return Err(AutomationError::ElementNotFound(format!(
-                        "No element found with role '{}' and id '{}'",
-                        role, id
+                Ok(false) => continue,
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Error checking monitor primary status: {}",
+                        e
                     )));
                 }
-                // Check if it's a role -> role pattern
-                else if let (
-                    Selector::Role {
-                        role: role1,
-                        name: _,
-                    },
-                    Selector::Role {
-                        role: role2,
-                        name: _,
-                    },
-                ) = (&selectors[0], &selectors[1])
-                {
-                    debug!("Processing chain: role '{}' -> role '{}'", role1, role2);
+            }
+        }
+        let primary_monitor = primary_monitor.ok_or_else(|| {
+            AutomationError::PlatformError("Could not find primary monitor".to_string())
+        })?;
 
-                    // First find elements matching the first role
-                    let first_role_elements = self.find_elements(&selectors[0], root)?;
-                    debug!(
-                        "Found {} elements matching first role '{}'",
-                        first_role_elements.len(),
-                        role1
-                    );
+        let image = primary_monitor.capture_image().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to capture screen: {}", e))
+        })?;
 
-                    // Iterate through the first role elements
-                    for first_element in first_role_elements {
-                        // For each element, find children matching the second role
-                        match self.find_elements(&selectors[1], Some(&first_element)) {
-                            Ok(second_role_elements) => {
-                                if !second_role_elements.is_empty() {
-                                    debug!(
-                                        "Found child element matching second role '{}' under element with role '{}'",
-                                        role2, role1
-                                    );
-                                    // Return the first match found
-                                    // We need to return the element matching the *second* role in the chain
-                                    return Ok(second_role_elements.into_iter().next().unwrap());
-                                }
-                            }
-                            Err(AutomationError::ElementNotFound(_)) => {
-                                // If no children match, just continue to the next parent candidate
-                                continue;
-                            }
-                            Err(e) => {
-                                // Propagate other errors
-                                return Err(e);
-                            }
-                        }
-                    }
+        Ok(ScreenshotResult {
+            image_data: image.to_vec(),
+            width: image.width(),
+            height: image.height(),
+        })
+    }
 
-                    // If no match found after checking all candidates
-                    return Err(AutomationError::ElementNotFound(format!(
-                        "No element found matching chain role '{}' -> role '{}'",
-                        role1, role2
+    fn capture_monitor_by_name(&self, name: &str) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+        let mut target_monitor: Option<xcap::Monitor> = None;
+        for monitor in monitors {
+            match monitor.name() {
+                Ok(monitor_name) if monitor_name == name => {
+                    target_monitor = Some(monitor);
+                    break;
+                }
+                Ok(_) => continue,
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Error getting monitor name: {}",
+                        e
                     )));
-                } else {
-                    return Err(AutomationError::UnsupportedOperation(
-                        "Only role -> id and role -> role chains are supported".to_string(),
-                    ));
                 }
             }
-            Selector::Filter(_) => Err(AutomationError::UnsupportedOperation(
-                "Filter selector not implemented".to_string(),
-            )),
         }
+        let target_monitor = target_monitor.ok_or_else(|| {
+            AutomationError::ElementNotFound(format!("Monitor '{}' not found", name))
+        })?;
+
+        let image = target_monitor.capture_image().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to capture monitor '{}': {}", name, e))
+        })?;
+
+        Ok(ScreenshotResult {
+            image_data: image.to_vec(),
+            width: image.width(),
+            height: image.height(),
+        })
     }
 
-    fn find_elements(
-        &self,
-        selector: &Selector,
-        root: Option<&UIElement>,
-    ) -> Result<Vec<UIElement>, AutomationError> {
-        // Get the start element from the provided root or fall back to system_wide
-        let start_element = root
-            .map(|el| {
-                if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
-                    &macos_el.element.0
-                } else {
-                    panic!("Root element is not a macOS element")
-                }
-            })
-            .unwrap_or(&self.system_wide.0);
+    async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
+        // Create a Tokio runtime to run the async OCR operation
+        let rt = Runtime::new()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
 
-        match selector {
-            Selector::Role { role, name: _ } => {
-                let macos_roles = map_generic_role_to_macos_roles(role);
+        // Run the async code block on the runtime
+        rt.block_on(async {
+            let engine = OcrEngine::new(OcrProvider::Auto)
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
 
-                let collector = ElementsCollectorWithWindows::new(start_element, move |e| {
-                    let element_role = e.role().unwrap_or(CFString::new("")).to_string();
-                    macos_roles.contains(&element_role)
-                });
+            let (text, _language, _confidence) = engine // Destructure the tuple
+                .recognize_file(image_path)
+                .await
+                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
 
-                let ax_ui_elements = collector.find_all();
-
-                // Convert AXUIElements to UIElements
-                let ui_elements = ax_ui_elements
-                    .into_iter()
-                    .map(|e| self.wrap_element(ThreadSafeAXUIElement::new(e)))
-                    .collect();
-
-                Ok(ui_elements)
-            }
-            Selector::Id(id) => {
-                let id_owned = id.clone();
-                let collector = ElementsCollectorWithWindows::new(start_element, move |e| {
-                    e.identifier().unwrap_or(CFString::new("")).to_string() == id_owned
-                });
-
-                let ax_ui_elements = collector.find_all();
-
-                // Convert AXUIElements to UIElements
-                let ui_elements = ax_ui_elements
-                    .into_iter()
-                    .map(|e| self.wrap_element(ThreadSafeAXUIElement::new(e)))
-                    .collect();
-
-                Ok(ui_elements)
-            }
-            Selector::Name(name) => {
-                let name_owned = name.clone();
-                let collector = ElementsCollectorWithWindows::new(start_element, move |e| {
-                    e.title().unwrap_or(CFString::new("")).to_string() == name_owned
-                });
-
-                let ax_ui_elements = collector.find_all();
-
-                // Convert AXUIElements to UIElements
-                let ui_elements = ax_ui_elements
-                    .into_iter()
-                    .map(|e| self.wrap_element(ThreadSafeAXUIElement::new(e)))
-                    .collect();
-
-                Ok(ui_elements)
-            }
-            Selector::Text(text) => {
-                let text_owned = text.clone();
-                let collector = ElementsCollectorWithWindows::new(start_element, move |e| {
-                    element_contains_text(e, &text_owned)
-                });
-
-                let ax_ui_elements = collector.find_all();
-
-                // Convert AXUIElements to UIElements
-                let ui_elements = ax_ui_elements
-                    .into_iter()
-                    .map(|e| self.wrap_element(ThreadSafeAXUIElement::new(e)))
-                    .collect();
-
-                Ok(ui_elements)
-            }
-            Selector::Attributes(_attrs) => Err(AutomationError::UnsupportedOperation(
-                "Attributes selector not implemented for find_elements".to_string(),
-            )),
-            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
-                "Path selector not implemented for find_elements".to_string(),
-            )),
-            Selector::Filter(_) => Err(AutomationError::UnsupportedOperation(
-                "Filter selector not implemented for find_elements".to_string(),
-            )),
-            Selector::Chain(_) => Err(AutomationError::UnsupportedOperation(
-                "Chain selector not implemented for find_elements".to_string(),
-            )),
-        }
+            Ok(text) // Return only the text
+        })
     }
 
-    fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-        debug!("opening application: {}", app_name);
+    async fn ocr_screenshot(&self, screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
+        // Create a Tokio runtime to run the async OCR operation
+        let rt = Runtime::new()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
 
-        // Use the macOS 'open' command to launch the application
-        let status = std::process::Command::new("open")
-            .args(["-a", app_name])
-            .status()
-            .map_err(|e| {
-                AutomationError::PlatformError(format!("failed to execute 'open' command: {}", e))
-            })?;
+        // Reconstruct the image buffer from raw data
+        let img_buffer: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
+            screenshot.width,
+            screenshot.height,
+            screenshot.image_data.clone(), // Clone data into the buffer
+        )
+        .ok_or_else(|| AutomationError::InvalidArgument("Invalid screenshot data for buffer creation".to_string()))?;
 
-        if !status.success() {
-            return Err(AutomationError::PlatformError(format!(
-                "failed to open application '{}': exit code {:?}",
-                app_name,
-                status.code()
-            )));
-        }
+        // Convert to DynamicImage
+        let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
 
-        // Give the application a moment to launch
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // Run the async code block on the runtime
+        rt.block_on(async {
+            let engine = OcrEngine::new(OcrProvider::Auto)
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
 
-        // Refresh accessibility tree with the new application
-        self.refresh_accessibility_tree(Some(app_name))?;
+            let (text, _language, _confidence) = engine
+                .recognize_image(&dynamic_image) // Use recognize_image
+                .await
+                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
 
-        // Get the launched application element
-        self.get_application_by_name(app_name)
-    }
-
-    fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
-        debug!("opening url: {} in browser: {:?}", url, browser);
-
-        let status = match browser {
-            Some(browser_name) => {
-                // Open URL in the specified browser
-                std::process::Command::new("open")
-                    .args(["-a", browser_name, url])
-                    .status()
-                    .map_err(|e| {
-                        AutomationError::PlatformError(format!(
-                            "failed to execute 'open' command: {}",
-                            e
-                        ))
-                    })?
-            }
-            None => {
-                // Open URL in the default browser
-                std::process::Command::new("open")
-                    .arg(url)
-                    .status()
-                    .map_err(|e| {
-                        AutomationError::PlatformError(format!(
-                            "failed to execute 'open' command: {}",
-                            e
-                        ))
-                    })?
-            }
-        };
-
-        if !status.success() {
-            return Err(AutomationError::PlatformError(format!(
-                "failed to open url '{}': exit code {:?}",
-                url,
-                status.code()
-            )));
-        }
-
-        // Give the browser a moment to launch
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-
-        // If a specific browser was requested, try to get its UI element
-        if let Some(browser_name) = browser {
-            // Refresh accessibility tree with the browser
-            self.refresh_accessibility_tree(Some(browser_name))?;
-
-            // Get the browser application element
-            self.get_application_by_name(browser_name)
-        } else {
-            // Without a specific browser name, we can't reliably return the browser element
-            // Just return the system-wide element
-            Ok(self.get_root_element())
-        }
+            Ok(text)
+        })
     }
 }
 
@@ -2287,4 +1780,132 @@ fn element_contains_text(e: &AXUIElement, text: &str) -> bool {
     }
 
     contains_in_title || contains_in_desc
+}
+
+// Helper function to get PID from an AXUIElement
+fn get_pid_for_element(element: &ThreadSafeAXUIElement) -> i32 {
+    // Use accessibility API to get the PID
+    unsafe {
+        let element_ref = element.0.as_concrete_TypeRef() as *mut ::std::os::raw::c_void;
+
+        // Link with ApplicationServices framework
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXUIElementGetPid(element: *mut ::std::os::raw::c_void, pid: *mut i32) -> i32;
+        }
+
+        let mut pid: i32 = 0;
+        let result = AXUIElementGetPid(element_ref, &mut pid);
+
+        if result == 0 {
+            return pid;
+        }
+
+        // Fallback to -1 if we couldn't get the PID
+        -1
+    }
+}
+
+// Modified to return Vec<String> for multiple possible role matches
+fn map_generic_role_to_macos_roles(role: &str) -> Vec<String> {
+    match role.to_lowercase().as_str() {
+        "window" => vec!["AXWindow".to_string()],
+        "button" => vec![
+            "AXButton".to_string(),
+            "AXMenuItem".to_string(),
+            "AXMenuBarItem".to_string(),
+            "AXStaticText".to_string(), // Some text might be clickable buttons
+            "AXImage".to_string(),      // Some images might be clickable buttons
+        ], // Button can be any of these
+        "checkbox" => vec!["AXCheckBox".to_string()],
+        "menu" => vec!["AXMenu".to_string()],
+        "menuitem" => vec!["AXMenuItem".to_string(), "AXMenuBarItem".to_string()], // Include both types
+        "dialog" => vec!["AXSheet".to_string(), "AXDialog".to_string()], // macOS often uses Sheet or Dialog
+        "text" | "textfield" | "input" | "textbox" => vec![
+            "AXTextField".to_string(),
+            "AXTextArea".to_string(),
+            "AXText".to_string(),
+            "AXComboBox".to_string(),
+            "AXTextEdit".to_string(),
+            "AXSearchField".to_string(),
+            "AXWebArea".to_string(), // Web content might contain inputs
+            "AXGroup".to_string(),   // Twitter uses groups that contain editable content
+            "AXGenericElement".to_string(), // Generic elements that might be inputs
+            "AXURIField".to_string(), // Explicit URL field type
+            "AXAddressField".to_string(), // Another common name for URL fields
+            "AXStaticText".to_string(), // Static text fields
+        ],
+        // Add specific support for URL fields
+        "url" | "urlfield" => vec![
+            "AXTextField".to_string(),    // URL fields are often text fields
+            "AXURIField".to_string(),     // Explicit URL field type
+            "AXAddressField".to_string(), // Another common name for URL fields
+        ],
+        "list" => vec!["AXList".to_string()],
+        "listitem" => vec!["AXCell".to_string()], // List items are often cells in macOS
+        "combobox" => vec!["AXPopUpButton".to_string(), "AXComboBox".to_string()],
+        "tab" => vec!["AXTabGroup".to_string()],
+        "tabitem" => vec!["AXRadioButton".to_string()], // Tab items are sometimes radio buttons
+        "toolbar" => vec!["AXToolbar".to_string()],
+
+        _ => vec![role.to_string()], // Keep as-is for unknown roles
+    }
+}
+
+fn macos_role_to_generic_role(role: &str) -> Vec<String> {
+    match role.to_lowercase().as_str() {
+        "AXWindow" => vec!["window".to_string()],
+        "AXButton" | "AXMenuItem" | "AXMenuBarItem" => vec!["button".to_string()],
+        "AXTextField" | "AXTextArea" | "AXTextEdit" | "AXSearchField" | "AXURIField"
+        | "AXAddressField" => vec![
+            "textfield".to_string(),
+            "input".to_string(),
+            "textbox".to_string(),
+            "url".to_string(),
+            "urlfield".to_string(),
+        ],
+        "AXList" => vec!["list".to_string()],
+        "AXCell" => vec!["listitem".to_string()],
+        "AXSheet" | "AXDialog" => vec!["dialog".to_string()],
+        "AXGroup" | "AXGenericElement" | "AXWebArea" => {
+            vec!["group".to_string(), "genericElement".to_string()]
+        }
+        _ => vec![role.to_string()],
+    }
+}
+
+// Enum to represent which click method was used - move to module level
+pub enum ClickMethod {
+    AXPress,
+    AXClick,
+    MouseSimulation,
+}
+
+impl fmt::Display for ClickMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClickMethod::AXPress => write!(f, "AXPress"),
+            ClickMethod::AXClick => write!(f, "AXClick"),
+            ClickMethod::MouseSimulation => write!(f, "MouseSimulation"),
+        }
+    }
+}
+
+// Define enum for click method selection
+#[derive(Debug)]
+pub enum ClickMethodSelection {
+    /// Try all methods in sequence (current behavior)
+    Auto,
+    /// Use only AXPress action
+    AXPress,
+    /// Use only AXClick action
+    AXClick,
+    /// Use only mouse simulation
+    MouseSimulation,
+}
+
+impl Default for ClickMethodSelection {
+    fn default() -> Self {
+        ClickMethodSelection::Auto
+    }
 }

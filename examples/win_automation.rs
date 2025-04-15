@@ -1,12 +1,15 @@
 use std::thread;
 use std::time::Duration;
 
-use terminator::{platforms, AutomationError, Selector};
+use terminator::{platforms, AutomationError, Desktop, Selector};
+use tracing::Level;
 
 // like a playground, just uncomment
 fn main() -> Result<(), AutomationError> {
     let engine = platforms::create_engine(true, true)?;
-
+    tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .init();
     // get the root element
     // let root_element = engine.get_root_element();
     // println!("root element: {:?}", root_element);
@@ -99,15 +102,44 @@ fn main() -> Result<(), AutomationError> {
     // Or, just open notepad blank and paste the data (less realistic simulation).
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
-    let notepad_app = engine.open_application("Calc")?;
-    println!("Notepad opened: {:?}", notepad_app.attributes());
-    thread::sleep(Duration::from_secs(2)); // Wait for app to load
+    let desktop = Desktop::new(false, true).unwrap();
+    desktop.activate_application("firefox")?;
 
-    // get button One
-    let button_one = notepad_app.locator(Selector::Name("One".to_string())).unwrap().first().unwrap().unwrap();
-    println!("button one: {:?}", button_one.attributes());
-    // button_one.focus()?;
-    button_one.click()?;
+    desktop.activate_browser_window_by_title("Terminator")?;
+
+    let app = desktop.locator("app:firefox").first().unwrap().unwrap();
+    println!("app: {:?}", app.attributes());
+
+    // app.focus()?;
+
+    // let children = app.children().unwrap();
+    // for child in children.iter() {
+    //     println!("child: {:?}", child.attributes());
+    // }
+
+    let locator = desktop.locator("window").first().unwrap().unwrap();
+    println!("locator: {:?}", locator.attributes());
+
+    let text = locator.text(10).unwrap_or_default();
+    println!("text: {:?}", text);
+
+    locator.children().unwrap().iter().for_each(|child| {
+        println!("child: {:?}", child.attributes());
+    });
+
+    desktop.activate_application("cursor")?;
+
+
+
+    // let notepad_app = engine.get_application_by_name("firefox")?;
+    // println!("Notepad opened: {:?}", notepad_app.attributes());
+    // thread::sleep(Duration::from_secs(2)); // Wait for app to load
+
+    // // get button One
+    // let button_one = notepad_app.locator(Selector::Role { role: "app".to_string(), name: None }).unwrap().first().unwrap().unwrap();
+    // println!("button one: {:?}", button_one.attributes());
+    // // button_one.focus()?;
+    // button_one.click()?;
 
     // return;
     // notepad_app.focus()?;

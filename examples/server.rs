@@ -18,6 +18,8 @@ use terminator::{
 };
 use tracing::{info, Level};
 use std::time::Duration;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use std::env; // Import env module
 
 // Shared application state
 struct AppState {
@@ -64,6 +66,39 @@ struct OpenUrlRequest {
     browser: Option<String>,
 }
 
+// Request structure for opening a file
+#[derive(Deserialize)]
+struct OpenFileRequest {
+    file_path: String,
+}
+
+// Request structure for running a command
+#[derive(Deserialize)]
+struct RunCommandRequest {
+    windows_command: Option<String>,
+    unix_command: Option<String>,
+}
+
+// Request structure for capturing a specific monitor
+#[derive(Deserialize)]
+struct CaptureMonitorRequest {
+    monitor_name: String,
+}
+
+// Request structure for OCR on an image path
+#[derive(Deserialize)]
+struct OcrImagePathRequest {
+    image_path: String,
+}
+
+// Request structure for OCR on raw screenshot data (base64 encoded)
+#[derive(Deserialize)]
+struct OcrScreenshotRequest {
+    image_base64: String,
+    width: u32,
+    height: u32,
+}
+
 // Request structure for expectations (can often reuse ChainedRequest)
 // Add optional timeout
 #[derive(Deserialize)]
@@ -79,6 +114,18 @@ struct ExpectTextRequest {
     expected_text: String,
     max_depth: Option<usize>, // Needed for element.text() call within expect_text_equals
     timeout_ms: Option<u64>,
+}
+
+// Add this new request struct
+#[derive(Deserialize)]
+struct ActivateApplicationRequest {
+    app_name: String,
+}
+
+// Add this request struct
+#[derive(Deserialize)]
+struct ActivateBrowserWindowRequest {
+    title: String,
 }
 
 // Basic response structure
@@ -163,7 +210,54 @@ struct BooleanResponse {
     result: bool,
 }
 
+// Response structure for command output
+#[derive(Serialize)]
+struct CommandOutputResponse {
+    stdout: String,
+    stderr: String,
+    exit_code: Option<i32>,
+}
+
+impl From<terminator::CommandOutput> for CommandOutputResponse {
+    fn from(output: terminator::CommandOutput) -> Self {
+        Self {
+            stdout: output.stdout,
+            stderr: output.stderr,
+            exit_code: output.exit_status,
+        }
+    }
+}
+
+// Response structure for screenshot result (with base64 encoded image)
+#[derive(Serialize)]
+struct ScreenshotResponse {
+    image_base64: String,
+    width: u32,
+    height: u32,
+}
+
+impl TryFrom<terminator::ScreenshotResult> for ScreenshotResponse {
+    type Error = ApiError; // Or a more specific error
+
+    fn try_from(result: terminator::ScreenshotResult) -> Result<Self, Self::Error> {
+        // Encode image data to base64
+        let base64_image = BASE64_STANDARD.encode(&result.image_data);
+        Ok(Self {
+            image_base64: base64_image,
+            width: result.width,
+            height: result.height,
+        })
+    }
+}
+
+// Response structure for OCR result
+#[derive(Serialize)]
+struct OcrResponse {
+    text: String,
+}
+
 // Custom error type for API responses
+#[derive(Debug)]
 enum ApiError {
     Automation(AutomationError),
     BadRequest(String),
@@ -554,6 +648,182 @@ async fn activate_app_window(
     }
 }
 
+// Add this new handler
+// Handler for activating an application by name
+async fn activate_application_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ActivateApplicationRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(app_name = %payload.app_name, "Attempting to activate application");
+    match state.desktop.activate_application(&payload.app_name) {
+        Ok(_) => {
+            info!("Application activated successfully");
+            Ok(Json(BasicResponse { message: format!("Application '{}' activated", payload.app_name) }))
+        }
+        Err(e) => {
+            info!("Failed to activate application: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// --- NEW TOP-LEVEL HANDLERS ---
+
+// Handler for opening a file
+async fn open_file(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<OpenFileRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(file_path = %payload.file_path, "Attempting to open file");
+    match state.desktop.open_file(&payload.file_path) {
+        Ok(_) => {
+            info!("File opened successfully");
+            Ok(Json(BasicResponse { message: format!("File '{}' opened successfully", payload.file_path) }))
+        }
+        Err(e) => {
+            info!("Failed to open file: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Handler for running a command
+async fn run_command(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RunCommandRequest>,
+) -> Result<Json<CommandOutputResponse>, ApiError> {
+    info!(windows = ?payload.windows_command, unix = ?payload.unix_command, "Attempting to run command");
+    // Ensure at least one command is provided based on OS or handle error?
+    // Current implementation relies on the core library to handle None correctly.
+    match state.desktop.run_command(payload.windows_command.as_deref(), payload.unix_command.as_deref()) {
+        Ok(output) => {
+            info!("Command executed successfully");
+            Ok(Json(output.into()))
+        }
+        Err(e) => {
+            info!("Failed to run command: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Handler for capturing the primary screen
+async fn capture_screen(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ScreenshotResponse>, ApiError> {
+    info!("Attempting to capture primary screen");
+    match state.desktop.capture_screen() {
+        Ok(screenshot_result) => {
+            info!("Screen captured successfully");
+            ScreenshotResponse::try_from(screenshot_result)
+                .map(Json) // Wrap the successful conversion in Json
+                .map_err(|e| {
+                    // Handle potential conversion error (though unlikely here)
+                    info!("Failed to encode screenshot: {:?}", e);
+                    ApiError::BadRequest("Failed to encode screenshot data".to_string())
+                 })
+        }
+        Err(e) => {
+            info!("Failed to capture screen: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Handler for capturing a specific monitor
+async fn capture_monitor(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CaptureMonitorRequest>,
+) -> Result<Json<ScreenshotResponse>, ApiError> {
+    info!(monitor_name = %payload.monitor_name, "Attempting to capture monitor");
+    match state.desktop.capture_monitor_by_name(&payload.monitor_name) {
+         Ok(screenshot_result) => {
+            info!("Monitor captured successfully");
+             ScreenshotResponse::try_from(screenshot_result)
+                .map(Json)
+                .map_err(|e| {
+                    info!("Failed to encode screenshot: {:?}", e);
+                    ApiError::BadRequest("Failed to encode screenshot data".to_string())
+                 })
+        }
+        Err(e) => {
+            info!("Failed to capture monitor: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Handler for performing OCR on an image path
+async fn ocr_image_path(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<OcrImagePathRequest>,
+) -> Result<Json<OcrResponse>, ApiError> {
+    info!(image_path = %payload.image_path, "Attempting OCR on image path");
+    match state.desktop.ocr_image_path(&payload.image_path).await {
+        Ok(text) => {
+            info!("OCR performed successfully");
+            Ok(Json(OcrResponse { text }))
+        }
+        Err(e) => {
+            info!("Failed to perform OCR: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Handler for performing OCR on raw screenshot data
+async fn ocr_screenshot_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<OcrScreenshotRequest>,
+) -> Result<Json<OcrResponse>, ApiError> {
+    info!("Attempting OCR on raw screenshot data");
+
+    // Decode the base64 image data
+    let image_data = BASE64_STANDARD.decode(&payload.image_base64)
+        .map_err(|e| {
+            info!("Failed to decode base64 image: {}", e);
+            ApiError::BadRequest("Invalid base64 image data".to_string())
+        })?;
+
+    // Reconstruct a ScreenshotResult (or similar structure needed by the core function)
+    let screenshot_result = terminator::ScreenshotResult {
+        image_data,
+        width: payload.width,
+        height: payload.height,
+    };
+
+    // Call the core OCR function for screenshots
+    match state.desktop.ocr_screenshot(&screenshot_result).await {
+        Ok(text) => {
+            info!("OCR on screenshot data performed successfully");
+            Ok(Json(OcrResponse { text }))
+        }
+        Err(e) => {
+            info!("Failed to perform OCR on screenshot data: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
+// Add this handler
+// Handler for activating a browser window by title
+async fn activate_browser_window_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ActivateBrowserWindowRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(title = %payload.title, "Attempting to activate browser window by title");
+    match state.desktop.activate_browser_window_by_title(&payload.title) {
+        Ok(_) => {
+            info!("Browser window activated successfully");
+            Ok(Json(BasicResponse { message: format!("Browser window containing title '{}' activated", payload.title) }))
+        }
+        Err(e) => {
+            info!("Failed to activate browser window: {}", e);
+            Err(ApiError::Automation(e))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -583,12 +853,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/open_application", post(open_application))
         .route("/open_url", post(open_url))
         .route("/activate_app", post(activate_app_window))
+        .route("/activate_application", post(activate_application_handler))
         .route("/expect_visible", post(expect_element_visible))
         .route("/expect_enabled", post(expect_element_enabled))
         .route("/expect_text_equals", post(expect_element_text_equals))
+        .route("/open_file", post(open_file))
+        .route("/run_command", post(run_command))
+        .route("/capture_screen", post(capture_screen))
+        .route("/capture_monitor", post(capture_monitor))
+        .route("/ocr_image_path", post(ocr_image_path))
+        .route("/ocr_screenshot", post(ocr_screenshot_handler))
+        .route("/activate_browser_window", post(activate_browser_window_handler))
         .with_state(shared_state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    // Determine port
+    let default_port = 9375;
+    let port: u16 = env::var("PORT")
+        .ok() // Convert Result to Option
+        .and_then(|s| s.parse().ok()) // Try parsing the string to u16
+        .unwrap_or(default_port); // Use default if env var not set or invalid
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "http://127.0.0.1:3000";
+const DEFAULT_BASE_URL = "http://127.0.0.1:9375";
 
 // --- Interfaces for API Payloads and Responses matching server.rs --- //
 
@@ -15,11 +15,31 @@ export interface TextResponse {
   text: string;
 }
 
+// Command Output Response
+export interface CommandOutputResponse {
+  stdout: string;
+  stderr: string;
+  exit_code: number | null;
+}
+
+// Screenshot Response
+export interface ScreenshotResponse {
+  image_base64: string; // Base64 encoded image data
+  width: number;
+  height: number;
+}
+
+// OCR Response
+export interface OcrResponse {
+  text: string;
+}
+
 // Element Related Responses
 export interface ElementResponse {
   role: string;
   label?: string | null;
   id?: string | null;
+  browser?: string | null;
 }
 
 export interface ElementsResponse {
@@ -71,9 +91,38 @@ interface OpenApplicationRequest {
   app_name: string;
 }
 
+interface ActivateApplicationRequest {
+  app_name: string;
+}
+
 interface OpenUrlRequest {
   url: string;
   browser?: string | null;
+}
+
+// New Top-Level Requests
+interface OpenFileRequest {
+  file_path: string;
+}
+
+interface RunCommandRequest {
+  windows_command?: string | null;
+  unix_command?: string | null;
+}
+
+interface CaptureMonitorRequest {
+  monitor_name: string;
+}
+
+interface OcrImagePathRequest {
+  image_path: string;
+}
+
+// Request for OCR on raw screenshot data
+interface OcrScreenshotRequest {
+  image_base64: string;
+  width: number;
+  height: number;
 }
 
 // --- Expectation Requests --- //
@@ -88,6 +137,11 @@ interface ExpectTextRequest extends ExpectRequest {
   // Inherits selector_chain and timeout_ms
   expected_text: string;
   max_depth?: number | null; // Optional depth for text comparison
+}
+
+// Add this interface
+interface ActivateBrowserWindowRequest {
+  title: string;
 }
 
 // --- Custom Error --- //
@@ -177,7 +231,7 @@ export class DesktopUseClient {
           // For now, treat as error if JSON parsing fails on success status > 204
           if (response.status !== 204) {
             throw new ApiError(
-              "Invalid JSON response from server",
+              `Invalid JSON response from server for endpoint ${url}`,
               response.status
             );
           }
@@ -187,13 +241,15 @@ export class DesktopUseClient {
         }
       } else {
         // Handle HTTP errors (status code >= 300)
-        let errorMessage = `Server returned status ${response.status}`;
+        let errorMessage = `Server returned status ${response.status} for endpoint ${url}`;
         try {
           // Attempt to parse error response for more detail
           const errorData = JSON.parse(responseText);
-          errorMessage = errorData?.message || errorMessage;
+          // Prepend the specific endpoint info if possible
+          errorMessage = `${errorData?.message || `Error from ${url}`}`;
         } catch (e) {
-          // Ignore JSON parse error, use the raw responseText as detail
+          // Ignore JSON parse error, use the raw responseText as detail if available
+           errorMessage += responseText ? ` - ${responseText}` : '';
         }
         console.error(
           `[DesktopUseClient] Error: ${errorMessage}, Detail: ${responseText}`
@@ -202,24 +258,26 @@ export class DesktopUseClient {
       }
     } catch (error) {
       // Handle network errors or errors thrown above
-      console.error(`[DesktopUseClient] Request error: ${error}`);
+      const errorMessagePrefix = `[DesktopUseClient] Request error for endpoint ${url}:`;
+      console.error(`${errorMessagePrefix} ${error}`);
       if (error instanceof ApiError) {
-        // Re-throw ApiError instances directly
+        // Re-throw ApiError instances directly, potentially adding URL if missing
+        if (!error.message.includes(url)) {
+             error.message = `Error during request to ${url}: ${error.message}`;
+        }
         throw error;
       } else if (
         error instanceof TypeError &&
         error.message.includes("fetch")
       ) {
         // Network errors often manifest as TypeErrors in fetch
-        // Try to provide a more specific message for connection refused
-        // Note: Differentiating specific network errors (like ECONNREFUSED) is harder with fetch than 'http'
         throw new ApiError(
           `Network error connecting to ${url}. Is the server running? (${error.message})`
         );
       } else {
         // Wrap other errors
         throw new ApiError(
-          `Request failed: ${
+          `Request failed for endpoint ${url}: ${
             error instanceof Error ? error.message : String(error)
           }`
         );
@@ -250,6 +308,16 @@ export class DesktopUseClient {
   }
 
   /**
+   * Activates an application by its name or path, bringing its window to the foreground.
+   * @param appName - The name or path of the application to activate.
+   * @returns A promise resolving to a basic response on success.
+   */
+  async activateApplication(appName: string): Promise<BasicResponse> {
+    const payload: ActivateApplicationRequest = { app_name: appName };
+    return await this._makeRequest<BasicResponse>("/activate_application", payload);
+  }
+
+  /**
    * Opens a URL, optionally specifying the browser.
    * @param url - The URL to open.
    * @param browser - Optional name or path of the browser to use. Uses system default if null/undefined.
@@ -258,6 +326,108 @@ export class DesktopUseClient {
   async openUrl(url: string, browser?: string | null): Promise<BasicResponse> {
     const payload: OpenUrlRequest = { url, browser };
     return await this._makeRequest<BasicResponse>("/open_url", payload);
+  }
+
+  // --- New Top-Level Methods --- //
+
+  /**
+   * Opens a file using its default associated application.
+   * @param filePath - The path to the file to open.
+   * @returns A promise resolving to a basic response on success.
+   */
+  async openFile(filePath: string): Promise<BasicResponse> {
+    const payload: OpenFileRequest = { file_path: filePath };
+    return await this._makeRequest<BasicResponse>("/open_file", payload);
+  }
+
+  /**
+   * Executes a command, choosing the appropriate one based on the server's OS.
+   * Provide at least one of windowsCommand or unixCommand.
+   * @param options - An object containing optional windowsCommand and/or unixCommand.
+   * @returns A promise resolving to the command's output (stdout, stderr, exit code).
+   */
+  async runCommand(options: {
+    windowsCommand?: string | null;
+    unixCommand?: string | null;
+  }): Promise<CommandOutputResponse> {
+    if (!options.windowsCommand && !options.unixCommand) {
+      throw new Error(
+        "At least one of windowsCommand or unixCommand must be provided."
+      );
+    }
+    const payload: RunCommandRequest = {
+      windows_command: options.windowsCommand,
+      unix_command: options.unixCommand,
+    };
+    return await this._makeRequest<CommandOutputResponse>(
+      "/run_command",
+      payload
+    );
+  }
+
+  /**
+   * Captures a screenshot of the primary monitor.
+   * @returns A promise resolving to the screenshot details (base64 image, width, height).
+   */
+  async captureScreen(): Promise<ScreenshotResponse> {
+    // No payload needed for capture_screen
+    return await this._makeRequest<ScreenshotResponse>("/capture_screen", {});
+  }
+
+  /**
+   * Captures a screenshot of a specific monitor by its name.
+   * Monitor names are platform-specific.
+   * @param monitorName - The name of the monitor to capture.
+   * @returns A promise resolving to the screenshot details (base64 image, width, height).
+   */
+  async captureMonitorByName(monitorName: string): Promise<ScreenshotResponse> {
+    const payload: CaptureMonitorRequest = { monitor_name: monitorName };
+    return await this._makeRequest<ScreenshotResponse>(
+      "/capture_monitor",
+      payload
+    );
+  }
+
+  /**
+   * Performs OCR on an image file located at the given path.
+   * The server running the Terminator backend must have access to this path.
+   * @param imagePath - The path to the image file.
+   * @returns A promise resolving to the extracted text.
+   */
+  async ocrImagePath(imagePath: string): Promise<OcrResponse> {
+    const payload: OcrImagePathRequest = { image_path: imagePath };
+    return await this._makeRequest<OcrResponse>("/ocr_image_path", payload);
+  }
+
+  /**
+   * Performs OCR directly on raw image data provided as a base64 string.
+   * This is useful for processing data from `captureScreen` or `captureMonitorByName`.
+   * @param imageData - An object containing the base64 encoded image string, width, and height.
+   * @returns A promise resolving to the extracted text.
+   */
+  async ocrScreenshot(imageData: {
+    imageBase64: string;
+    width: number;
+    height: number;
+  }): Promise<OcrResponse> {
+    const payload: OcrScreenshotRequest = {
+      image_base64: imageData.imageBase64,
+      width: imageData.width,
+      height: imageData.height,
+    };
+    return await this._makeRequest<OcrResponse>("/ocr_screenshot", payload);
+  }
+
+  /**
+   * Activates a browser window if it contains an element (like a tab) with the specified title.
+   * This brings the browser window to the foreground.
+   * Note: This does not guarantee the specific tab will be active within the window.
+   * @param title - The title (or partial title) of the tab/element to search for within browser windows.
+   * @returns A promise resolving to a basic response on success.
+   */
+  async activateBrowserWindowByTitle(title: string): Promise<BasicResponse> {
+    const payload: ActivateBrowserWindowRequest = { title };
+    return await this._makeRequest<BasicResponse>("/activate_browser_window", payload);
   }
 }
 

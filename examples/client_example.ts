@@ -6,7 +6,6 @@ import { DesktopUseClient, ApiError, sleep } from '../ts-sdk/src/index'; // Adju
 
 // Use an async IIFE (Immediately Invoked Function Expression) to allow top-level await
 (async () => {
-    // Create a client instance (connects to default 127.0.0.1:3000)
     // Ensure the Terminator server (e.g., examples/server.rs) is running!
     const client = new DesktopUseClient();
 

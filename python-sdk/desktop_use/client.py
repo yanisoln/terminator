@@ -5,22 +5,30 @@ import json
 import logging
 import time
 from typing import List, Optional, Dict, Any, Type, TypeVar
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 from .exceptions import ApiError, ConnectionError
 from .models import (
     BasicResponse, BooleanResponse, TextResponse, ElementResponse, ElementsResponse,
     ClickResponse, AttributesResponse, BoundsResponse, ChainedRequest,
     TypeTextRequest, GetTextRequest, PressKeyRequest, OpenApplicationRequest,
-    OpenUrlRequest, ExpectRequest, ExpectTextRequest
+    OpenUrlRequest, ExpectRequest, ExpectTextRequest,
+    OpenFileRequest, RunCommandRequest, CaptureMonitorRequest, OcrImagePathRequest,
+    CommandOutputResponse, ScreenshotResponse, OcrResponse,
+    OcrScreenshotRequest
 )
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "http://127.0.0.1:3000"
+DEFAULT_BASE_URL = "http://127.0.0.1:9375"
 
 # Generic type variable for response models
 T = TypeVar('T')
+
+# Add this dataclass
+@dataclass
+class ActivateBrowserWindowRequest:
+    title: str
 
 class DesktopUseClient:
     """Client for interacting with the Terminator desktop automation server."""
@@ -30,7 +38,7 @@ class DesktopUseClient:
         Initializes the client.
 
         Args:
-            base_url: The base URL of the Terminator server (e.g., http://127.0.0.1:3000).
+            base_url: The base URL of the Terminator server.
         """
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
@@ -121,6 +129,19 @@ class DesktopUseClient:
         payload = OpenApplicationRequest(app_name=app_name)
         return self._make_request("/open_application", payload, BasicResponse)
 
+    def activate_application(self, app_name: str) -> BasicResponse:
+        """
+        Activates an application by its name or path, bringing its window to the foreground.
+
+        Args:
+            app_name: The name or path of the application to activate.
+
+        Returns:
+            BasicResponse indicating success.
+        """
+        payload = ActivateApplicationRequest(app_name=app_name)
+        return self._make_request("/activate_application", payload, BasicResponse)
+
     def open_url(self, url: str, browser: Optional[str] = None) -> BasicResponse:
         """
         Opens a URL, optionally in a specific browser.
@@ -134,6 +155,111 @@ class DesktopUseClient:
         """
         payload = OpenUrlRequest(url=url, browser=browser)
         return self._make_request("/open_url", payload, BasicResponse)
+
+    # --- New Top-Level Methods --- #
+
+    def open_file(self, file_path: str) -> BasicResponse:
+        """
+        Opens a file using its default application.
+
+        Args:
+            file_path: The path to the file.
+
+        Returns:
+            BasicResponse indicating success.
+        """
+        payload = OpenFileRequest(file_path=file_path)
+        return self._make_request("/open_file", payload, BasicResponse)
+
+    def run_command(self, windows_command: Optional[str] = None, unix_command: Optional[str] = None) -> CommandOutputResponse:
+        """
+        Executes a command, choosing the appropriate one based on the server's OS.
+
+        Provide at least one of windows_command or unix_command.
+
+        Args:
+            windows_command: The command to run on Windows.
+            unix_command: The command to run on Unix-like systems (Linux, macOS).
+
+        Returns:
+            CommandOutputResponse containing stdout, stderr, and exit code.
+        """
+        if not windows_command and not unix_command:
+            raise ValueError("At least one of windows_command or unix_command must be provided.")
+        payload = RunCommandRequest(windows_command=windows_command, unix_command=unix_command)
+        return self._make_request("/run_command", payload, CommandOutputResponse)
+
+    def capture_screen(self) -> ScreenshotResponse:
+        """
+        Captures a screenshot of the primary monitor.
+
+        Returns:
+            ScreenshotResponse containing base64 encoded image data, width, and height.
+        """
+        # No payload needed for capture_screen
+        return self._make_request("/capture_screen", {}, ScreenshotResponse)
+
+    def capture_monitor_by_name(self, monitor_name: str) -> ScreenshotResponse:
+        """
+        Captures a screenshot of a specific monitor by its name.
+
+        Args:
+            monitor_name: The name of the monitor (platform-specific).
+
+        Returns:
+            ScreenshotResponse containing base64 encoded image data, width, and height.
+        """
+        payload = CaptureMonitorRequest(monitor_name=monitor_name)
+        return self._make_request("/capture_monitor", payload, ScreenshotResponse)
+
+    def ocr_image_path(self, image_path: str) -> OcrResponse:
+        """
+        Performs OCR on an image file located at the given path.
+        The server needs access to this path.
+
+        Args:
+            image_path: The path to the image file.
+
+        Returns:
+            OcrResponse containing the extracted text.
+        """
+        payload = OcrImagePathRequest(image_path=image_path)
+        return self._make_request("/ocr_image_path", payload, OcrResponse)
+
+    def ocr_screenshot(self, image_base64: str, width: int, height: int) -> OcrResponse:
+        """
+        Performs OCR directly on raw image data (e.g., from a previous screenshot).
+
+        Args:
+            image_base64: The base64 encoded string of the image data.
+            width: The width of the image in pixels.
+            height: The height of the image in pixels.
+
+        Returns:
+            OcrResponse containing the extracted text.
+        """
+        payload = OcrScreenshotRequest(
+            image_base64=image_base64,
+            width=width,
+            height=height
+        )
+        return self._make_request("/ocr_screenshot", payload, OcrResponse)
+
+    def activate_browser_window_by_title(self, title: str) -> BasicResponse:
+        """
+        Activates a browser window if it contains an element (like a tab) with the specified title.
+
+        This brings the browser window to the foreground.
+        Note: This does not guarantee the specific tab will be active within the window.
+
+        Args:
+            title: The title (or partial title) of the tab/element to search for within browser windows.
+
+        Returns:
+            BasicResponse indicating success.
+        """
+        payload = ActivateBrowserWindowRequest(title=title)
+        return self._make_request("/activate_browser_window", payload, BasicResponse)
 
 
 class Locator:

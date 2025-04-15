@@ -1,20 +1,24 @@
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
-use crate::ClickResult;
+use crate::{ClickResult, ScreenshotResult};
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tracing::debug;
+use tracing::info;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ControlTypeFilter, NameFilter, OrFilter};
-use uiautomation::inputs::Keyboard;
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
 use uiautomation::types::{Point, ScrollAmount, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
+use uni_ocr::{OcrEngine, OcrProvider};
+use tokio::runtime::Runtime;
+use image::{ImageBuffer, Rgba};
+use image::DynamicImage;
 
 // thread-safety
 #[derive(Clone)]
@@ -47,6 +51,7 @@ impl WindowsEngine {
     }
 }
 
+#[async_trait::async_trait]
 impl AccessibilityEngine for WindowsEngine {
     fn get_root_element(&self) -> UIElement {
         let root = self.automation.0.get_root_element().unwrap();
@@ -346,6 +351,8 @@ impl AccessibilityEngine for WindowsEngine {
                     .from_ref(root_ele)
                     .control_type(roles)
                     .timeout(3000);
+
+                debug!("searching element by role: {}, from: {:?}", role, root_ele);
                 let element = matcher
                     .find_first()
                     .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
@@ -526,6 +533,215 @@ impl AccessibilityEngine for WindowsEngine {
 
         self.get_application_by_name(browser)
     }
+
+    fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
+        let status = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-WindowStyle",
+                "hidden",
+                "-Command",
+                "start",
+                file_path,
+            ])
+            .status()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        if !status.success() {
+            return Err(AutomationError::PlatformError(
+                "Failed to open file".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn run_command(
+        &self,
+        windows_command: Option<&str>,
+        _unix_command: Option<&str>,
+    ) -> Result<crate::CommandOutput, AutomationError> {
+        let command_str = windows_command.ok_or_else(|| {
+            AutomationError::InvalidArgument("Windows command must be provided".to_string())
+        })?;
+
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-WindowStyle",
+                "hidden",
+                "-Command",
+                command_str,
+            ])
+            .output()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+
+        Ok(crate::CommandOutput {
+            exit_status: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+
+    fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+        let mut primary_monitor: Option<xcap::Monitor> = None;
+        for monitor in monitors {
+            match monitor.is_primary() {
+                Ok(true) => {
+                    primary_monitor = Some(monitor);
+                    break;
+                }
+                Ok(false) => continue,
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Error checking monitor primary status: {}",
+                        e
+                    )));
+                }
+            }
+        }
+        let primary_monitor = primary_monitor.ok_or_else(|| {
+            AutomationError::PlatformError("Could not find primary monitor".to_string())
+        })?;
+
+        let image = primary_monitor.capture_image().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to capture screen: {}", e))
+        })?;
+
+        Ok(ScreenshotResult {
+            image_data: image.to_vec(),
+            width: image.width(),
+            height: image.height(),
+        })
+    }
+
+    fn capture_monitor_by_name(&self, name: &str) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+        let mut target_monitor: Option<xcap::Monitor> = None;
+        for monitor in monitors {
+            match monitor.name() {
+                Ok(monitor_name) if monitor_name == name => {
+                    target_monitor = Some(monitor);
+                    break;
+                }
+                Ok(_) => continue,
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Error getting monitor name: {}",
+                        e
+                    )));
+                }
+            }
+        }
+        let target_monitor = target_monitor.ok_or_else(|| {
+            AutomationError::ElementNotFound(format!("Monitor '{}' not found", name))
+        })?;
+
+        let image = target_monitor.capture_image().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to capture monitor '{}': {}", name, e))
+        })?;
+
+        Ok(ScreenshotResult {
+            image_data: image.to_vec(),
+            width: image.width(),
+            height: image.height(),
+        })
+    }
+
+    async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
+        // Create a Tokio runtime to run the async OCR operation
+        let rt = Runtime::new()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
+
+        // Run the async code block on the runtime
+        rt.block_on(async {
+            let engine = OcrEngine::new(OcrProvider::Auto)
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
+
+            let (text, _language, _confidence) = engine // Destructure the tuple
+                .recognize_file(image_path)
+                .await
+                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
+
+            Ok(text) // Return only the text
+        })
+    }
+
+    async fn ocr_screenshot(&self, screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
+        // Create a Tokio runtime to run the async OCR operation
+        let rt = Runtime::new()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
+
+        // Reconstruct the image buffer from raw data
+        let img_buffer: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
+            screenshot.width,
+            screenshot.height,
+            screenshot.image_data.clone(), // Clone data into the buffer
+        )
+        .ok_or_else(|| AutomationError::InvalidArgument("Invalid screenshot data for buffer creation".to_string()))?;
+
+        // Convert to DynamicImage
+        let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
+
+        // Run the async code block on the runtime
+        rt.block_on(async {
+            let engine = OcrEngine::new(OcrProvider::Auto)
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
+
+            let (text, _language, _confidence) = engine
+                .recognize_image(&dynamic_image) // Use recognize_image
+                .await
+                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
+
+            Ok(text)
+        })
+    }
+
+    fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {
+        info!("Attempting to activate browser window containing title: {}", title);
+        let root = self.automation.0.get_root_element()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get root element: {}", e)))?;
+
+        // Find top-level windows
+        let window_condition = self.automation.0.create_property_condition(
+            UIProperty::ControlType,
+            Variant::from(ControlType::TabItem as i32),
+            None,
+        ).map_err(|e| AutomationError::PlatformError(format!("Failed to create window condition: {}", e)))?;
+
+        let windows = root.find_all(TreeScope::Children, &window_condition)
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e)))?;
+
+
+        for window in windows {
+            // Search within this window for an element containing the title
+            // Use a matcher for potentially better performance and flexibility
+            let matcher = self.automation.0.create_matcher()
+                .from(window.clone()) // Search within the current window
+                .contains_name(title) // Check if any element's name contains the title
+                .depth(20) // Search reasonably deep within the window structure
+                .timeout(1000); // Short timeout for checking within each window
+
+            match matcher.find_first() {
+                Ok(_found_element_with_title) => {
+                    // Found an element with the title within this window.
+                    // Now, activate the main window itself.
+                    info!("Found title '{}' in window: {:?}. Activating window.", title, window.get_name());
+                    window.set_focus()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to focus window containing title '{}': {}", title, e)))?;
+                    return Ok(()); // Window activated, we're done.
+                }
+                Err(_) => {
+                    // Title not found in this window, continue to the next.
+                    continue;
+                }
+            }
+        }
+
+        // If the loop finishes without finding the title in any window
+        Err(AutomationError::ElementNotFound(format!("No window found containing the title: {}", title)))
+    }
 }
 
 // thread-safety
@@ -616,7 +832,8 @@ impl UIElementImpl for WindowsUIElement {
             .element
             .0
             .get_cached_children()
-            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
+            // return empty vector if no children
+            .unwrap_or_default();
         Ok(children
             .into_iter()
             .map(|ele| {
@@ -835,6 +1052,7 @@ impl UIElementImpl for WindowsUIElement {
             if let Ok(name) = element.get_property_value(UIProperty::Name) {
                 if let Ok(name_text) = name.get_string() {
                     if !name_text.is_empty() {
+                        debug!("found text in name property: {:?}", &name_text);
                         texts.push(name_text);
                     }
                 }
@@ -844,6 +1062,7 @@ impl UIElementImpl for WindowsUIElement {
             if let Ok(value) = element.get_property_value(UIProperty::ValueValue) {
                 if let Ok(value_text) = value.get_string() {
                     if !value_text.is_empty() {
+                        debug!("found text in value property: {:?}", &value_text);
                         texts.push(value_text);
                     }
                 }
@@ -1033,6 +1252,7 @@ impl UIElementImpl for WindowsUIElement {
 // make easier to pass roles
 fn map_generic_role_to_win_roles(role: &str) -> ControlType {
     match role.to_lowercase().as_str() {
+        "app" | "application" => ControlType::Pane,
         "window" => ControlType::Window,
         "button" => ControlType::Button,
         "checkbox" => ControlType::CheckBox,

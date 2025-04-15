@@ -25,6 +25,24 @@ pub struct ClickResult {
     pub details: String,
 }
 
+/// Holds the output of a terminal command execution
+pub struct CommandOutput {
+    pub exit_status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Holds the screenshot data
+#[derive(Debug, Clone)]
+pub struct ScreenshotResult {
+    /// Raw image data (e.g., RGBA)
+    pub image_data: Vec<u8>,
+    /// Width of the image
+    pub width: u32,
+    /// Height of the image
+    pub height: u32,
+}
+
 /// The main entry point for UI automation
 pub struct Desktop {
     engine: Arc<dyn platforms::AccessibilityEngine>,
@@ -69,8 +87,61 @@ impl Desktop {
         self.engine.open_application(app_name)
     }
 
+    /// Open an application by name
+    pub fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
+        self.engine.get_application_by_name(app_name)?.activate_window()
+    }
+
+
     /// Open a URL in a specified browser (or default browser if None)
     pub fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
         self.engine.open_url(url, browser)
+    }
+
+    /// Open a file with its default application
+    pub fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
+        self.engine.open_file(file_path)
+    }
+
+    /// Execute a terminal command
+    ///
+    /// Provide the appropriate command string for the target OS family.
+    /// At least one command must be provided.
+    pub fn run_command(
+        &self,
+        windows_command: Option<&str>,
+        unix_command: Option<&str>,
+    ) -> Result<CommandOutput, AutomationError> {
+        self.engine.run_command(windows_command, unix_command)
+    }
+
+    /// Capture a screenshot of the primary monitor
+    pub fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        self.engine.capture_screen()
+    }
+
+    /// Capture a screenshot of a specific monitor by name
+    pub fn capture_monitor_by_name(&self, name: &str) -> Result<ScreenshotResult, AutomationError> {
+        self.engine.capture_monitor_by_name(name)
+    }
+
+    /// Perform OCR on the specified image file
+    ///
+    /// This function requires an active Tokio runtime.
+    pub async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
+        self.engine.ocr_image_path(image_path).await
+    }
+
+    /// Perform OCR on the provided screenshot data
+    ///
+    /// This function requires an active Tokio runtime.
+    pub async fn ocr_screenshot(&self, screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
+        self.engine.ocr_screenshot(screenshot).await
+    }
+
+    /// Activate a browser window containing a specific title.
+    /// Brings the browser window to the foreground if found.
+    pub fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {
+        self.engine.activate_browser_window_by_title(title)
     }
 }

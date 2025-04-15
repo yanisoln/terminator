@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import WhatsappConfig from "@/components/workflows/WhatsappConfig";
+import PdfToSpreadsheetConfig from "@/components/workflows/PdfToSpreadsheetConfig";
 
 interface WorkflowPageProps {
   params: Promise<{
@@ -11,6 +12,7 @@ interface WorkflowPageProps {
 // Simple component map - can be extended
 const workflowComponents: Record<string, React.ComponentType> = {
   "whatsapp-to-spreadsheet": WhatsappConfig,
+  "pdf-to-spreadsheet": PdfToSpreadsheetConfig,
 };
 
 export default async function WorkflowPage(props: WorkflowPageProps) {

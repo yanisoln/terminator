@@ -1,6 +1,6 @@
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
-use crate::ClickResult;
+use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use std::fmt::Debug;
 
@@ -14,6 +14,7 @@ impl LinuxEngine {
     }
 }
 
+#[async_trait::async_trait]
 impl AccessibilityEngine for LinuxEngine {
     fn get_root_element(&self) -> UIElement {
         panic!("Linux implementation is not yet available")
@@ -64,6 +65,46 @@ impl AccessibilityEngine for LinuxEngine {
     }
 
     fn open_url(&self, _url: &str, _browser: Option<&str>) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn open_file(&self, _file_path: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn run_command(
+        &self,
+        _windows_command: Option<&str>,
+        _unix_command: Option<&str>,
+    ) -> Result<crate::CommandOutput, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn capture_monitor_by_name(&self, _name: &str) -> Result<ScreenshotResult, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    async fn ocr_image_path(&self, _image_path: &str) -> Result<String, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    async fn ocr_screenshot(&self, _screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

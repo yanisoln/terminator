@@ -32,7 +32,7 @@ def run_example():
         print(f"Ensure the SDK is installed (pip install -e ../python-sdk) or SDK path is correct ({SDK_PATH}).", file=sys.stderr)
         sys.exit(1)
 
-    client = DesktopUseClient() # Connects to "http://127.0.0.1:3000" by default
+    client = DesktopUseClient()
 
     try:
         # 1. Open Calculator

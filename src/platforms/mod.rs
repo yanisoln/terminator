@@ -1,6 +1,7 @@
 use crate::{AutomationError, Selector, UIElement};
 
 /// The common trait that all platform-specific engines must implement
+#[async_trait::async_trait]
 pub trait AccessibilityEngine: Send + Sync {
     /// Get the root UI element
     fn get_root_element(&self) -> UIElement;
@@ -38,6 +39,31 @@ pub trait AccessibilityEngine: Send + Sync {
 
     /// Open a URL in a specified browser (or default if None)
     fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError>;
+
+    /// Open a file with its default application
+    fn open_file(&self, file_path: &str) -> Result<(), AutomationError>;
+
+    /// Execute a terminal command, choosing the appropriate command based on the OS.
+    fn run_command(
+        &self,
+        windows_command: Option<&str>,
+        unix_command: Option<&str>,
+    ) -> Result<crate::CommandOutput, AutomationError>;
+
+    /// Capture a screenshot of the primary monitor
+    fn capture_screen(&self) -> Result<crate::ScreenshotResult, AutomationError>;
+
+    /// Capture a screenshot of a specific monitor by name
+    fn capture_monitor_by_name(&self, name: &str) -> Result<crate::ScreenshotResult, AutomationError>;
+
+    /// Perform OCR on the provided image file (requires async runtime)
+    async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError>;
+
+    /// Perform OCR on the provided screenshot data (requires async runtime)
+    async fn ocr_screenshot(&self, screenshot: &crate::ScreenshotResult) -> Result<String, AutomationError>;
+
+    /// Activate a browser window containing a specific title
+    fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError>;
 }
 
 #[cfg(target_os = "linux")]
