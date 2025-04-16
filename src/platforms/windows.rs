@@ -15,7 +15,7 @@ use tracing::error;
 use tracing::info;
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
-use uiautomation::filters::{ControlTypeFilter, NameFilter, OrFilter};
+use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
 use uiautomation::types::{Point, ScrollAmount, TreeScope, UIProperty};
@@ -241,16 +241,17 @@ impl AccessibilityEngine for WindowsEngine {
                             Ok(ct) => ct.to_string(),
                             Err(err) => return Err(err),
                         };
-                        let text = e.get_property_value(uiautomation::types::UIProperty::ValueValue)
-                                     .ok()
-                                     .map(|v| v.to_string())
-                                     .unwrap_or_default();
+                        let text = e
+                            .get_property_value(uiautomation::types::UIProperty::ValueValue)
+                            .ok()
+                            .map(|v| v.to_string())
+                            .unwrap_or_default();
                         let automation_id = e.get_automation_id().unwrap_or_default();
                         let help_text = e.get_help_text().unwrap_or_default();
                         let class_name = e.get_classname().unwrap_or_default();
                         let process_id = match e.get_process_id() {
-                             Ok(pid) => pid,
-                             Err(err) => return Err(err),
+                            Ok(pid) => pid,
+                            Err(err) => return Err(err),
                         };
 
                         let combined_string = format!(
@@ -369,7 +370,11 @@ impl AccessibilityEngine for WindowsEngine {
                 // Use the last selector to find all matching elements within the final parent.
                 if let Some(last_selector) = selectors.last() {
                     // Call find_elements with the last selector and the found parent
-                    return self.find_elements(last_selector, current_element_root.as_ref(), timeout);
+                    return self.find_elements(
+                        last_selector,
+                        current_element_root.as_ref(),
+                        timeout,
+                    );
                 } else {
                     // Should not happen due to is_empty check, but handle defensively.
                     // If there's only one selector, find_elements is called directly.
@@ -432,9 +437,12 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
 
                 debug!("searching element by role: {}, from: {:?}", role, root_ele);
-                let element = matcher
-                    .find_first()
-                    .map_err(|e| AutomationError::ElementNotFound(format!("Role: '{}', Root: {:?}, Err: {}", role, root, e)))?;
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Role: '{}', Root: {:?}, Err: {}",
+                        role, root, e
+                    ))
+                })?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
@@ -455,16 +463,17 @@ impl AccessibilityEngine for WindowsEngine {
                             Ok(ct) => ct.to_string(),
                             Err(err) => return Err(err),
                         };
-                        let text = e.get_property_value(uiautomation::types::UIProperty::ValueValue)
-                                     .ok()
-                                     .map(|v| v.to_string())
-                                     .unwrap_or_default();
+                        let text = e
+                            .get_property_value(uiautomation::types::UIProperty::ValueValue)
+                            .ok()
+                            .map(|v| v.to_string())
+                            .unwrap_or_default();
                         let automation_id = e.get_automation_id().unwrap_or_default();
                         let help_text = e.get_help_text().unwrap_or_default();
                         let class_name = e.get_classname().unwrap_or_default();
                         let process_id = match e.get_process_id() {
-                             Ok(pid) => pid,
-                             Err(err) => return Err(err),
+                            Ok(pid) => pid,
+                            Err(err) => return Err(err),
                         };
 
                         let combined_string = format!(
@@ -484,9 +493,12 @@ impl AccessibilityEngine for WindowsEngine {
                     }))
                     .timeout(timeout_ms as u64);
 
-                let element = matcher
-                    .find_first()
-                    .map_err(|e| AutomationError::ElementNotFound(format!("ID: '{}', Root: {:?}, Err: {}", id, root, e)))?;
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "ID: '{}', Root: {:?}, Err: {}",
+                        id, root, e
+                    ))
+                })?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
@@ -578,7 +590,8 @@ impl AccessibilityEngine for WindowsEngine {
                 // Recursively find the element by traversing the chain.
                 let mut current_element = root.cloned();
                 for selector in selectors {
-                    let found_element = self.find_element(selector, current_element.as_ref(), timeout)?;
+                    let found_element =
+                        self.find_element(selector, current_element.as_ref(), timeout)?;
                     current_element = Some(found_element);
                 }
 
@@ -876,6 +889,7 @@ impl AccessibilityEngine for WindowsEngine {
             AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e))
         })?;
 
+        // TODO: focus part does not work (at least in browser firefox)
         // If find_first succeeds, 'window' is the UIElement. Now try to focus it.
         window.set_focus().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to set focus on window/tab: {}", e))
@@ -905,10 +919,27 @@ impl AccessibilityEngine for WindowsEngine {
             .automation
             .0
             .create_matcher()
-            .control_type(ControlType::Window)
-            .contains_name(title_contains) // Use stripped name
+            // content type window or pane
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
+            .filter(Box::new(OrFilter {
+                left: Box::new(NameFilter {
+                    value: String::from(title_contains),
+                    casesensitive: false,
+                    partial: true,
+                }),
+                right: Box::new(ClassNameFilter {
+                    classname: String::from(title_contains),
+                }),
+            }))
             .from_ref(&root_ele)
-            .depth(7)
+            .depth(3)
             .timeout(timeout_duration.as_millis() as u64);
         let ele_res = matcher
             .find_first()
@@ -1071,16 +1102,28 @@ impl UIElementImpl for WindowsUIElement {
                                     })? // Propagate error
                             }
                             Err(cond_err) => {
-                                 error!("Failed to create true condition for child fallback: {}", cond_err);
-                                 return Err(AutomationError::PlatformError(format!("Failed to create true condition for fallback: {}", cond_err)));
-                             }
-                         }
-                     }
-                     Err(auto_err) => {
-                         error!("Failed to create temporary UIAutomation for child fallback: {}", auto_err);
-                         return Err(AutomationError::PlatformError(format!("Failed to create temp UIAutomation for fallback: {}", auto_err)));
-                     }
-                 }
+                                error!(
+                                    "Failed to create true condition for child fallback: {}",
+                                    cond_err
+                                );
+                                return Err(AutomationError::PlatformError(format!(
+                                    "Failed to create true condition for fallback: {}",
+                                    cond_err
+                                )));
+                            }
+                        }
+                    }
+                    Err(auto_err) => {
+                        error!(
+                            "Failed to create temporary UIAutomation for child fallback: {}",
+                            auto_err
+                        );
+                        return Err(AutomationError::PlatformError(format!(
+                            "Failed to create temp UIAutomation for fallback: {}",
+                            auto_err
+                        )));
+                    }
+                }
             }
         };
 
@@ -1274,7 +1317,6 @@ impl UIElementImpl for WindowsUIElement {
             .0
             .send_keys(key, 10)
             .map_err(|e| AutomationError::PlatformError(e.to_string()))
-
     }
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
@@ -1316,9 +1358,12 @@ impl UIElementImpl for WindowsUIElement {
 
             let children_to_process = match children_result {
                 Ok(cached_children) => {
-                    info!("Found {} cached children for text extraction.", cached_children.len());
+                    info!(
+                        "Found {} cached children for text extraction.",
+                        cached_children.len()
+                    );
                     cached_children
-                },
+                }
                 Err(cache_err) => {
                     info!(
                         "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
@@ -1333,11 +1378,17 @@ impl UIElementImpl for WindowsUIElement {
                             match temp_automation.create_true_condition() {
                                 Ok(true_condition) => {
                                     // Perform the non-cached search for direct children
-                                    match element.find_all(uiautomation::types::TreeScope::Children, &true_condition) {
+                                    match element.find_all(
+                                        uiautomation::types::TreeScope::Children,
+                                        &true_condition,
+                                    ) {
                                         Ok(found_children) => {
-                                            info!("Found {} non-cached children for text extraction via fallback.", found_children.len());
+                                            info!(
+                                                "Found {} non-cached children for text extraction via fallback.",
+                                                found_children.len()
+                                            );
                                             found_children
-                                        },
+                                        }
                                         Err(find_err) => {
                                             error!(
                                                 "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
@@ -1349,13 +1400,19 @@ impl UIElementImpl for WindowsUIElement {
                                     }
                                 }
                                 Err(cond_err) => {
-                                    error!("Failed to create true condition for child fallback in text extraction: {}", cond_err);
+                                    error!(
+                                        "Failed to create true condition for child fallback in text extraction: {}",
+                                        cond_err
+                                    );
                                     vec![] // Return empty vec on condition creation error
                                 }
                             }
                         }
                         Err(auto_err) => {
-                            error!("Failed to create temporary UIAutomation for child fallback in text extraction: {}", auto_err);
+                            error!(
+                                "Failed to create temporary UIAutomation for child fallback in text extraction: {}",
+                                auto_err
+                            );
                             vec![] // Return empty vec on automation creation error
                         }
                     }
