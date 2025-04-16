@@ -68,3 +68,9 @@ Open a new terminal (like PowerShell or Command Prompt) **separate from the one 
 1.  Ensure the main Terminator server (e.g., `server.exe`) is still running (from the Prerequisites step).
 2.  Restart Cursor if it was already running.
 3.  Cursor should now automatically detect and use the `terminator-mcp-agent` when you invoke its capabilities. You don't need to manually run the `node dist/index.js` command; Cursor handles it based on the `mcp.json` configuration.
+
+## Other examples / showcases
+
+<img width="505" alt="image" src="https://github.com/user-attachments/assets/b21c9f85-1a34-488f-8779-d912071ec273" />
+
+
