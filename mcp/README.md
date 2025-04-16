@@ -75,4 +75,8 @@ scrapping your whole desktop including background windows:
 
 <img width="505" alt="image" src="https://github.com/user-attachments/assets/b21c9f85-1a34-488f-8779-d912071ec273" />
 
+vibe working
+
+<img width="1512" alt="Screenshot 2025-04-16 at 9 57 14 AM" src="https://github.com/user-attachments/assets/9eb40279-9a99-4498-8233-28b66f89ab92" />
+
 
