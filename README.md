@@ -1,7 +1,13 @@
 # terminator 🤖
 
-[![docs](https://img.shields.io/badge/read_the-docs-blue)](https://docs.screenpi.pe/terminator/introduction)
-[![discord](https://img.shields.io/discord/1158344578124554270?label=discord)](https://discord.gg/dU9EBuw7Uq)
+<p style="text-align: center;">
+    <a href="https://discord.gg/dU9EBuw7Uq">
+        <img src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white&style=flat-square" alt="Join us on Discord">
+    </a>
+    <a href="https://docs.screenpi.pe/terminator/introduction">
+        <img src="https://img.shields.io/badge/read_the-docs-blue" alt="docs">
+    </a>
+</p>
 
 ### videos 
 
