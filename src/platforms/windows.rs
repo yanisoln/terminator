@@ -822,11 +822,6 @@ impl AccessibilityEngine for WindowsEngine {
         &self,
         screenshot: &ScreenshotResult,
     ) -> Result<String, AutomationError> {
-        // Create a Tokio runtime to run the async OCR operation
-        let rt = Runtime::new().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e))
-        })?;
-
         // Reconstruct the image buffer from raw data
         let img_buffer: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
             screenshot.width,
@@ -842,21 +837,19 @@ impl AccessibilityEngine for WindowsEngine {
         // Convert to DynamicImage
         let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
 
-        // Run the async code block on the runtime
-        rt.block_on(async {
-            let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+        // Directly await the OCR operation within the existing async context
+        let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+        })?;
+
+        let (text, _language, _confidence) = engine
+            .recognize_image(&dynamic_image) // Use recognize_image
+            .await // << Directly await here
+            .map_err(|e| {
+                AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
             })?;
 
-            let (text, _language, _confidence) = engine
-                .recognize_image(&dynamic_image) // Use recognize_image
-                .await
-                .map_err(|e| {
-                    AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
-                })?;
-
-            Ok(text)
-        })
+        Ok(text)
     }
 
     fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {

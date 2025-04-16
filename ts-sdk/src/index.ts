@@ -125,11 +125,12 @@ interface OcrImagePathRequest {
 }
 
 // Request for OCR on raw screenshot data
-interface OcrScreenshotRequest {
-  image_base64: string;
-  width: number;
-  height: number;
-}
+// REMOVED OcrScreenshotRequest interface as it's no longer used
+// interface OcrScreenshotRequest {
+//   image_base64: string;
+//   width: number;
+//   height: number;
+// }
 
 // --- Expectation Requests --- //
 
@@ -403,12 +404,15 @@ export class DesktopUseClient {
   }
 
   /**
-   * Captures a screenshot of the primary monitor.
-   * @returns A promise resolving to the screenshot details (base64 image, width, height).
+   * Captures a screenshot of the primary monitor and performs OCR.
+   * @returns A promise resolving to the OCR result containing the extracted text.
    */
-  async captureScreen(): Promise<ScreenshotResponse> {
-    // No payload needed for capture_screen
-    return await this._makeRequest<ScreenshotResponse>("/capture_screen", {});
+  async captureScreen(): Promise<OcrResponse> {
+    // No payload needed for the combined capture_screen endpoint
+    console.log(`[DesktopUseClient] Requesting screen capture and OCR...`);
+    const result = await this._makeRequest<OcrResponse>("/capture_screen", {});
+    console.log(`[DesktopUseClient] Received OCR text (length: ${result.text.length})`);
+    return result;
   }
 
   /**
@@ -419,6 +423,7 @@ export class DesktopUseClient {
    */
   async captureMonitorByName(monitorName: string): Promise<ScreenshotResponse> {
     const payload: CaptureMonitorRequest = { monitor_name: monitorName };
+    // This still returns ScreenshotResponse as the backend likely keeps this separate
     return await this._makeRequest<ScreenshotResponse>(
       "/capture_monitor",
       payload
@@ -434,25 +439,6 @@ export class DesktopUseClient {
   async ocrImagePath(imagePath: string): Promise<OcrResponse> {
     const payload: OcrImagePathRequest = { image_path: imagePath };
     return await this._makeRequest<OcrResponse>("/ocr_image_path", payload);
-  }
-
-  /**
-   * Performs OCR directly on raw image data provided as a base64 string.
-   * This is useful for processing data from `captureScreen` or `captureMonitorByName`.
-   * @param imageData - An object containing the base64 encoded image string, width, and height.
-   * @returns A promise resolving to the extracted text.
-   */
-  async ocrScreenshot(imageData: {
-    imageBase64: string;
-    width: number;
-    height: number;
-  }): Promise<OcrResponse> {
-    const payload: OcrScreenshotRequest = {
-      image_base64: imageData.imageBase64,
-      width: imageData.width,
-      height: imageData.height,
-    };
-    return await this._makeRequest<OcrResponse>("/ocr_screenshot", payload);
   }
 
   /**

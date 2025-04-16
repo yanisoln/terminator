@@ -6,6 +6,7 @@ import {
   ElementResponse,
   ExploreResponse,
   ClickResponse,
+  OcrResponse,
 } from "desktop-use"; // Assuming SDK is installed as a package or adjust path: e.g., "../ts-sdk/src/index.js"
 import { z } from "zod";
 
@@ -67,6 +68,9 @@ export const ExploreSchema = z.object({
     .optional()
     .describe("Optional selector chain to explore from a specific element. Explores screen if omitted.")
 })
+
+// New schema for captureScreen (takes no arguments)
+export const CaptureScreenSchema = z.object({});
 
 // --- Terminator Tools Class ---
 
@@ -237,6 +241,41 @@ export class TerminatorTools {
         } catch (error) {
              const targetDesc = args.selectorChain ? `from ${JSON.stringify(args.selectorChain)}` : "screen";
              return this.handleApiError(error, `explore(${targetDesc})`);
+        }
+    }
+
+    /** Activates the window associated with the element */
+    async activateApp(
+        args: z.infer<typeof LocatorSchema> // Use LocatorSchema (chain + timeout)
+    ): Promise<BasicResponse | { error: string }> {
+        try {
+            console.log(`[TerminatorTools] Activating element/window: ${JSON.stringify(args.selectorChain)}`);
+            // Construct the payload for the backend endpoint
+            const payload = { 
+                selector_chain: args.selectorChain, 
+                timeout_ms: args.timeoutMs 
+            };
+            // Directly call the backend endpoint using the client's internal method
+            const result = await this.client._makeRequest<BasicResponse>("/activate_app", payload);
+            console.log(`[TerminatorTools] Activation successful: ${result.message}`);
+            return result; // Return the BasicResponse from the backend
+        } catch (error) {
+            return this.handleApiError(error, `activateApp(${JSON.stringify(args.selectorChain)})`);
+        }
+    }
+
+    /** Captures a screenshot of the primary monitor and performs OCR */
+    async captureScreen(
+        // No arguments needed based on CaptureScreenSchema
+    ): Promise<{ text: string } | { error: string }> { // Expect OcrResponse format
+        try {
+            console.log(`[TerminatorTools] Capturing screen and performing OCR...`);
+            // Directly call the updated /capture_screen endpoint which now does OCR
+            const result: OcrResponse = await this.client._makeRequest<OcrResponse>("/capture_screen", {});
+            console.log(`[TerminatorTools] Capture and OCR successful.`);
+            return { text: result.text }; // Return the OCR text
+        } catch (error) {
+            return this.handleApiError(error, `captureScreen (with internal OCR)`);
         }
     }
 }

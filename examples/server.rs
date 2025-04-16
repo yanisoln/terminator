@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{Level, error, info}; // Import env module
 
 // Shared application state
@@ -712,89 +713,154 @@ async fn explore_handler(
     Json(payload): Json<ExploreRequest>,
 ) -> Result<Json<ExploreResponse>, ApiError> {
     // Handle case where selector_chain might be null/empty for exploring root
-    let locator = match &payload.selector_chain {
-        Some(chain) if !chain.is_empty() => create_locator_for_chain(&state, chain)?,
-        _ => {
-            return Ok(Json(ExploreResponse {
-                parent: ElementResponse {
-                    role: "root".to_string(),
-                    label: None,
-                    id: None,
-                    text: "".to_string(),
-                    bounds: (0.0, 0.0, 0.0, 0.0),
-                    visible: false,
-                    enabled: false,
-                    focused: false,
-                },
-                children: Vec::new(),
-            }));
+    match &payload.selector_chain {
+        Some(chain) if !chain.is_empty() => {
+            // --- Existing logic for exploring a specific element --- 
+            let locator = create_locator_for_chain(&state, chain)?;
+            let timeout = get_timeout(payload.timeout_ms);
+            info!(chain = ?payload.selector_chain, timeout = ?timeout, "Attempting to explore element");
+
+            // Wait for the parent element first, using the timeout
+            let parent_element = locator.wait(timeout).await.map_err(ApiError::from)?;
+            let parent_response = ElementResponse::from_element(&parent_element);
+            let children_elements = parent_element.children().map_err(ApiError::from)?;
+
+            info!(
+                "Exploration successful, found {} children for parent role={}, label={:?}",
+                children_elements.len(),
+                parent_response.role,
+                parent_response.label
+            );
+
+            let detailed_children: Vec<ExploredElementDetail> = children_elements
+                .into_iter() // Consume the vector
+                .map(|child_element| {
+                    let attrs = child_element.attributes();
+                    let bounds_res = child_element.bounds();
+                    let bounds = match bounds_res {
+                        Ok((x, y, width, height)) => Some(BoundsResponse {
+                            x,
+                            y,
+                            width,
+                            height,
+                        }),
+                        Err(_) => None,
+                    };
+                    let text = child_element.text(1).unwrap_or_default();
+                    let child_id = child_element.id(); // Get ID once
+                    let child_role = attrs.role.clone(); // Clone role
+                    let child_name = attrs.label.clone(); // Clone name
+
+                    let suggested_selector =
+                        match (child_role.as_str(), &child_id, &child_name) {
+                            (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
+                            (_, _, Some(name)) if !name.is_empty() => {
+                                format!("name:\"{}\"", name.replace('"', "\\\"")) // Correct escaping for name
+                            }
+                            (role, _, _) => format!("role:{}", role),
+                        };
+
+                    // Get children IDs for this child (can be empty)
+                    let grandchildren_ids = child_element.children()
+                        .map(|gc| gc.into_iter().filter_map(|g| g.id()).collect())
+                        .unwrap_or_else(|_| Vec::new());
+
+                    ExploredElementDetail {
+                        role: child_role,
+                        name: child_name,
+                        id: child_id,
+                        bounds,
+                        value: attrs.value,
+                        description: attrs.description,
+                        text: Some(text),
+                        parent_id: parent_element.id(), // ID of the element being explored
+                        children_ids: grandchildren_ids,
+                        suggested_selector,
+                    }
+                })
+                .collect();
+
+            Ok(Json(ExploreResponse {
+                parent: parent_response,
+                children: detailed_children,
+            }))
+            // --- End of existing logic ---
         }
-    };
+        _ => {
+            // --- New logic for exploring the screen (root) ---
+            info!("Exploring screen (getting top-level applications)");
 
-    let timeout = get_timeout(payload.timeout_ms);
-    info!(chain = ?payload.selector_chain, timeout = ?timeout, "Attempting to explore element");
-
-    // Wait for the parent element first, using the timeout
-    let parent_element = locator.wait(timeout).await.map_err(ApiError::from)?;
-    let parent_response = ElementResponse::from_element(&parent_element);
-    let children_details = parent_element.children().map_err(ApiError::from)?;
-
-    // Call the underlying desktop method to explore children (needs implementation)
-    info!(
-        "Exploration successful, found {} children for parent role={}, label={:?}",
-        children_details.len(),
-        parent_response.role,
-        parent_response.label
-    );
-
-    let detailed_children: Vec<ExploredElementDetail> = children_details
-        .clone()
-        .into_iter()
-        .map(|child_element| {
-            let attrs = child_element.attributes();
-            let bounds_res = child_element.bounds();
-            let bounds = match bounds_res {
-                Ok((x, y, width, height)) => Some(BoundsResponse {
-                    x,
-                    y,
-                    width,
-                    height,
-                }),
-                Err(_) => None, // Ignore bounds error for exploration summary
+            // Create the dummy root parent response
+            let root_parent = ElementResponse {
+                role: "root".to_string(),
+                label: None,
+                id: None,
+                text: "Screen Root".to_string(), // More descriptive text
+                bounds: (0.0, 0.0, 0.0, 0.0), // Bounds are not applicable
+                visible: true, // Root is conceptually always visible
+                enabled: true, // Root is conceptually always enabled
+                focused: false, // Root itself cannot be focused
             };
-            let text = child_element.text(1).unwrap_or_default();
-            // Generate a suggested selector (basic example)
-            let suggested_selector =
-                match (attrs.role.as_str(), child_element.id(), attrs.label.clone()) {
-                    (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
-                    (_, _, Some(name)) if !name.is_empty() => {
-                        format!("name:\"{}\"", name.replace('"', "\""))
-                    } // Escape quotes
-                    (role, _, _) => format!("role:{}", role),
-                };
 
-            ExploredElementDetail {
-                role: attrs.role,
-                name: attrs.label, // Use label as name
-                id: child_element.id(),
-                bounds,
-                value: attrs.value,
-                description: attrs.description,
-                text: Some(text),
-                parent_id: parent_element.id(),
-                children_ids: children_details
-                    .iter()
-                    .map(|child| child.id().unwrap_or_default())
-                    .collect(),
-                suggested_selector,
-            }
-        })
-        .collect();
+            // Get top-level applications/windows
+            let applications = state.desktop.applications().map_err(ApiError::from)?;
+            info!("Found {} top-level applications/windows", applications.len());
 
-    Ok(Json(ExploreResponse {
-        parent: parent_response,
-        children: detailed_children,
-    }))
+            let detailed_children: Vec<ExploredElementDetail> = applications
+                .into_iter()
+                .map(|app_element| {
+                    let attrs = app_element.attributes();
+                    let bounds_res = app_element.bounds();
+                    let bounds = match bounds_res {
+                        Ok((x, y, width, height)) => Some(BoundsResponse {
+                            x,
+                            y,
+                            width,
+                            height,
+                        }),
+                        Err(_) => None,
+                    };
+                    let text = app_element.text(1).unwrap_or_default();
+                    let app_id = app_element.id();
+                    let app_role = attrs.role.clone();
+                    let app_name = attrs.label.clone();
+
+                    let suggested_selector =
+                        match (app_role.as_str(), &app_id, &app_name) {
+                            (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
+                            (_, _, Some(name)) if !name.is_empty() => {
+                                format!("name:\"{}\"", name.replace('"', "\\\""))
+                            }
+                            (role, _, _) => format!("role:{}", role),
+                        };
+                    
+                    // Get children IDs for this app window (can be empty)
+                    let children_ids = app_element.children()
+                        .map(|gc| gc.into_iter().filter_map(|g| g.id()).collect())
+                        .unwrap_or_else(|_| Vec::new());
+
+                    ExploredElementDetail {
+                        role: app_role,
+                        name: app_name,
+                        id: app_id,
+                        bounds,
+                        value: attrs.value,
+                        description: attrs.description,
+                        text: Some(text),
+                        parent_id: None, // Top-level windows have no UI parent in this context
+                        children_ids, // IDs of direct children of the window
+                        suggested_selector,
+                    }
+                })
+                .collect();
+
+            Ok(Json(ExploreResponse {
+                parent: root_parent,
+                children: detailed_children,
+            }))
+            // --- End of new logic ---
+        }
+    }
 }
 
 // Handler for opening a file
@@ -848,25 +914,23 @@ async fn run_command(
     }
 }
 
-// Handler for capturing the primary screen
+// Handler for capturing the primary screen and performing OCR
 async fn capture_screen(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ScreenshotResponse>, ApiError> {
-    info!("Attempting to capture primary screen");
-    match state.desktop.capture_screen().await {
-        // Make async
-        Ok(screenshot_result) => {
-            info!("Screen captured successfully");
-            ScreenshotResponse::try_from(screenshot_result)
-                .map(Json) // Wrap the successful conversion in Json
-                .map_err(|e| {
-                    // Handle potential conversion error (though unlikely here)
-                    error!("Failed to encode screenshot: {:?}", e);
-                    ApiError::BadRequest("Failed to encode screenshot data".to_string())
-                })
+) -> Result<Json<OcrResponse>, ApiError> {
+    info!("Attempting to capture primary screen and perform OCR");
+    // 1. Capture screen
+    let screenshot_result = state.desktop.capture_screen().await.map_err(ApiError::from)?;
+    info!("Screen captured successfully, performing OCR...");
+
+    // 2. Perform OCR directly
+    match state.desktop.ocr_screenshot(&screenshot_result).await {
+        Ok(text) => {
+            info!("OCR performed successfully.");
+            Ok(Json(OcrResponse { text })) // Return OCR text directly
         }
         Err(e) => {
-            error!("Failed to capture screen: {}", e);
+            error!("Failed to perform OCR after capture: {}", e);
             Err(e.into())
         }
     }
@@ -922,42 +986,6 @@ async fn ocr_image_path(
                 "Failed to perform OCR on path '{}': {}",
                 payload.image_path, e
             );
-            Err(e.into())
-        }
-    }
-}
-
-// Handler for performing OCR on raw screenshot data
-async fn ocr_screenshot_handler(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<OcrScreenshotRequest>,
-) -> Result<Json<OcrResponse>, ApiError> {
-    info!(
-        "Attempting OCR on raw screenshot data ({}x{})",
-        payload.width, payload.height
-    );
-
-    // Decode the base64 image data
-    let image_data = BASE64_STANDARD.decode(&payload.image_base64).map_err(|e| {
-        error!("Failed to decode base64 image: {}", e);
-        ApiError::BadRequest("Invalid base64 image data".to_string())
-    })?;
-
-    // Reconstruct a ScreenshotResult (or similar structure needed by the core function)
-    let screenshot_result = terminator::ScreenshotResult {
-        image_data,
-        width: payload.width,
-        height: payload.height,
-    };
-
-    // Call the core OCR function for screenshots
-    match state.desktop.ocr_screenshot(&screenshot_result).await {
-        Ok(text) => {
-            info!("OCR on screenshot data performed successfully");
-            Ok(Json(OcrResponse { text }))
-        }
-        Err(e) => {
-            error!("Failed to perform OCR on screenshot data: {}", e);
             Err(e.into())
         }
     }
@@ -1150,7 +1178,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods(Any) // Allows any method (GET, POST, etc.)
         .allow_headers(Any); // Allows any header
 
-    // Build our application with routes and the CORS layer
+    // Define request body limit (e.g., 50MB)
+    const BODY_LIMIT: usize = 500000 * 1024 * 1024; 
+
+    // Build our application with routes and layers
     let app = Router::new()
         .route("/", get(root))
         // Core Locator Actions
@@ -1186,10 +1217,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/expect_text_equals", post(expect_element_text_equals))
         // OCR Actions
         .route("/ocr_image_path", post(ocr_image_path))
-        .route("/ocr_screenshot", post(ocr_screenshot_handler))
         // State and Layers
-        .with_state(shared_state)
-        .layer(cors); // Add the CORS layer here
+        .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
+        .layer(cors)
+        .with_state(shared_state);
 
     // Determine port
     let default_port = 9375;
@@ -1199,7 +1230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(default_port); // Use default if env var not set or invalid
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    info!("Server listening on http://{}", addr);
+    info!("Server listening on http://{} with {}MB body limit", addr, BODY_LIMIT / (1024 * 1024));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
