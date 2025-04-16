@@ -1,11 +1,12 @@
-use std::thread;
+use std::{hash::Hash, thread};
 use std::time::Duration;
 
 use terminator::{platforms, AutomationError, Desktop, Selector};
 use tracing::Level;
 
 // like a playground, just uncomment
-fn main() -> Result<(), AutomationError> {
+#[tokio::main]
+async fn main() -> Result<(), AutomationError> {
     let engine = platforms::create_engine(true, true)?;
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
@@ -62,7 +63,6 @@ fn main() -> Result<(), AutomationError> {
     // but.double_click()?;
     // but.right_click()?;
 
-    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // find a input
     // let input = Selector::Role { role: "edit".to_string(), name: None };
@@ -102,32 +102,43 @@ fn main() -> Result<(), AutomationError> {
     // Or, just open notepad blank and paste the data (less realistic simulation).
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
-    let desktop = Desktop::new(false, true).unwrap();
+    let desktop = Desktop::new(false, true).await.unwrap();
     desktop.activate_application("firefox")?;
-
-    desktop.activate_browser_window_by_title("Terminator")?;
-
-    let app = desktop.locator("app:firefox").first().unwrap().unwrap();
-    println!("app: {:?}", app.attributes());
-
-    // app.focus()?;
-
-    // let children = app.children().unwrap();
-    // for child in children.iter() {
-    //     println!("child: {:?}", child.attributes());
-    // }
-
-    let locator = desktop.locator("window").first().unwrap().unwrap();
-    println!("locator: {:?}", locator.attributes());
-
-    let text = locator.text(10).unwrap_or_default();
-    println!("text: {:?}", text);
-
-    locator.children().unwrap().iter().for_each(|child| {
+    let children = desktop.locator("name:patient").all(None).await.unwrap();
+    for child in children.iter() {
         println!("child: {:?}", child.attributes());
-    });
+        println!("child: {:?}", child.id());
+        child.type_text("hello").unwrap();
+        // sleep for 100ms
+        thread::sleep(Duration::from_millis(1000));
+    }
 
-    desktop.activate_application("cursor")?;
+    // let e = desktop.locator("#3575971751213314820").first().unwrap();
+    // println!("e: {:?}", e.attributes());
+
+    // desktop.activate_browser_window_by_title("Terminator")?;
+
+    // let app = desktop.locator("app:firefox").first().unwrap().unwrap();
+    // println!("app: {:?}", app.attributes());
+
+    // // app.focus()?;
+
+    // // let children = app.children().unwrap();
+    // // for child in children.iter() {
+    // //     println!("child: {:?}", child.attributes());
+    // // }
+
+    // let locator = desktop.locator("window").first().unwrap().unwrap();
+    // println!("locator: {:?}", locator.attributes());
+
+    // let text = locator.text(10).unwrap_or_default();
+    // println!("text: {:?}", text);
+
+    // locator.children().unwrap().iter().for_each(|child| {
+    //     println!("child: {:?}", child.attributes());
+    // });
+
+    // desktop.activate_application("cursor")?;
 
 
 

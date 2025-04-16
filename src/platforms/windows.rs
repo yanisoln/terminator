@@ -1,24 +1,29 @@
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
-use crate::{ClickResult, ScreenshotResult};
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
-use std::collections::{hash_map::DefaultHasher, HashMap};
+use crate::{ClickResult, ScreenshotResult};
+use image::DynamicImage;
+use image::{ImageBuffer, Rgba};
+use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::runtime::Runtime;
 use tracing::debug;
+use tracing::error;
 use tracing::info;
+use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
 use uiautomation::types::{Point, ScrollAmount, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
-use uiautomation::UIAutomation;
 use uni_ocr::{OcrEngine, OcrProvider};
-use tokio::runtime::Runtime;
-use image::{ImageBuffer, Rgba};
-use image::DynamicImage;
+
+// Define a default timeout duration
+const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
 // thread-safety
 #[derive(Clone)]
@@ -145,12 +150,14 @@ impl AccessibilityEngine for WindowsEngine {
         let ele = match ele_res {
             Ok(ele) => ele,
             Err(_) => {
-                let pid = match get_pid_by_name(search_name) { // Use stripped name
+                let pid = match get_pid_by_name(search_name) {
+                    // Use stripped name
                     Some(pid) => pid,
                     None => {
                         return Err(AutomationError::PlatformError(format!(
                             "no running application found from name: {:?} (searched as: {:?})",
-                            name, search_name // Include original name in error
+                            name,
+                            search_name // Include original name in error
                         )));
                     }
                 };
@@ -178,6 +185,7 @@ impl AccessibilityEngine for WindowsEngine {
         &self,
         selector: &Selector,
         root: Option<&UIElement>,
+        timeout: Option<Duration>,
     ) -> Result<Vec<UIElement>, AutomationError> {
         let root_ele = if let Some(el) = root {
             if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
@@ -189,34 +197,93 @@ impl AccessibilityEngine for WindowsEngine {
             &Arc::new(self.automation.0.get_root_element().unwrap())
         };
 
+        let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
+
         // make condition according to selector
         let condition = match selector {
             Selector::Role { role, name: _ } => {
                 let roles = map_generic_role_to_win_roles(role);
-                let role_condition = self
+                // create matcher
+                let matcher = self
                     .automation
                     .0
-                    .create_property_condition(
-                        UIProperty::ControlType,
-                        Variant::from(roles as i32),
-                        None,
-                    )
-                    .unwrap();
-                debug!(
-                    "role conditions: {:#?} for finding element: {:#?}",
-                    role_condition, root_ele
-                );
-                role_condition
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .control_type(roles)
+                    .timeout(timeout_ms as u64);
+
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
+                })?;
+                debug!("found {} elements with role: {}", elements.len(), role);
+                return Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect());
             }
-            Selector::Id(id) => self
-                .automation
-                .0
-                .create_property_condition(
-                    UIProperty::AutomationId,
-                    Variant::from(id.as_str()),
-                    None,
-                )
-                .unwrap(),
+            Selector::Id(id) => {
+                // Clone id to move into the closure
+                let target_id = id.clone();
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele) // Start search from the correct root
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        // Calculate the element's ID using the same logic as WindowsUIElement::object_id
+                        let name = e.get_name().unwrap_or_default();
+                        let role = match e.get_control_type() {
+                            Ok(ct) => ct.to_string(),
+                            Err(err) => return Err(err),
+                        };
+                        let text = e.get_property_value(uiautomation::types::UIProperty::ValueValue)
+                                     .ok()
+                                     .map(|v| v.to_string())
+                                     .unwrap_or_default();
+                        let automation_id = e.get_automation_id().unwrap_or_default();
+                        let help_text = e.get_help_text().unwrap_or_default();
+                        let class_name = e.get_classname().unwrap_or_default();
+                        let process_id = match e.get_process_id() {
+                             Ok(pid) => pid,
+                             Err(err) => return Err(err),
+                        };
+
+                        let combined_string = format!(
+                            "{} {} {} {} {} {} {}",
+                            name, role, text, automation_id, help_text, class_name, process_id
+                        );
+
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut hasher = DefaultHasher::new();
+                        combined_string.hash(&mut hasher);
+                        let calculated_hash = hasher.finish();
+                        let calculated_id_str = calculated_hash.to_string();
+
+                        // Compare with the target ID
+                        Ok(calculated_id_str == target_id)
+                    }))
+                    .timeout(timeout_ms as u64);
+
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!("ID: '{}', Err: {}", id, e))
+                })?;
+
+                let collected_elements: Vec<UIElement> = elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect();
+
+                return Ok(collected_elements);
+            }
             Selector::Name(_name) => self
                 .automation
                 .0
@@ -245,7 +312,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .from_ref(root_ele)
                     .filter(Box::new(filter)) // This is the key improvement from the example
                     .depth(10) // Search deep enough to find most elements
-                    .timeout(3000); // Allow enough time for search
+                    .timeout(timeout_ms as u64); // Allow enough time for search
 
                 // Get the first matching element
                 let elements = matcher.find_all().map_err(|e| {
@@ -291,8 +358,9 @@ impl AccessibilityEngine for WindowsEngine {
                 let mut current_element_root = root.cloned();
                 if selectors.len() > 1 {
                     for selector in &selectors[..selectors.len() - 1] {
-                         // Use find_element to traverse the chain up to the parent
-                        let found_parent = self.find_element(selector, current_element_root.as_ref())?;
+                        // Use find_element to traverse the chain up to the parent
+                        let found_parent =
+                            self.find_element(selector, current_element_root.as_ref(), timeout)?;
                         current_element_root = Some(found_parent);
                     }
                 }
@@ -300,20 +368,20 @@ impl AccessibilityEngine for WindowsEngine {
                 // Use the last selector to find all matching elements within the final parent.
                 if let Some(last_selector) = selectors.last() {
                     // Call find_elements with the last selector and the found parent
-                    return self.find_elements(last_selector, current_element_root.as_ref());
+                    return self.find_elements(last_selector, current_element_root.as_ref(), timeout);
                 } else {
                     // Should not happen due to is_empty check, but handle defensively.
                     // If there's only one selector, find_elements is called directly.
-                     // This branch essentially handles the case of a single-selector chain,
-                     // which shouldn't occur if selectors.len() > 1 condition is met above.
-                     // If len is 1, the last_selector will be the only selector.
-                     // Let's simplify: if len == 1, the loop is skipped, and we directly call find_elements.
-                     // If len > 1, we find the parent and then call find_elements.
-                     // The case selectors.last() is always Some here because of the is_empty check.
+                    // This branch essentially handles the case of a single-selector chain,
+                    // which shouldn't occur if selectors.len() > 1 condition is met above.
+                    // If len is 1, the last_selector will be the only selector.
+                    // Let's simplify: if len == 1, the loop is skipped, and we directly call find_elements.
+                    // If len > 1, we find the parent and then call find_elements.
+                    // The case selectors.last() is always Some here because of the is_empty check.
                     // Therefore, this else branch is unreachable. We can remove it or log an error.
                     // Let's return an empty vec for safety, though it indicates a logic issue if reached.
-                     debug!("Unreachable code reached in find_elements Selector::Chain");
-                     return Ok(Vec::new());
+                    debug!("Unreachable code reached in find_elements Selector::Chain");
+                    return Ok(Vec::new());
                 }
             }
         };
@@ -336,6 +404,7 @@ impl AccessibilityEngine for WindowsEngine {
         &self,
         selector: &Selector,
         root: Option<&UIElement>,
+        timeout: Option<Duration>,
     ) -> Result<UIElement, AutomationError> {
         let root_ele = if let Some(el) = root {
             if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
@@ -347,6 +416,8 @@ impl AccessibilityEngine for WindowsEngine {
             &Arc::new(self.automation.0.get_root_element().unwrap())
         };
 
+        let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
+
         match selector {
             Selector::Role { role, name: _ } => {
                 let roles = map_generic_role_to_win_roles(role);
@@ -357,39 +428,65 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .control_type(roles)
-                    .timeout(3000);
+                    .timeout(timeout_ms as u64);
 
                 debug!("searching element by role: {}, from: {:?}", role, root_ele);
                 let element = matcher
                     .find_first()
-                    .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
+                    .map_err(|e| AutomationError::ElementNotFound(format!("Role: '{}', Root: {:?}, Err: {}", role, root, e)))?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
                 })))
             }
             Selector::Id(id) => {
-                let condition = self
+                // Clone id to move into the closure
+                let target_id = id.clone();
+                let matcher = self
                     .automation
                     .0
-                    .create_property_condition(
-                        UIProperty::AutomationId,
-                        Variant::from(id.as_str()),
-                        None,
-                    )
-                    .unwrap();
+                    .create_matcher()
+                    .from_ref(root_ele) // Start search from the correct root
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        // Calculate the element's ID using the same logic as WindowsUIElement::object_id
+                        let name = e.get_name().unwrap_or_default();
+                        let role = match e.get_control_type() {
+                            Ok(ct) => ct.to_string(),
+                            Err(err) => return Err(err),
+                        };
+                        let text = e.get_property_value(uiautomation::types::UIProperty::ValueValue)
+                                     .ok()
+                                     .map(|v| v.to_string())
+                                     .unwrap_or_default();
+                        let automation_id = e.get_automation_id().unwrap_or_default();
+                        let help_text = e.get_help_text().unwrap_or_default();
+                        let class_name = e.get_classname().unwrap_or_default();
+                        let process_id = match e.get_process_id() {
+                             Ok(pid) => pid,
+                             Err(err) => return Err(err),
+                        };
 
-                let ele = root_ele
-                    .find_first(TreeScope::Subtree, &condition)
-                    .map_err(|e| {
-                        AutomationError::ElementNotFound(format!(
-                            "ID: '{}', Err: {}",
-                            id,
-                            e.to_string()
-                        ))
-                    })?;
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                        let combined_string = format!(
+                            "{} {} {} {} {} {} {}",
+                            name, role, text, automation_id, help_text, class_name, process_id
+                        );
 
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut hasher = DefaultHasher::new();
+                        combined_string.hash(&mut hasher);
+                        let calculated_hash = hasher.finish();
+                        let calculated_id_str = calculated_hash.to_string();
+
+                        // Compare with the target ID
+                        Ok(calculated_id_str == target_id)
+                    }))
+                    .timeout(timeout_ms as u64);
+
+                let element = matcher
+                    .find_first()
+                    .map_err(|e| AutomationError::ElementNotFound(format!("ID: '{}', Root: {:?}, Err: {}", id, root, e)))?;
+                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
                 })))
@@ -406,7 +503,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .from_ref(root_ele)
                     .contains_name(name)
                     .depth(10)
-                    .timeout(3000);
+                    .timeout(timeout_ms as u64);
 
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
@@ -440,14 +537,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .from_ref(root_ele)
                     .filter(Box::new(filter)) // This is the key improvement from the example
                     .depth(10) // Search deep enough to find most elements
-                    .timeout(3000); // Allow enough time for search
+                    .timeout(timeout_ms as u64); // Allow enough time for search
 
                 // Get the first matching element
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "Text: '{}', Err: {}",
-                        text,
-                        e.to_string()
+                        "Text: '{}', Root: {:?}, Err: {}",
+                        text, root, e
                     ))
                 })?;
 
@@ -481,13 +577,15 @@ impl AccessibilityEngine for WindowsEngine {
                 // Recursively find the element by traversing the chain.
                 let mut current_element = root.cloned();
                 for selector in selectors {
-                    let found_element = self.find_element(selector, current_element.as_ref())?;
+                    let found_element = self.find_element(selector, current_element.as_ref(), timeout)?;
                     current_element = Some(found_element);
                 }
 
                 // Return the final single element found after the full chain traversal.
                 return current_element.ok_or_else(|| {
-                    AutomationError::ElementNotFound("Element not found after traversing chain".to_string())
+                    AutomationError::ElementNotFound(
+                        "Element not found after traversing chain".to_string(),
+                    )
                 });
             }
         }
@@ -513,8 +611,11 @@ impl AccessibilityEngine for WindowsEngine {
 
         std::thread::sleep(std::time::Duration::from_millis(200));
 
-        let app = self.get_application_by_name(app_name).map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        app.activate_window().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        let app = self
+            .get_application_by_name(app_name)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        app.activate_window()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         Ok(app)
     }
 
@@ -544,26 +645,41 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
-        let status = std::process::Command::new("powershell")
+        // Use Invoke-Item and explicitly quote the path within the command string.
+        // Also use -LiteralPath to prevent PowerShell from interpreting characters in the path.
+        // Escape any pre-existing double quotes within the path itself using PowerShell's backtick escape `"
+        let command_str = format!(
+            "Invoke-Item -LiteralPath \"{}\"",
+            file_path.replace('\"', "`\"")
+        );
+        info!("Running command to open file: {}", command_str);
+
+        let output = std::process::Command::new("powershell")
             .args([
                 "-NoProfile",
                 "-WindowStyle",
                 "hidden",
                 "-Command",
-                "start",
-                file_path,
+                &command_str, // Pass the fully formed command string
             ])
-            .status()
+            .output() // Capture output instead of just status
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        if !status.success() {
-            return Err(AutomationError::PlatformError(
-                "Failed to open file".to_string(),
-            ));
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!(
+                "Failed to open file '{}' using Invoke-Item. Stderr: {}",
+                file_path, stderr
+            );
+            return Err(AutomationError::PlatformError(format!(
+                "Failed to open file '{}' using Invoke-Item. Error: {}",
+                file_path, stderr
+            )));
         }
         Ok(())
     }
 
-    fn run_command(
+    async fn run_command(
         &self,
         windows_command: Option<&str>,
         _unix_command: Option<&str>,
@@ -572,7 +688,8 @@ impl AccessibilityEngine for WindowsEngine {
             AutomationError::InvalidArgument("Windows command must be provided".to_string())
         })?;
 
-        let output = std::process::Command::new("powershell")
+        // Use tokio::process::Command for async execution
+        let output = tokio::process::Command::new("powershell")
             .args([
                 "-NoProfile",
                 "-WindowStyle",
@@ -581,6 +698,7 @@ impl AccessibilityEngine for WindowsEngine {
                 command_str,
             ])
             .output()
+            .await // Await the async output
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
 
         Ok(crate::CommandOutput {
@@ -590,9 +708,10 @@ impl AccessibilityEngine for WindowsEngine {
         })
     }
 
-    fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
-        let monitors = xcap::Monitor::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+    async fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
+        })?;
         let mut primary_monitor: Option<xcap::Monitor> = None;
         for monitor in monitors {
             match monitor.is_primary() {
@@ -624,9 +743,13 @@ impl AccessibilityEngine for WindowsEngine {
         })
     }
 
-    fn capture_monitor_by_name(&self, name: &str) -> Result<ScreenshotResult, AutomationError> {
-        let monitors = xcap::Monitor::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {}", e)))?;
+    async fn capture_monitor_by_name(
+        &self,
+        name: &str,
+    ) -> Result<ScreenshotResult, AutomationError> {
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
+        })?;
         let mut target_monitor: Option<xcap::Monitor> = None;
         for monitor in monitors {
             match monitor.name() {
@@ -660,27 +783,35 @@ impl AccessibilityEngine for WindowsEngine {
 
     async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
         // Create a Tokio runtime to run the async OCR operation
-        let rt = Runtime::new()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
+        let rt = Runtime::new().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e))
+        })?;
 
         // Run the async code block on the runtime
         rt.block_on(async {
-            let engine = OcrEngine::new(OcrProvider::Auto)
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
+            let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+            })?;
 
             let (text, _language, _confidence) = engine // Destructure the tuple
                 .recognize_file(image_path)
                 .await
-                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
+                })?;
 
             Ok(text) // Return only the text
         })
     }
 
-    async fn ocr_screenshot(&self, screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
+    async fn ocr_screenshot(
+        &self,
+        screenshot: &ScreenshotResult,
+    ) -> Result<String, AutomationError> {
         // Create a Tokio runtime to run the async OCR operation
-        let rt = Runtime::new()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e)))?;
+        let rt = Runtime::new().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e))
+        })?;
 
         // Reconstruct the image buffer from raw data
         let img_buffer: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
@@ -688,46 +819,128 @@ impl AccessibilityEngine for WindowsEngine {
             screenshot.height,
             screenshot.image_data.clone(), // Clone data into the buffer
         )
-        .ok_or_else(|| AutomationError::InvalidArgument("Invalid screenshot data for buffer creation".to_string()))?;
+        .ok_or_else(|| {
+            AutomationError::InvalidArgument(
+                "Invalid screenshot data for buffer creation".to_string(),
+            )
+        })?;
 
         // Convert to DynamicImage
         let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
 
         // Run the async code block on the runtime
         rt.block_on(async {
-            let engine = OcrEngine::new(OcrProvider::Auto)
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e)))?;
+            let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+            })?;
 
             let (text, _language, _confidence) = engine
                 .recognize_image(&dynamic_image) // Use recognize_image
                 .await
-                .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {}", e)))?;
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
+                })?;
 
             Ok(text)
         })
     }
 
     fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {
-        info!("Attempting to activate browser window containing title: {}", title);
-        let root = self.automation.0.get_root_element() // Cache root element lookup
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get root element: {}", e)))?;
+        info!(
+            "Attempting to activate browser window containing title: {}",
+            title
+        );
+        let root = self
+            .automation
+            .0
+            .get_root_element() // Cache root element lookup
+            .map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+            })?;
 
         // Find top-level windows
-        let window_matcher = self.automation.0.create_matcher()
+        let window_matcher = self
+            .automation
+            .0
+            .create_matcher()
             .from_ref(&root)
-            .filter(Box::new(ControlTypeFilter { control_type: ControlType::TabItem }))
+            .filter(Box::new(ControlTypeFilter {
+                control_type: ControlType::TabItem,
+            }))
             .contains_name(title)
             .depth(10)
             .timeout(500);
 
-        let window = window_matcher.find_first()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e)))?;
+        let window = window_matcher.find_first().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e))
+        })?;
 
         // If find_first succeeds, 'window' is the UIElement. Now try to focus it.
-        window.set_focus()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to set focus on window/tab: {}", e)))?; // Map focus error
+        window.set_focus().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to set focus on window/tab: {}", e))
+        })?; // Map focus error
 
         Ok(()) // If focus succeeds, return Ok
+    }
+
+    async fn find_window_by_criteria(
+        &self,
+        title_contains: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<UIElement, AutomationError> {
+        let timeout_duration = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT);
+        info!(
+            "Searching for window: title_contains={:?}, timeout={:?}",
+            title_contains, timeout_duration
+        );
+
+        let title_contains = title_contains.unwrap_or_default();
+
+        // first find element by matcher
+        let root_ele = self.automation.0.get_root_element().unwrap();
+        let automation = WindowsEngine::new(false, false)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        let matcher = automation
+            .automation
+            .0
+            .create_matcher()
+            .control_type(ControlType::Window)
+            .contains_name(title_contains) // Use stripped name
+            .from_ref(&root_ele)
+            .depth(7)
+            .timeout(timeout_duration.as_millis() as u64);
+        let ele_res = matcher
+            .find_first()
+            .map_err(|e| AutomationError::ElementNotFound(e.to_string()));
+
+        return Ok(UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(ele_res.unwrap())),
+        })));
+    }
+
+    fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
+        info!("Attempting to activate application by name: {}", app_name);
+        // Find the application window first
+        let app_element = self.get_application_by_name(app_name)?;
+
+        // Attempt to activate/focus the window
+        // Downcast to the specific WindowsUIElement to call set_focus or activate_window
+        let win_element_impl = app_element
+            .as_any()
+            .downcast_ref::<WindowsUIElement>()
+            .ok_or_else(|| {
+                AutomationError::PlatformError(
+                    "Failed to get window element implementation for activation".to_string(),
+                )
+            })?;
+
+        // Use set_focus, which typically brings the window forward on Windows
+        win_element_impl.element.0.set_focus().map_err(|e| {
+            AutomationError::PlatformError(format!(
+                "Failed to set focus on application window '{}': {}",
+                app_name, e
+            ))
+        })
     }
 }
 
@@ -751,21 +964,30 @@ impl Debug for WindowsUIElement {
 
 impl UIElementImpl for WindowsUIElement {
     fn object_id(&self) -> usize {
-        // use hashed `AutomationId` as object_id
-        let stable_id = format!(
-            "{:?}",
-            self.element.0.get_automation_id().unwrap_or_default()
-        );
+        // use different hashed properties as object_id
         let mut hasher = DefaultHasher::new();
-        stable_id.hash(&mut hasher);
-        let id = hasher.finish() as usize;
-        debug!("Stable ID: {:?}", stable_id);
-        debug!("Hash: {:?}", id);
-        id
+        let name = self.element.0.get_name().unwrap_or_default();
+        let role = self.element.0.get_control_type().unwrap().to_string();
+        let text = self
+            .element
+            .0
+            .get_property_value(UIProperty::ValueValue)
+            .unwrap_or_default();
+        let automation_id = self.element.0.get_automation_id().unwrap_or_default();
+        let help_text = self.element.0.get_help_text().unwrap_or_default();
+        let class_name = self.element.0.get_classname().unwrap_or_default();
+        let process_id = self.element.0.get_process_id().unwrap_or_default();
+
+        let combined_string = format!(
+            "{} {} {} {} {} {} {}",
+            name, role, text, automation_id, help_text, class_name, process_id
+        );
+        combined_string.hash(&mut hasher);
+        hasher.finish() as usize
     }
 
     fn id(&self) -> Option<String> {
-        self.element.0.get_automation_id().ok()
+        Some(self.object_id().to_string())
     }
 
     fn role(&self) -> String {
@@ -815,12 +1037,53 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn children(&self) -> Result<Vec<UIElement>, AutomationError> {
-        let children = self
-            .element
-            .0
-            .get_cached_children()
-            // return empty vector if no children
-            .unwrap_or_default();
+        // Try getting cached children first
+        let children_result = self.element.0.get_cached_children();
+
+        let children = match children_result {
+            Ok(cached_children) => {
+                info!("Found {} cached children.", cached_children.len());
+                cached_children
+            }
+            Err(cache_err) => {
+                info!(
+                    "Failed to get cached children ({}), falling back to non-cached TreeScope::Children search.",
+                    cache_err
+                );
+                // Fallback logic (similar to explore_element_children)
+                match uiautomation::UIAutomation::new() {
+                    Ok(temp_automation) => {
+                        match temp_automation.create_true_condition() {
+                            Ok(true_condition) => {
+                                self.element
+                                    .0
+                                    .find_all(uiautomation::types::TreeScope::Children, &true_condition)
+                                    .map_err(|find_err| {
+                                        error!(
+                                            "Failed to get children via find_all fallback: CacheErr={}, FindErr={}",
+                                            cache_err, find_err
+                                        );
+                                        AutomationError::PlatformError(format!(
+                                            "Failed to get children (cached and non-cached): {}",
+                                            find_err
+                                        ))
+                                    })? // Propagate error
+                            }
+                            Err(cond_err) => {
+                                 error!("Failed to create true condition for child fallback: {}", cond_err);
+                                 return Err(AutomationError::PlatformError(format!("Failed to create true condition for fallback: {}", cond_err)));
+                             }
+                         }
+                     }
+                     Err(auto_err) => {
+                         error!("Failed to create temporary UIAutomation for child fallback: {}", auto_err);
+                         return Err(AutomationError::PlatformError(format!("Failed to create temp UIAutomation for fallback: {}", auto_err)));
+                     }
+                 }
+            }
+        };
+
+        // Wrap the platform elements into our UIElement trait objects
         Ok(children
             .into_iter()
             .map(|ele| {
@@ -977,7 +1240,10 @@ impl UIElementImpl for WindowsUIElement {
     fn activate_window(&self) -> Result<(), AutomationError> {
         // On Windows, setting focus on an element within the window
         // typically brings the window to the foreground.
-        debug!("Activating window by focusing element: {:?}", self.element.0);
+        debug!(
+            "Activating window by focusing element: {:?}",
+            self.element.0
+        );
         self.focus()
     }
 
@@ -989,16 +1255,10 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         // check if element accepts input
         debug!("typing text with control_type: {:#?}", control_type);
-        self.element.0.send_text(text, 50).map_err(|e| AutomationError::PlatformError(e.to_string()))
-        // if control_type == ControlType::Edit {
-        // let keyboard = Keyboard::default();
-        // keyboard
-        //     .send_text(text, 50)
-        //     .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        // Ok(())
-        // } else {
-        //     Err(AutomationError::PlatformError("Element is not editable".to_string()))
-        // }
+        self.element
+            .0
+            .send_text(text, 10)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))
     }
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError> {
@@ -1009,16 +1269,11 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         // check if element accepts input, similar :D
         debug!("pressing key with control_type: {:#?}", control_type);
-        // if control_type == ControlType::Edit {
-        self.element.0.send_keys(key, 50).map_err(|e| AutomationError::PlatformError(e.to_string()))
-        // let keyboard = Keyboard::default();
-        // keyboard
-        //     .send_keys(key)
-        //     .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        // Ok(())
-        // } else {
-        //     Err(AutomationError::PlatformError("Element is not editable".to_string()))
-        // }
+        self.element
+            .0
+            .send_keys(key, 10)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))
+
     }
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
@@ -1056,10 +1311,59 @@ impl UIElementImpl for WindowsUIElement {
             }
 
             // Recursively process children
-            if let Ok(children) = element.get_cached_children() {
-                for child in children {
-                    let _ = extract_text_from_element(&child, texts, current_depth + 1, max_depth);
+            let children_result = element.get_cached_children();
+
+            let children_to_process = match children_result {
+                Ok(cached_children) => {
+                    info!("Found {} cached children for text extraction.", cached_children.len());
+                    cached_children
+                },
+                Err(cache_err) => {
+                    info!(
+                        "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
+                        cache_err
+                    );
+                    // Need a UIAutomation instance to create conditions for find_all
+                    // Create a temporary instance here for the fallback.
+                    // Note: Creating a new UIAutomation instance here might be inefficient.
+                    // Consider passing it down or finding another way if performance is critical.
+                    match uiautomation::UIAutomation::new() {
+                        Ok(temp_automation) => {
+                            match temp_automation.create_true_condition() {
+                                Ok(true_condition) => {
+                                    // Perform the non-cached search for direct children
+                                    match element.find_all(uiautomation::types::TreeScope::Children, &true_condition) {
+                                        Ok(found_children) => {
+                                            info!("Found {} non-cached children for text extraction via fallback.", found_children.len());
+                                            found_children
+                                        },
+                                        Err(find_err) => {
+                                            error!(
+                                                "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
+                                                cache_err, find_err
+                                            );
+                                            // Return an empty vec to avoid erroring out the whole text extraction
+                                            vec![]
+                                        }
+                                    }
+                                }
+                                Err(cond_err) => {
+                                    error!("Failed to create true condition for child fallback in text extraction: {}", cond_err);
+                                    vec![] // Return empty vec on condition creation error
+                                }
+                            }
+                        }
+                        Err(auto_err) => {
+                            error!("Failed to create temporary UIAutomation for child fallback in text extraction: {}", auto_err);
+                            vec![] // Return empty vec on automation creation error
+                        }
+                    }
                 }
+            };
+
+            // Process the children (either cached or found via fallback)
+            for child in children_to_process {
+                let _ = extract_text_from_element(&child, texts, current_depth + 1, max_depth);
             }
 
             Ok(())

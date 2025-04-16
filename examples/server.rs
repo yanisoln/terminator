@@ -1,26 +1,20 @@
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
 };
-use tower_http::cors::{Any, CorsLayer};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::collections::HashMap;
-use terminator::{
-    AutomationError,
-    Desktop,
-    Locator,
-    Selector,
-    UIElement,
-};
-use tracing::{info, Level};
 use std::time::Duration;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use std::env; // Import env module
+use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
+use tower_http::cors::{Any, CorsLayer};
+use tracing::{Level, error, info}; // Import env module
 
 // Shared application state
 struct AppState {
@@ -31,6 +25,7 @@ struct AppState {
 #[derive(Deserialize)]
 struct ChainedRequest {
     selector_chain: Vec<String>,
+    timeout_ms: Option<u64>, // Added timeout
 }
 
 // Request structure for typing text (with chain)
@@ -38,6 +33,7 @@ struct ChainedRequest {
 struct TypeTextRequest {
     selector_chain: Vec<String>,
     text: String,
+    timeout_ms: Option<u64>, // Added timeout
 }
 
 // Request structure for getting text (with chain)
@@ -45,6 +41,7 @@ struct TypeTextRequest {
 struct GetTextRequest {
     selector_chain: Vec<String>,
     max_depth: Option<usize>,
+    timeout_ms: Option<u64>, // Added timeout
 }
 
 // Request structure for pressing a key (with chain)
@@ -52,6 +49,7 @@ struct GetTextRequest {
 struct PressKeyRequest {
     selector_chain: Vec<String>,
     key: String,
+    timeout_ms: Option<u64>, // Added timeout
 }
 
 // Request structure for opening an application
@@ -129,6 +127,20 @@ struct ActivateBrowserWindowRequest {
     title: String,
 }
 
+// Request for finding a window
+#[derive(Deserialize, Debug)]
+struct FindWindowRequest {
+    title_contains: Option<String>,
+    timeout_ms: Option<u64>, // Optional timeout
+}
+
+// Request for exploring an element's children
+#[derive(Deserialize)]
+struct ExploreRequest {
+    selector_chain: Option<Vec<String>>, // Make selector chain optional (already was)
+    timeout_ms: Option<u64>,             // Added timeout
+}
+
 // Basic response structure
 #[derive(Serialize)]
 struct BasicResponse {
@@ -136,11 +148,16 @@ struct BasicResponse {
 }
 
 // Response structure for element details
-#[derive(Serialize)]
+#[derive(Serialize, Clone)] // Add Clone
 struct ElementResponse {
     role: String,
     label: Option<String>,
     id: Option<String>,
+    text: String,
+    bounds: (f64, f64, f64, f64),
+    visible: bool,
+    enabled: bool,
+    focused: bool,
 }
 
 impl ElementResponse {
@@ -150,6 +167,11 @@ impl ElementResponse {
             role: attrs.role,
             label: attrs.label,
             id: element.id(),
+            text: element.text(1).unwrap_or_default(),
+            bounds: element.bounds().unwrap_or_default(),
+            visible: element.is_visible().unwrap_or_default(),
+            enabled: element.is_enabled().unwrap_or_default(),
+            focused: element.is_focused().unwrap_or_default(),
         }
     }
 }
@@ -194,7 +216,6 @@ struct AttributesResponse {
     properties: HashMap<String, Option<serde_json::Value>>,
     id: Option<String>,
 }
-
 
 // Response structure for element bounds
 #[derive(Serialize)]
@@ -257,6 +278,29 @@ struct OcrResponse {
     text: String,
 }
 
+// Response structure for exploration result
+#[derive(Serialize)]
+struct ExploredElementDetail {
+    role: String,
+    name: Option<String>, // Use 'name' consistently for the primary label/text
+    id: Option<String>,
+    bounds: Option<BoundsResponse>, // Include bounds for spatial context
+    // Add other potentially useful attributes
+    value: Option<String>,
+    description: Option<String>,
+    text: Option<String>,
+    parent_id: Option<String>,
+    children_ids: Vec<String>,
+    // Maybe a suggested selector string? e.g., "role:button name:'Submit'"
+    suggested_selector: String,
+}
+
+#[derive(Serialize)]
+struct ExploreResponse {
+    parent: ElementResponse, // Details of the parent element explored
+    children: Vec<ExploredElementDetail>, // List of direct children details
+}
+
 // Custom error type for API responses
 #[derive(Debug)]
 enum ApiError {
@@ -267,6 +311,17 @@ enum ApiError {
 // Implement the From trait to allow automatic conversion
 impl From<AutomationError> for ApiError {
     fn from(err: AutomationError) -> Self {
+        // Enhance ElementNotFound errors with more context if possible
+        if let AutomationError::ElementNotFound(msg) = &err {
+            // Check if the message already contains context hints
+            if !msg.contains("within parent") && !msg.contains("Found windows:") {
+                // Attempt to provide default context (this is basic, ideally context is added at source)
+                return ApiError::Automation(AutomationError::ElementNotFound(format!(
+                    "{} (context: Root)",
+                    msg
+                )));
+            }
+        }
         ApiError::Automation(err)
     }
 }
@@ -276,12 +331,25 @@ impl IntoResponse for ApiError {
         let (status, error_message) = match self {
             ApiError::Automation(err) => {
                 tracing::error!("Automation error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Automation error: {}", err))
+                let code = match err {
+                    AutomationError::ElementNotFound(_) => StatusCode::NOT_FOUND, // 404
+                    AutomationError::Timeout(_) => StatusCode::REQUEST_TIMEOUT,   // 408
+                    AutomationError::UnsupportedOperation(_) => StatusCode::NOT_IMPLEMENTED, // 501
+                    AutomationError::InvalidArgument(_) => StatusCode::BAD_REQUEST, // 400
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,                       // 500 for others
+                };
+                (code, format!("Automation error: {}", err))
             }
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
         };
 
-        (status, Json(BasicResponse { message: error_message })).into_response()
+        (
+            status,
+            Json(BasicResponse {
+                message: error_message,
+            }),
+        )
+            .into_response()
     }
 }
 
@@ -294,24 +362,27 @@ fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
     timeout_ms.map(Duration::from_millis)
 }
 
-// Helper function to create a locator from the full chain (DIFFERENT from resolve_element_from_chain)
-// This locator will be used for the expect methods which handle their own waiting.
+// Helper function to create a locator from the full chain
 fn create_locator_for_chain(
     state: &Arc<AppState>,
     selector_chain: &[String],
+    // Add optional base element if needed later for within() functionality directly here
+    // base_element: Option<&UIElement>
 ) -> Result<Locator, ApiError> {
     if selector_chain.is_empty() {
-        return Err(ApiError::BadRequest("selector_chain cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "selector_chain cannot be empty".to_string(),
+        ));
     }
 
     let selectors: Vec<Selector> = selector_chain.iter().map(|s| s.as_str().into()).collect();
 
-    // Create locator for the first element
+    // Determine the starting point: Desktop root or a specified base element
+    // For now, always start from desktop root as SDK manages 'within' via chaining
     let mut locator = state.desktop.locator(selectors[0].clone());
 
     // Chain subsequent locators
     for selector in selectors.iter().skip(1) {
-        // Note: Locator::locator creates a new locator, not finding the element yet
         locator = locator.locator(selector.clone());
     }
 
@@ -323,19 +394,20 @@ async fn first(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to find element");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to find element (first)");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms); // Convert Option<u64> to Option<Duration>
 
-    // Use the locator's wait() method - timeout is handled by locator's default or could be added to request
-    match locator.wait().await {
-         Ok(element) => {
-            info!(element_id = ?element.id(), role = element.role(), "Element found");
+    // Pass the timeout to the locator's wait method (requires core library update)
+    match locator.wait(timeout).await {
+        Ok(element) => {
+            info!(element_id = ?element.id(), role = element.role(), "Element found (first)");
             Ok(Json(ElementResponse::from_element(&element)))
-         }
-         Err(e) => {
-            info!("Failed finding element: {}", e);
-            Err(ApiError::Automation(e))
-         }
+        }
+        Err(e) => {
+            error!("Failed finding element (first): {}", e); // Use error! macro
+            Err(e.into()) // Convert AutomationError to ApiError
+        }
     }
 }
 
@@ -344,17 +416,19 @@ async fn click_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ClickResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to click element");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to click element");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    match locator.click().await { // locator.click() already includes wait()
+    // Pass timeout to click (requires core library update)
+    match locator.click(timeout).await {
         Ok(result) => {
             info!("Element clicked successfully");
             Ok(Json(result.into()))
         }
         Err(e) => {
-            info!("Failed to click element: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to click element: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -364,17 +438,21 @@ async fn type_text_into_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TypeTextRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.text, "Attempting to type text");
-     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    info!(chain = ?payload.selector_chain, text = %payload.text, timeout = ?payload.timeout_ms, "Attempting to type text");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    match locator.type_text(&payload.text).await { // locator.type_text() includes wait()
+    // Pass timeout to type_text (requires core library update)
+    match locator.type_text(&payload.text, timeout).await {
         Ok(_) => {
             info!("Text typed successfully");
-            Ok(Json(BasicResponse { message: "Text typed successfully".to_string() }))
+            Ok(Json(BasicResponse {
+                message: "Text typed successfully".to_string(),
+            }))
         }
         Err(e) => {
-            info!("Failed to type text into element: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to type text into element: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -385,44 +463,46 @@ async fn get_element_text(
     Json(payload): Json<GetTextRequest>,
 ) -> Result<Json<TextResponse>, ApiError> {
     let max_depth = payload.max_depth.unwrap_or(5);
-    info!(chain = ?payload.selector_chain, max_depth, "Attempting to get text");
-     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    info!(chain = ?payload.selector_chain, max_depth, timeout = ?payload.timeout_ms, "Attempting to get text");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    match locator.text(max_depth).await { // locator.text() includes wait()
+    // Pass timeout to text (requires core library update)
+    match locator.text(max_depth, timeout).await {
         Ok(text) => {
-            info!("Text retrieved successfully");
+            info!("Text retrieved successfully (length: {})", text.len());
             Ok(Json(TextResponse { text }))
         }
         Err(e) => {
-            info!("Failed to get text from element: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to get text from element: {}", e);
+            Err(e.into())
         }
     }
 }
 
-// Handler for finding multiple elements (Assuming find all matching last step within first match of prior steps)
+// Handler for finding multiple elements
 async fn all(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to find elements");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to find all elements");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    // Use locator.all() - Note: This typically doesn't wait like other actions.
-    // If waiting is desired before finding all, the client would need separate 'wait' then 'find_elements' calls,
-    // or we could add a specific 'wait_and_find_all' endpoint. Keeping it simple for now.
-    match locator.all() {
+    // Pass timeout to all (requires core library update)
+    // Note: 'all' might not inherently wait like 'first', timeout might apply
+    // differently (e.g., timeout for finding the parent context).
+    match locator.all(timeout).await {
         Ok(elements) => {
             info!("Found {} elements matching chain", elements.len());
-            let response_elements = elements
-                .iter()
-                .map(ElementResponse::from_element)
-                .collect();
-            Ok(Json(ElementsResponse { elements: response_elements }))
+            let response_elements = elements.iter().map(ElementResponse::from_element).collect();
+            Ok(Json(ElementsResponse {
+                elements: response_elements,
+            }))
         }
         Err(e) => {
-            info!("Failed to find elements: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to find all elements: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -432,17 +512,20 @@ async fn get_element_attributes(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<AttributesResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to get attributes");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get attributes");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    // Wait for the element first, handling potential errors
-    let element = locator.wait().await?;
+    // First, wait for the element to get its handle
+    let element = locator.wait(timeout).await?;
 
-    // Get attributes (this doesn't return a Result)
-    let attrs = element.attributes();
-    let element_id = element.id(); // Get ID from the element we already have
+    // Now get the ID from the element handle
+    let element_id = element.id();
 
-    info!("Attributes retrieved successfully");
+    // Then get the attributes
+    let attrs = element.attributes(); // This call is synchronous and doesn't need await/timeout here
+
+    info!("Attributes retrieved successfully for element ID: {:?}", element_id);
 
     // Construct and return the response
     Ok(Json(AttributesResponse {
@@ -451,8 +534,10 @@ async fn get_element_attributes(
         value: attrs.value,
         description: attrs.description,
         properties: attrs.properties,
-        id: element_id, // Use the ID obtained earlier
+        id: element_id, // Use the ID obtained from the element
     }))
+    // Note: The original 'match locator.attributes(timeout).await' logic was incorrect
+    // because locator didn't have .attributes() and element.attributes() is sync.
 }
 
 // Handler for getting element bounds
@@ -460,17 +545,24 @@ async fn get_element_bounds(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<BoundsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to get bounds");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get bounds");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    match locator.wait().await?.bounds() { // Wait first, then get bounds
+    // Pass timeout to bounds (requires core library update)
+    match locator.bounds(timeout).await {
         Ok((x, y, width, height)) => {
             info!("Bounds retrieved successfully");
-            Ok(Json(BoundsResponse { x, y, width, height }))
+            Ok(Json(BoundsResponse {
+                x,
+                y,
+                width,
+                height,
+            }))
         }
         Err(e) => {
-            info!("Failed to get bounds: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to get bounds: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -480,25 +572,32 @@ async fn is_element_visible(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<BooleanResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to check visibility");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to check visibility");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    // Use expect_visible with a very short timeout (or zero) for a non-waiting check
-    // Or, call the underlying element method after waiting. Let's wait then check.
-    match locator.wait().await?.is_visible() {
+    // Pass timeout to is_visible (requires core library update)
+    match locator.is_visible(timeout).await {
         Ok(result) => {
             info!("Visibility check successful: {}", result);
             Ok(Json(BooleanResponse { result }))
         }
         Err(e) => {
-             // Distinguish between element not found during wait vs. error calling is_visible
+            // Distinguish between element not found during wait vs. error calling is_visible
             if matches!(e, AutomationError::Timeout(_)) {
-                 info!("Element not found while checking visibility: {}", e);
-                 // Return false if the element wasn't found within default timeout
-                 Ok(Json(BooleanResponse { result: false }))
+                info!(
+                    "Element not found or timed out while checking visibility: {}",
+                    e
+                );
+                // Return false if the element wasn't found or visible within timeout
+                Ok(Json(BooleanResponse { result: false }))
+            } else if matches!(e, AutomationError::ElementNotFound(_)) {
+                // This case might occur if the element disappears *after* being found but *before* visibility check
+                info!("Element disappeared while checking visibility: {}", e);
+                Ok(Json(BooleanResponse { result: false })) // Treat disappeared as not visible
             } else {
-                 info!("Failed to check visibility: {}", e);
-                 Err(ApiError::Automation(e))
+                error!("Failed to check visibility: {}", e);
+                Err(e.into())
             }
         }
     }
@@ -509,17 +608,21 @@ async fn press_key_on_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<PressKeyRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, key = %payload.key, "Attempting to press key");
+    info!(chain = ?payload.selector_chain, key = %payload.key, timeout = ?payload.timeout_ms, "Attempting to press key");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
-    match locator.press_key(&payload.key).await { // locator.press_key() includes wait()
+    // Pass timeout to press_key (requires core library update)
+    match locator.press_key(&payload.key, timeout).await {
         Ok(_) => {
             info!("Key pressed successfully");
-            Ok(Json(BasicResponse { message: "Key pressed successfully".to_string() }))
+            Ok(Json(BasicResponse {
+                message: "Key pressed successfully".to_string(),
+            }))
         }
         Err(e) => {
-            info!("Failed to press key: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to press key: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -530,14 +633,19 @@ async fn open_application(
     Json(payload): Json<OpenApplicationRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
     info!(app_name = %payload.app_name, "Attempting to open application");
+    // Desktop::open_application is sync, wrap if needed or keep as is
     match state.desktop.open_application(&payload.app_name) {
         Ok(_) => {
-            info!("Application opened successfully");
-            Ok(Json(BasicResponse { message: format!("Application '{}' opened", payload.app_name) }))
+            info!("Application '{}' opened command issued", payload.app_name);
+            // Maybe add a short delay or wait for window appearance?
+            // For now, just return success message immediately.
+            Ok(Json(BasicResponse {
+                message: format!("Application '{}' open command issued", payload.app_name),
+            }))
         }
         Err(e) => {
-            info!("Failed to open application: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to open application '{}': {}", payload.app_name, e);
+            Err(e.into())
         }
     }
 }
@@ -548,127 +656,146 @@ async fn open_url(
     Json(payload): Json<OpenUrlRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
     info!(url = %payload.url, browser = ?payload.browser, "Attempting to open URL");
-    match state.desktop.open_url(&payload.url, payload.browser.as_deref()) {
+    match state
+        .desktop
+        .open_url(&payload.url, payload.browser.as_deref())
+    {
         Ok(_) => {
-            info!("URL opened successfully");
-            Ok(Json(BasicResponse { message: format!("URL '{}' opened", payload.url) }))
+            info!("URL '{}' opened command issued", payload.url);
+            Ok(Json(BasicResponse {
+                message: format!("URL '{}' open command issued", payload.url),
+            }))
         }
         Err(e) => {
-            info!("Failed to open URL: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to open URL '{}': {}", payload.url, e);
+            Err(e.into())
         }
     }
 }
 
-// --- NEW EXPECT HANDLERS ---
-
-async fn expect_element_visible(
+// Handler for finding a window by criteria
+async fn find_window_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<ExpectRequest>,
+    Json(payload): Json<FindWindowRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element visible");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms); // Uses Locator's default if None
+    info!(criteria = ?payload, "Attempting to find window");
+    let timeout = get_timeout(payload.timeout_ms); // Optional timeout
 
-    match locator.expect_visible(timeout).await {
-        Ok(element) => {
-            info!("Element found and is visible");
-            Ok(Json(ElementResponse::from_element(&element)))
+    // Call the underlying desktop method (needs implementation)
+    match state
+        .desktop
+        .find_window_by_criteria(
+            payload.title_contains.as_deref(),
+            timeout, // Pass timeout
+        )
+        .await
+    {
+        // Make sure find_window_by_criteria is async
+        Ok(window_element) => {
+            info!(
+                "Window found successfully: role={}, label={:?}",
+                window_element.role(),
+                window_element.attributes().label
+            );
+            Ok(Json(ElementResponse::from_element(&window_element)))
         }
         Err(e) => {
-            info!("Expect visible failed: {}", e);
-            Err(ApiError::Automation(e)) // Includes Timeout error
+            error!("Failed to find window with criteria {:?}: {}", payload, e);
+            Err(e.into())
         }
     }
 }
 
-async fn expect_element_enabled(
+// Handler for exploring an element's children
+async fn explore_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<ExpectRequest>,
-) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element enabled");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-     let timeout = get_timeout(payload.timeout_ms);
-
-    match locator.expect_enabled(timeout).await {
-        Ok(element) => {
-            info!("Element found and is enabled");
-            Ok(Json(ElementResponse::from_element(&element)))
+    Json(payload): Json<ExploreRequest>,
+) -> Result<Json<ExploreResponse>, ApiError> {
+    // Handle case where selector_chain might be null/empty for exploring root
+    let locator = match &payload.selector_chain {
+        Some(chain) if !chain.is_empty() => create_locator_for_chain(&state, chain)?,
+        _ => {
+            return Ok(Json(ExploreResponse {
+                parent: ElementResponse {
+                    role: "root".to_string(),
+                    label: None,
+                    id: None,
+                    text: "".to_string(),
+                    bounds: (0.0, 0.0, 0.0, 0.0),
+                    visible: false,
+                    enabled: false,
+                    focused: false,
+                },
+                children: Vec::new(),
+            }));
         }
-        Err(e) => {
-            info!("Expect enabled failed: {}", e);
-            Err(ApiError::Automation(e))
-        }
-    }
-}
+    };
 
-async fn expect_element_text_equals(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<ExpectTextRequest>,
-) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.expected_text, depth = ?payload.max_depth, timeout = ?payload.timeout_ms, "Attempting to expect text equals");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let max_depth = payload.max_depth.unwrap_or(5); // Use default or provided depth
     let timeout = get_timeout(payload.timeout_ms);
+    info!(chain = ?payload.selector_chain, timeout = ?timeout, "Attempting to explore element");
 
-    match locator.expect_text_equals(&payload.expected_text, max_depth, timeout).await {
-        Ok(element) => {
-            info!("Element found and text matches");
-            Ok(Json(ElementResponse::from_element(&element)))
-        }
-        Err(e) => {
-            info!("Expect text equals failed: {}", e);
-            Err(ApiError::Automation(e))
-        }
-    }
+    // Wait for the parent element first, using the timeout
+    let parent_element = locator.wait(timeout).await.map_err(ApiError::from)?;
+    let parent_response = ElementResponse::from_element(&parent_element);
+    let children_details = parent_element.children().map_err(ApiError::from)?;
+
+    // Call the underlying desktop method to explore children (needs implementation)
+    info!(
+        "Exploration successful, found {} children for parent role={}, label={:?}",
+        children_details.len(),
+        parent_response.role,
+        parent_response.label
+    );
+
+    let detailed_children: Vec<ExploredElementDetail> = children_details
+        .clone()
+        .into_iter()
+        .map(|child_element| {
+            let attrs = child_element.attributes();
+            let bounds_res = child_element.bounds();
+            let bounds = match bounds_res {
+                Ok((x, y, width, height)) => Some(BoundsResponse {
+                    x,
+                    y,
+                    width,
+                    height,
+                }),
+                Err(_) => None, // Ignore bounds error for exploration summary
+            };
+            let text = child_element.text(1).unwrap_or_default();
+            // Generate a suggested selector (basic example)
+            let suggested_selector =
+                match (attrs.role.as_str(), child_element.id(), attrs.label.clone()) {
+                    (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
+                    (_, _, Some(name)) if !name.is_empty() => {
+                        format!("name:\"{}\"", name.replace('"', "\""))
+                    } // Escape quotes
+                    (role, _, _) => format!("role:{}", role),
+                };
+
+            ExploredElementDetail {
+                role: attrs.role,
+                name: attrs.label, // Use label as name
+                id: child_element.id(),
+                bounds,
+                value: attrs.value,
+                description: attrs.description,
+                text: Some(text),
+                parent_id: parent_element.id(),
+                children_ids: children_details
+                    .iter()
+                    .map(|child| child.id().unwrap_or_default())
+                    .collect(),
+                suggested_selector,
+            }
+        })
+        .collect();
+
+    Ok(Json(ExploreResponse {
+        parent: parent_response,
+        children: detailed_children,
+    }))
 }
-
-// --- NEW HANDLER for activating app window ---
-
-async fn activate_app_window(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<ChainedRequest>,
-) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, "Attempting to activate app window");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-
-    // First, find the element using wait() to ensure it exists.
-    let element = locator.wait().await?;
-
-    // Then, call the activate_window method.
-    // This method needs to be added to the UIElement and UIElementImpl trait.
-    match element.activate_window() {
-        Ok(_) => {
-            info!("App window activated successfully");
-            Ok(Json(BasicResponse { message: "App window activated successfully".to_string() }))
-        }
-        Err(e) => {
-            info!("Failed to activate app window: {}", e);
-            Err(ApiError::Automation(e))
-        }
-    }
-}
-
-// Add this new handler
-// Handler for activating an application by name
-async fn activate_application_handler(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<ActivateApplicationRequest>,
-) -> Result<Json<BasicResponse>, ApiError> {
-    info!(app_name = %payload.app_name, "Attempting to activate application");
-    match state.desktop.activate_application(&payload.app_name) {
-        Ok(_) => {
-            info!("Application activated successfully");
-            Ok(Json(BasicResponse { message: format!("Application '{}' activated", payload.app_name) }))
-        }
-        Err(e) => {
-            info!("Failed to activate application: {}", e);
-            Err(ApiError::Automation(e))
-        }
-    }
-}
-
-// --- NEW TOP-LEVEL HANDLERS ---
 
 // Handler for opening a file
 async fn open_file(
@@ -678,12 +805,14 @@ async fn open_file(
     info!(file_path = %payload.file_path, "Attempting to open file");
     match state.desktop.open_file(&payload.file_path) {
         Ok(_) => {
-            info!("File opened successfully");
-            Ok(Json(BasicResponse { message: format!("File '{}' opened successfully", payload.file_path) }))
+            info!("File '{}' open command issued", payload.file_path);
+            Ok(Json(BasicResponse {
+                message: format!("File '{}' open command issued", payload.file_path),
+            }))
         }
         Err(e) => {
-            info!("Failed to open file: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to open file '{}': {}", payload.file_path, e);
+            Err(e.into())
         }
     }
 }
@@ -696,14 +825,25 @@ async fn run_command(
     info!(windows = ?payload.windows_command, unix = ?payload.unix_command, "Attempting to run command");
     // Ensure at least one command is provided based on OS or handle error?
     // Current implementation relies on the core library to handle None correctly.
-    match state.desktop.run_command(payload.windows_command.as_deref(), payload.unix_command.as_deref()) {
+    match state
+        .desktop
+        .run_command(
+            payload.windows_command.as_deref(),
+            payload.unix_command.as_deref(),
+        )
+        .await
+    {
+        // Make async
         Ok(output) => {
-            info!("Command executed successfully");
+            info!(
+                "Command executed successfully, exit_code={:?}",
+                output.exit_status
+            );
             Ok(Json(output.into()))
         }
         Err(e) => {
-            info!("Failed to run command: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to run command: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -713,20 +853,21 @@ async fn capture_screen(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ScreenshotResponse>, ApiError> {
     info!("Attempting to capture primary screen");
-    match state.desktop.capture_screen() {
+    match state.desktop.capture_screen().await {
+        // Make async
         Ok(screenshot_result) => {
             info!("Screen captured successfully");
             ScreenshotResponse::try_from(screenshot_result)
                 .map(Json) // Wrap the successful conversion in Json
                 .map_err(|e| {
                     // Handle potential conversion error (though unlikely here)
-                    info!("Failed to encode screenshot: {:?}", e);
+                    error!("Failed to encode screenshot: {:?}", e);
                     ApiError::BadRequest("Failed to encode screenshot data".to_string())
-                 })
+                })
         }
         Err(e) => {
-            info!("Failed to capture screen: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to capture screen: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -737,19 +878,27 @@ async fn capture_monitor(
     Json(payload): Json<CaptureMonitorRequest>,
 ) -> Result<Json<ScreenshotResponse>, ApiError> {
     info!(monitor_name = %payload.monitor_name, "Attempting to capture monitor");
-    match state.desktop.capture_monitor_by_name(&payload.monitor_name) {
-         Ok(screenshot_result) => {
+    match state
+        .desktop
+        .capture_monitor_by_name(&payload.monitor_name)
+        .await
+    {
+        // Make async
+        Ok(screenshot_result) => {
             info!("Monitor captured successfully");
-             ScreenshotResponse::try_from(screenshot_result)
+            ScreenshotResponse::try_from(screenshot_result)
                 .map(Json)
                 .map_err(|e| {
-                    info!("Failed to encode screenshot: {:?}", e);
+                    error!("Failed to encode screenshot: {:?}", e);
                     ApiError::BadRequest("Failed to encode screenshot data".to_string())
-                 })
+                })
         }
         Err(e) => {
-            info!("Failed to capture monitor: {}", e);
-            Err(ApiError::Automation(e))
+            error!(
+                "Failed to capture monitor '{}': {}",
+                payload.monitor_name, e
+            );
+            Err(e.into())
         }
     }
 }
@@ -762,12 +911,18 @@ async fn ocr_image_path(
     info!(image_path = %payload.image_path, "Attempting OCR on image path");
     match state.desktop.ocr_image_path(&payload.image_path).await {
         Ok(text) => {
-            info!("OCR performed successfully");
+            info!(
+                "OCR performed successfully on path '{}'",
+                payload.image_path
+            );
             Ok(Json(OcrResponse { text }))
         }
         Err(e) => {
-            info!("Failed to perform OCR: {}", e);
-            Err(ApiError::Automation(e))
+            error!(
+                "Failed to perform OCR on path '{}': {}",
+                payload.image_path, e
+            );
+            Err(e.into())
         }
     }
 }
@@ -777,14 +932,16 @@ async fn ocr_screenshot_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<OcrScreenshotRequest>,
 ) -> Result<Json<OcrResponse>, ApiError> {
-    info!("Attempting OCR on raw screenshot data");
+    info!(
+        "Attempting OCR on raw screenshot data ({}x{})",
+        payload.width, payload.height
+    );
 
     // Decode the base64 image data
-    let image_data = BASE64_STANDARD.decode(&payload.image_base64)
-        .map_err(|e| {
-            info!("Failed to decode base64 image: {}", e);
-            ApiError::BadRequest("Invalid base64 image data".to_string())
-        })?;
+    let image_data = BASE64_STANDARD.decode(&payload.image_base64).map_err(|e| {
+        error!("Failed to decode base64 image: {}", e);
+        ApiError::BadRequest("Invalid base64 image data".to_string())
+    })?;
 
     // Reconstruct a ScreenshotResult (or similar structure needed by the core function)
     let screenshot_result = terminator::ScreenshotResult {
@@ -800,44 +957,192 @@ async fn ocr_screenshot_handler(
             Ok(Json(OcrResponse { text }))
         }
         Err(e) => {
-            info!("Failed to perform OCR on screenshot data: {}", e);
-            Err(ApiError::Automation(e))
+            error!("Failed to perform OCR on screenshot data: {}", e);
+            Err(e.into())
         }
     }
 }
 
-// Add this handler
-// Handler for activating a browser window by title
+// Handler for activating an application by name (top-level)
+async fn activate_application_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ActivateApplicationRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(app_name = %payload.app_name, "Attempting to activate application by name");
+    // activate_application is sync
+    match state.desktop.activate_application(&payload.app_name) {
+        Ok(_) => {
+            info!(
+                "Application '{}' activated successfully by name",
+                payload.app_name
+            );
+            Ok(Json(BasicResponse {
+                message: format!("Application '{}' activated by name", payload.app_name),
+            }))
+        }
+        Err(e) => {
+            error!(
+                "Failed to activate application '{}' by name: {}",
+                payload.app_name, e
+            );
+            Err(e.into())
+        }
+    }
+}
+
+// Handler for activating a browser window by title (top-level)
 async fn activate_browser_window_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ActivateBrowserWindowRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
     info!(title = %payload.title, "Attempting to activate browser window by title");
-    match state.desktop.activate_browser_window_by_title(&payload.title) {
+    // activate_browser_window_by_title is sync
+    match state
+        .desktop
+        .activate_browser_window_by_title(&payload.title)
+    {
         Ok(_) => {
-            info!("Browser window activated successfully");
-            Ok(Json(BasicResponse { message: format!("Browser window containing title '{}' activated", payload.title) }))
+            info!(
+                "Browser window containing title '{}' activated",
+                payload.title
+            );
+            Ok(Json(BasicResponse {
+                message: format!(
+                    "Browser window containing title '{}' activated",
+                    payload.title
+                ),
+            }))
         }
         Err(e) => {
-            info!("Failed to activate browser window: {}", e);
-            Err(ApiError::Automation(e))
+            error!(
+                "Failed to activate browser window by title '{}': {}",
+                payload.title, e
+            );
+            Err(e.into())
+        }
+    }
+}
+
+// --- NEW EXPECT HANDLERS --- // Restored
+
+async fn expect_element_visible(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element visible");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms); // Uses Locator's default if None
+
+    match locator.expect_visible(timeout).await {
+        Ok(element) => {
+            info!("Element found and is visible");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            error!("Expect visible failed: {}", e);
+            Err(e.into()) // Includes Timeout error
+        }
+    }
+}
+
+async fn expect_element_enabled(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element enabled");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+
+    match locator.expect_enabled(timeout).await {
+        Ok(element) => {
+            info!("Element found and is enabled");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            error!("Expect enabled failed: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+async fn expect_element_text_equals(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpectTextRequest>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, text = %payload.expected_text, depth = ?payload.max_depth, timeout = ?payload.timeout_ms, "Attempting to expect text equals");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let max_depth = payload.max_depth.unwrap_or(5);
+    let timeout = get_timeout(payload.timeout_ms);
+
+    match locator
+        .expect_text_equals(&payload.expected_text, max_depth, timeout)
+        .await
+    {
+        Ok(element) => {
+            info!("Element found and text matches");
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            error!("Expect text equals failed: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+// --- HANDLER for activating app window via element --- // Restored
+
+// Add the placeholder /activate_app handler if needed, or remove from SDK
+async fn activate_app_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ChainedRequest>, // Reuse ChainedRequest with timeout
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to activate app via element locator");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+
+    // 1. Wait for the element
+    let element = locator.wait(timeout).await?; // Assign the result of wait to element
+
+    // 2. Get the containing application/window from the element (needs core implementation)
+    // Example: let app_element = element.containing_application()?; // Needs method on UIElement/Impl
+
+    // 3. Activate the application (using existing desktop method or a new one)
+    // Example: state.desktop.activate_application_by_element(&app_element)?;
+    // Or maybe: element.activate_window()?; (using existing trait method)
+    match element.activate_window() { // Now `element` is defined
+        // Assuming activate_window brings app to front
+        Ok(_) => {
+            info!("Application window containing element activated successfully");
+            Ok(Json(BasicResponse {
+                message: "Application window activated successfully".to_string(),
+            }))
+        }
+        Err(e) => {
+            error!("Failed to activate application window: {}", e);
+            Err(ApiError::from(e)) // Convert AutomationError to ApiError
         }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
-    // use debug mode
-    tracing_subscriber::fmt::Subscriber::builder()
-        .with_max_level(Level::DEBUG)
+    // Use tracing subscriber with settings appropriate for environment
+    tracing_subscriber::fmt() // Use fmt subscriber
+        // Consider .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()) for RUST_LOG control
+        .with_max_level(Level::INFO) // Default to INFO, can override with RUST_LOG=debug
         .init();
 
+    info!("Initializing Terminator server...");
+
     // Initialize the Desktop instance
-    let desktop = Desktop::new(false, true).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    // Make Desktop::new async if it performs async operations internally
+    let desktop = Desktop::new(false, true)
+        .await
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let shared_state = Arc::new(AppState {
         desktop: Arc::new(desktop),
     });
+    info!("Desktop automation backend initialized.");
 
     // Define a permissive CORS policy
     let cors = CorsLayer::new()
@@ -848,6 +1153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build our application with routes and the CORS layer
     let app = Router::new()
         .route("/", get(root))
+        // Core Locator Actions
         .route("/first", post(first))
         .route("/all", post(all))
         .route("/click", post(click_element))
@@ -857,20 +1163,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/get_bounds", post(get_element_bounds))
         .route("/is_visible", post(is_element_visible))
         .route("/press_key", post(press_key_on_element))
+        // New Exploration/Finding Routes
+        .route("/find_window", post(find_window_handler)) // New
+        .route("/explore", post(explore_handler)) // New
+        // Top-Level Desktop Actions
         .route("/open_application", post(open_application))
         .route("/open_url", post(open_url))
-        .route("/activate_app", post(activate_app_window))
-        .route("/activate_application", post(activate_application_handler))
-        .route("/expect_visible", post(expect_element_visible))
-        .route("/expect_enabled", post(expect_element_enabled))
-        .route("/expect_text_equals", post(expect_element_text_equals))
         .route("/open_file", post(open_file))
         .route("/run_command", post(run_command))
         .route("/capture_screen", post(capture_screen))
         .route("/capture_monitor", post(capture_monitor))
+        // Activation Actions
+        .route("/activate_application", post(activate_application_handler)) // Activate by name
+        .route(
+            "/activate_browser_window",
+            post(activate_browser_window_handler),
+        ) // Activate browser by title
+        .route("/activate_app", post(activate_app_handler)) // Added route for activate via element
+        // Expectation Actions
+        .route("/expect_visible", post(expect_element_visible))
+        .route("/expect_enabled", post(expect_element_enabled))
+        .route("/expect_text_equals", post(expect_element_text_equals))
+        // OCR Actions
         .route("/ocr_image_path", post(ocr_image_path))
         .route("/ocr_screenshot", post(ocr_screenshot_handler))
-        .route("/activate_browser_window", post(activate_browser_window_handler))
+        // State and Layers
         .with_state(shared_state)
         .layer(cors); // Add the CORS layer here
 
@@ -882,9 +1199,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(default_port); // Use default if env var not set or invalid
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    info!("listening on {}", addr);
+    info!("Server listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
+    info!("Server shutting down."); // Added shutdown message
+
     Ok(())
-} 
+}

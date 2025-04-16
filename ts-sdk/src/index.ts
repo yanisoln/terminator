@@ -5,6 +5,7 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:9375";
 // General Responses
 export interface BasicResponse {
   message: string;
+  title: string;
 }
 
 export interface BooleanResponse {
@@ -39,6 +40,11 @@ export interface ElementResponse {
   role: string;
   label?: string | null;
   id?: string | null;
+  text?: string | null;
+  bounds?: [number, number, number, number] | null;
+  visible?: boolean | null;
+  enabled?: boolean | null;
+  focused?: boolean | null;
   browser?: string | null;
 }
 
@@ -142,6 +148,37 @@ interface ExpectTextRequest extends ExpectRequest {
 // Add this interface
 interface ActivateBrowserWindowRequest {
   title: string;
+}
+
+// --- NEW Interfaces for FindWindow and Explore ---
+
+export interface FindWindowRequest {
+  title_contains?: string | null;
+  timeout_ms?: number | null;
+}
+
+// Note: FindWindow response uses existing ElementResponse
+
+export interface ExploreRequest {
+  selector_chain?: string[] | null; // Make selector chain optional
+}
+
+export interface ExploredElementDetail {
+  role: string;
+  name?: string | null; // Corresponds to label in ElementResponse
+  id?: string | null;
+  parent_id?: string | null;
+  children_ids?: string[] | null;
+  bounds?: BoundsResponse | null;
+  value?: string | null;
+  description?: string | null;
+  suggested_selector: string;
+  text?: string | null;
+}
+
+export interface ExploreResponse {
+  parent: ElementResponse; // Details of the parent element explored
+  children: ExploredElementDetail[]; // List of direct children details
 }
 
 // --- Custom Error --- //
@@ -429,6 +466,62 @@ export class DesktopUseClient {
     const payload: ActivateBrowserWindowRequest = { title };
     return await this._makeRequest<BasicResponse>("/activate_browser_window", payload);
   }
+
+  // --- NEW findWindow Method ---
+  /**
+   * Finds a top-level window based on specified criteria.
+   * This is often the first step in locating elements within a specific application.
+   * @param criteria - An object containing search criteria like `titleContains` or `processName`.
+   * @param options - Optional settings like `timeout` in milliseconds.
+   * @returns A new Locator instance scoped to the found window element.
+   * @throws {ApiError} If no window is found matching the criteria within the timeout.
+   */
+  async findWindow(
+    criteria: { titleContains?: string | null },
+    options?: { timeout?: number | null }
+  ): Promise<Locator> {
+    if (!criteria.titleContains) {
+      throw new Error("At least one criterion (titleContains) must be provided to findWindow.");
+    }
+    const payload: FindWindowRequest = {
+      title_contains: criteria.titleContains,
+      timeout_ms: options?.timeout,
+    };
+    // Call the backend endpoint to find the window
+    const windowElement = await this._makeRequest<ElementResponse>("/find_window", payload);
+
+    // Construct a "stable" selector for this specific window to create the Locator.
+    // Using the returned ID is the most reliable if available.
+    // Otherwise, fallback to role and name (label).
+    let windowSelector: string;
+    if (windowElement.id) {
+      windowSelector = `#${windowElement.id}`;
+    } else if (windowElement.label) {
+      // Use role:Name format if label exists but ID doesn't
+      windowSelector = `${windowElement.role}:\"${windowElement.label.replace(/"/g, '\\"')}\"`; // Escape quotes
+    } else {
+      // Fallback, though less ideal - might require more specific criteria
+      // Or the backend could return a more specific identifier
+      console.warn(`[DesktopUseClient] Found window (role: ${windowElement.role}) has no ID or Label. Creating locator with role only. Consider using more specific criteria in findWindow.`);
+      windowSelector = `role:${windowElement.role}`; // Less specific fallback
+    }
+
+    console.log(`[DesktopUseClient] Found window, creating locator with selector: ${windowSelector}`);
+    // Return a new Locator instance targeting *only* this specific window
+    return new Locator(this, [windowSelector]);
+  }
+
+  /**
+   * Explores the children of the root element (e.g., the main desktop or default window).
+   * Provides detailed information about each child, useful for discovering the initial structure.
+   * @returns A promise resolving to the exploration results.
+   */
+  async exploreScreen(): Promise<ExploreResponse> {
+    console.log(`[DesktopUseClient] Exploring screen (root element children)`);
+    // Send an empty payload or explicitly null selector_chain
+    const payload: ExploreRequest = { selector_chain: null };
+    return await this._makeRequest<ExploreResponse>("/explore", payload);
+  }
 }
 
 export class Locator {
@@ -437,15 +530,33 @@ export class Locator {
   public readonly _client: DesktopUseClient;
   /** @internal */
   public readonly _selector_chain: string[];
+  /** @internal */
+  private _timeoutMs?: number | null; // Added timeout field
 
   /** @internal */
-  constructor(client: DesktopUseClient, selectorChain: string[]) {
+  constructor(client: DesktopUseClient, selectorChain: string[], timeoutMs?: number | null) { // Added timeout to constructor
     this._client = client;
     this._selector_chain = selectorChain;
+    this._timeoutMs = timeoutMs; // Initialize timeout
+  }
+
+  /**
+   * Sets a timeout for the *next* action or expectation on this locator.
+   * This timeout overrides the default timeout settings for the subsequent operation.
+   * @param ms - The timeout duration in milliseconds.
+   * @returns A new Locator instance with the specified timeout applied.
+   */
+  timeout(ms: number): Locator {
+    if (typeof ms !== 'number' || ms <= 0) {
+      throw new Error("Timeout must be a positive number in milliseconds.");
+    }
+    // Return a new Locator with the timeout set
+    return new Locator(this._client, this._selector_chain, ms);
   }
 
   /**
    * Creates a new Locator instance scoped to the current locator.
+   * Inherits the timeout from the parent locator if set via .timeout().
    * @param selector - The selector string to append to the current chain.
    * @returns A new Locator instance representing the nested element.
    */
@@ -454,52 +565,75 @@ export class Locator {
       throw new Error("Nested selector must be a non-empty string.");
     }
     const newChain = [...this._selector_chain, selector];
-    return new Locator(this._client, newChain);
+    // Pass the current timeout to the new nested locator
+    return new Locator(this._client, newChain, this._timeoutMs);
   }
 
   // --- Action Methods based on server.rs endpoints --- //
 
   /**
    * Finds the first element matching the locator chain.
-   * Waits for the element to appear if it's not immediately available (handled server-side).
+   * Waits for the element to appear if it's not immediately available.
+   * Uses the timeout specified by .timeout() if called previously.
    * @returns A promise resolving to the element's basic details.
    */
   async first(): Promise<ElementResponse> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+    const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+    if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<ElementResponse>("/first", payload);
   }
 
   /**
    * Finds all elements matching the last selector in the chain, within the context
    * established by the preceding selectors.
+   * Uses the timeout specified by .timeout() if called previously (applies to finding the parent context).
    * @returns A promise resolving to an array of element details.
    */
   async all(): Promise<ElementsResponse> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+    if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<ElementsResponse>("/all", payload);
   }
 
   /**
    * Clicks the element identified by the locator chain.
-   * Waits for the element to be actionable (handled server-side).
+   * Waits for the element to be actionable.
+   * Uses the timeout specified by .timeout() if called previously.
    * @returns A promise resolving to details about the click action.
    */
   async click(): Promise<ClickResponse> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+    if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<ClickResponse>("/click", payload);
   }
 
   /**
    * Types the given text into the element identified by the locator chain.
-   * Waits for the element to be actionable (handled server-side).
+   * Waits for the element to be actionable.
+   * Uses the timeout specified by .timeout() if called previously.
    * @param text - The text to type.
    * @returns A promise resolving to a basic response on success.
    */
   async typeText(text: string): Promise<BasicResponse> {
-    const payload: TypeTextRequest = {
+    const payload: TypeTextRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
       selector_chain: this._selector_chain,
       text,
     };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<BasicResponse>(
       "/type_text",
       payload
@@ -508,23 +642,35 @@ export class Locator {
 
   /**
    * Retrieves the text content of the element identified by the locator chain.
+   * Waits for the element first.
+   * Uses the timeout specified by .timeout() if called previously.
    * @param maxDepth - Optional maximum depth to search for text within child elements (defaults to server-side default, e.g., 5).
    * @returns A promise resolving to the element's text content.
    */
   async getText(maxDepth?: number | null): Promise<TextResponse> {
-    const payload: GetTextRequest = {
+    const payload: GetTextRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
       selector_chain: this._selector_chain,
       max_depth: maxDepth,
     };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<TextResponse>("/get_text", payload);
   }
 
   /**
    * Retrieves the attributes of the element identified by the locator chain.
+   * Waits for the element first.
+   * Uses the timeout specified by .timeout() if called previously.
    * @returns A promise resolving to the element's attributes.
    */
   async getAttributes(): Promise<AttributesResponse> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<AttributesResponse>(
       "/get_attributes",
       payload
@@ -533,10 +679,17 @@ export class Locator {
 
   /**
    * Retrieves the bounding rectangle (position and size) of the element identified by the locator chain.
+   * Waits for the element first.
+   * Uses the timeout specified by .timeout() if called previously.
    * @returns A promise resolving to the element's bounds.
    */
   async getBounds(): Promise<BoundsResponse> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<BoundsResponse>(
       "/get_bounds",
       payload
@@ -545,11 +698,18 @@ export class Locator {
 
   /**
    * Checks if the element identified by the locator chain is currently visible.
+   * Waits for the element first.
+   * Uses the timeout specified by .timeout() if called previously.
    * Note: Visibility determination is platform-dependent.
    * @returns A promise resolving to true if the element is visible, false otherwise.
    */
   async isVisible(): Promise<boolean> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     // The server returns BooleanResponse, we extract the boolean result here
     const response = await this._client._makeRequest<BooleanResponse>(
       "/is_visible",
@@ -560,15 +720,20 @@ export class Locator {
 
   /**
    * Sends keyboard key presses to the element identified by the locator chain.
+   * Waits for the element to be actionable.
+   * Uses the timeout specified by .timeout() if called previously.
    * Use syntax expected by the target platform (e.g., "Enter", "Ctrl+A", "%fx" for Alt+Fx).
    * @param key - The key or key combination to press.
    * @returns A promise resolving to a basic response on success.
    */
   async pressKey(key: string): Promise<BasicResponse> {
-    const payload: PressKeyRequest = {
+    const payload: PressKeyRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
       selector_chain: this._selector_chain,
       key,
     };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
     return await this._client._makeRequest<BasicResponse>(
       "/press_key",
       payload
@@ -578,13 +743,24 @@ export class Locator {
   /**
    * Activates the application window associated with the element identified by the locator chain.
    * This typically brings the window to the foreground.
-   * Waits for the element first (handled server-side).
+   * Waits for the element first.
+   * Uses the timeout specified by .timeout() if called previously.
    * @returns The current Locator instance to allow for method chaining.
    * @throws {ApiError} If the server fails to activate the application window.
    */
   async activateApp(): Promise<this> {
-    const payload: ChainedRequest = { selector_chain: this._selector_chain };
-    await this._client._makeRequest<BasicResponse>("/activate_app", payload);
+     const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+        selector_chain: this._selector_chain
+    };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
+    // Endpoint /activate_app doesn't exist in server.rs, assuming it should be added
+    // or maybe it should call activateApplication on the client?
+    // For now, assuming an endpoint '/activate_app' needs to be created.
+    // If it should activate the app containing the *located element*, the backend needs logic for that.
+    console.warn("activateApp() called, but endpoint '/activate_app' needs implementation in server.rs based on the locator chain.");
+    await this._client._makeRequest<BasicResponse>("/activate_app", payload); // Placeholder endpoint
     return this;
   }
 
@@ -593,13 +769,15 @@ export class Locator {
   /**
    * Waits for the element identified by the locator chain to be visible.
    * Throws an error if the element is not visible within the specified timeout.
-   * @param timeout - Optional timeout in milliseconds to override the default.
+   * Uses the timeout specified by .timeout() if called previously, otherwise uses the timeout provided here or the default.
+   * @param timeout - Optional timeout in milliseconds to override the one set by .timeout() or the default.
    * @returns A promise resolving to the element's details if it becomes visible.
    */
   async expectVisible(timeout?: number | null): Promise<ElementResponse> {
     const payload: ExpectRequest = {
       selector_chain: this._selector_chain,
-      timeout_ms: timeout,
+      // Prioritize the timeout argument, then the locator's timeout, then null (default)
+      timeout_ms: timeout ?? this._timeoutMs ?? null,
     };
     return await this._client._makeRequest<ElementResponse>(
       "/expect_visible",
@@ -610,13 +788,15 @@ export class Locator {
   /**
    * Waits for the element identified by the locator chain to be enabled.
    * Throws an error if the element is not enabled within the specified timeout.
-   * @param timeout - Optional timeout in milliseconds to override the default.
+   * Uses the timeout specified by .timeout() if called previously, otherwise uses the timeout provided here or the default.
+   * @param timeout - Optional timeout in milliseconds to override the one set by .timeout() or the default.
    * @returns A promise resolving to the element's details if it becomes enabled.
    */
   async expectEnabled(timeout?: number | null): Promise<ElementResponse> {
     const payload: ExpectRequest = {
       selector_chain: this._selector_chain,
-      timeout_ms: timeout,
+       // Prioritize the timeout argument, then the locator's timeout, then null (default)
+      timeout_ms: timeout ?? this._timeoutMs ?? null,
     };
     return await this._client._makeRequest<ElementResponse>(
       "/expect_enabled",
@@ -628,6 +808,7 @@ export class Locator {
    * Waits for the text content of the element identified by the locator chain
    * to equal the expected text.
    * Throws an error if the text does not match within the specified timeout.
+   * Uses the timeout specified by .timeout() if called previously, otherwise uses the timeout provided here or the default.
    * @param expectedText - The exact text string to wait for.
    * @param options - Optional parameters including maxDepth for text retrieval and timeout.
    * @returns A promise resolving to the element's details if the text matches.
@@ -640,12 +821,35 @@ export class Locator {
       selector_chain: this._selector_chain,
       expected_text: expectedText,
       max_depth: options?.maxDepth,
-      timeout_ms: options?.timeout,
+       // Prioritize the options.timeout argument, then the locator's timeout, then null (default)
+      timeout_ms: options?.timeout ?? this._timeoutMs ?? null,
     };
     return await this._client._makeRequest<ElementResponse>(
       "/expect_text_equals",
       payload
     );
+  }
+
+  // --- NEW explore Method ---
+  /**
+   * Explores the direct children of the element identified by the current locator chain.
+   * Provides detailed information about each child, useful for discovering the structure
+   * and finding selectors for subsequent actions.
+   * Waits for the parent element first.
+   * Uses the timeout specified by .timeout() if called previously.
+   * @returns A promise resolving to the exploration results, including parent details and a list of detailed children.
+   */
+  async explore(): Promise<ExploreResponse> {
+     const payload: ExploreRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+       selector_chain: this._selector_chain
+    };
+     if (this._timeoutMs != null) {
+        payload.timeout_ms = this._timeoutMs;
+    }
+    console.log(`[Locator] Exploring element with chain: ${JSON.stringify(this._selector_chain)} and timeout: ${this._timeoutMs}`);
+    const response = await this._client._makeRequest<ExploreResponse>("/explore", payload);
+    console.log(`[Locator] Exploration found ${response.children.length} children.`);
+    return response;
   }
 }
 
