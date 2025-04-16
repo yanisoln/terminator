@@ -56,6 +56,9 @@ for detailed information on features, installation, usage, and the api, please v
 
 *check the [Vercel's AI SDK tool call example](https://github.com/mediar-ai/terminator/tree/main/examples/pdf-to-form) to use AI with `terminator`.*
 
+*check [how to Vibe Work using MCP](https://github.com/mediar-ai/terminator/tree/main/mcp).*
+
+
 ## key dependencies
 
 *   windows: [uiautomation-rs](https://github.com/leexgone/uiautomation-rs)
