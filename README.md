@@ -19,6 +19,8 @@
 
 it provides a unified api to find and control ui elements like buttons, text fields, windows, and more. because it uses os-level accessibility apis, it is **100x faster and more reliable** for ai agents than vision-based approaches.
 
+`terminator` can also parse and interact with background apps/windows, unlike vision based approach.
+
 > **⚠️ Note 1 ⚠️:** while we support macos and windows, we are currently focusing development efforts on windows, so you will have to figure out yourself how to use the macos version.
 
 > **⚠️ Note 2 ⚠️:** keep in mind it's very experimental, expect many bugs, report it and we'll fix in minutes.
