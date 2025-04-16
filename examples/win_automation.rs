@@ -103,14 +103,14 @@ async fn main() -> Result<(), AutomationError> {
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
     let desktop = Desktop::new(false, true).await.unwrap();
-    desktop.activate_application("firefox")?;
-    let children = desktop.locator("name:patient").all(None).await.unwrap();
+    desktop.activate_application("cursor")?;
+    let children = desktop.locator("role:button").all(None).await.unwrap();
     for child in children.iter() {
         println!("child: {:?}", child.attributes());
         println!("child: {:?}", child.id());
-        child.type_text("hello").unwrap();
+        // child.type_text("hello").unwrap();
         // sleep for 100ms
-        thread::sleep(Duration::from_millis(1000));
+        // thread::sleep(Duration::from_millis(1000));
     }
 
     // let e = desktop.locator("#3575971751213314820").first().unwrap();

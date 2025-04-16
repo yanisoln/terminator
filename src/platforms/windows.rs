@@ -203,6 +203,7 @@ impl AccessibilityEngine for WindowsEngine {
         let condition = match selector {
             Selector::Role { role, name: _ } => {
                 let roles = map_generic_role_to_win_roles(role);
+                debug!("searching elements by role: {}", roles);
                 // create matcher
                 let matcher = self
                     .automation
