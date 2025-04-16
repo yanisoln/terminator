@@ -32,7 +32,7 @@ for detailed information on features, installation, usage, and the api, please v
     ```
 2.  **download & unzip the server (windows cli):**
     ```powershell
-    .\setup_windows.ps1
+    powershell -ExecutionPolicy Bypass -File .\setup_windows.ps1
     ```
 3.  **run the server:**
     ```powershell
