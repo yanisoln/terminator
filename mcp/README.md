@@ -71,6 +71,8 @@ Open a new terminal (like PowerShell or Command Prompt) **separate from the one 
 
 ## Other examples / showcases
 
+scrapping your whole desktop including background windows:
+
 <img width="505" alt="image" src="https://github.com/user-attachments/assets/b21c9f85-1a34-488f-8779-d912071ec273" />
 
 
