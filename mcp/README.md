@@ -2,6 +2,10 @@
 
 This directory contains the Model Context Protocol (MCP) agent that allows AI assistants (like Cursor) to interact with your desktop using the Terminator UI automation library.
 
+<img width="1512" alt="Screenshot 2025-04-16 at 9 29 42 AM" src="https://github.com/user-attachments/assets/457ebaf2-640c-4f21-a236-fcb2b92748ab" />
+
+MCP is useful to test out the `terminator` lib and see what you can do. You can use any model.
+
 ## Prerequisites
 
 1.  **Node.js:** You need Node.js installed. Download it from [nodejs.org](https://nodejs.org/).
