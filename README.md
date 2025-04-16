@@ -3,13 +3,11 @@
 [![docs](https://img.shields.io/badge/read_the-docs-blue)](https://docs.screenpi.pe/terminator/introduction)
 [![discord](https://img.shields.io/discord/1158344578124554270?label=discord)](https://discord.gg/dU9EBuw7Uq)
 
-high level demo:
+### videos 
 
-<https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0>
-
-
-[📹 Technical overview video](https://youtu.be/ycS9G_jpl04)
-
+- [📹 Enterprise PDF to windows legacy app form](https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0)
+- [📹 Technical overview video](https://youtu.be/ycS9G_jpl04)
+- [📹 Technical overview PDF to windows legacy app form](https://www.youtube.com/watch?v=CMw3iexyCMI)
 
 **terminator** is an ai-first cross-platform ui automation library for rust, designed to interact with native gui applications on windows and macos using a playwright-like api.
 
