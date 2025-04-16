@@ -1,5 +1,11 @@
 # Example: PDF to Form Automation
 
+
+
+https://github.com/user-attachments/assets/0539bdf7-4253-47a8-8c1d-0b5da6c2fefd
+
+
+
 This example demonstrates how to use the `terminator` library and the Vercel AI SDK to automate the process of extracting data from a PDF file and filling it into a form (web or desktop native).
 
 The script uses AI to:
