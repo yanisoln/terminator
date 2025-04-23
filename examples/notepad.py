@@ -73,6 +73,17 @@ def run_notepad():
                 save_button = save_dialog.locator(child['suggested_selector'])
                 save_button.click()
                 break
+
+        # This is a workaround to handle the confirmation dialog that appears when saving a file that already exists
+        confirm_overwrite = save_dialog.explore()
+        for child in confirm_overwrite.children:
+            if child.get('role') == 'Window' and child.get('suggested_selector') and 'Confirm Save As' in child.get('text'):
+                save_button = save_dialog.locator(child['suggested_selector'])
+                save_button.locator('Name:Yes').click()
+                break
+
+        print("File saved successfully!")
+
     except ApiError as e:
         print(f"API Status: {e}")
     except Exception as e:
