@@ -76,6 +76,9 @@ Or grab a release from: https://github.com/FlaUI/FlaUInspect/releases
 
 **Usage**:
 - Launch the app
+```powershell
+   FlaUInspect.exe
+``` 
 - Hover or click on elements
 - See properties like:
   - `AutomationId`
