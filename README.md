@@ -58,12 +58,34 @@ for detailed information on features, installation, usage, and the api, please v
 
 *check [how to Vibe Work using MCP](https://github.com/mediar-ai/terminator/tree/main/mcp).*
 
-
 ## key dependencies
 
 *   windows: [uiautomation-rs](https://github.com/leexgone/uiautomation-rs)
 *   macos: [macos accessibility api](https://developer.apple.com/documentation/appkit/nsaccessibility) (considering switch to [cidre](https://github.com/yury/cidre))
-*   debugging: [accessibility insights for windows](https://accessibilityinsights.io/downloads/)
+*   debugging(windows): [accessibility insights for windows](https://accessibilityinsights.io/downloads/)
+
+#### 🔍 alternative debugging tool: FlaUInspect
+
+If you want a slicker tool than Accessibility Insights for inspecting UI Automation properties on windows, try [**FlaUInspect**](https://github.com/FlaUI/FlaUInspect).
+
+**Installation**:
+```powershell
+choco install flauinspect
+```
+Or grab a release from: https://github.com/FlaUI/FlaUInspect/releases
+
+**Usage**:
+- Launch the app
+```powershell
+   FlaUInspect.exe
+``` 
+- Hover or click on elements
+- See properties like:
+  - `AutomationId`
+  - `Name`
+  - `ControlType`
+
+Great for debugging selectors and making your automation more reliable.
 
 ## contributing
 
@@ -72,3 +94,4 @@ contributions are welcome! please feel free to submit issues and pull requests. 
 ## businesses 
 
 if you want desktop automation at scale for your business, [let's talk](https://screenpi.pe/enterprise)
+
