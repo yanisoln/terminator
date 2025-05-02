@@ -45,7 +45,7 @@ export interface ElementResponse {
   visible?: boolean | null;
   enabled?: boolean | null;
   focused?: boolean | null;
-  browser?: string | null;
+  children?: ElementResponse[] | null;
 }
 
 export interface ElementsResponse {
@@ -835,6 +835,25 @@ export class Locator {
     console.log(`[Locator] Exploring element with chain: ${JSON.stringify(this._selector_chain)} and timeout: ${this._timeoutMs}`);
     const response = await this._client._makeRequest<ExploreResponse>("/explore", payload);
     console.log(`[Locator] Exploration found ${response.children.length} children.`);
+    return response;
+  }
+
+  /**
+   * Recursively retrieves all descendant elements of the element identified by the locator chain.
+   * Waits for the initial element first.
+   * Uses the timeout specified by .timeout() if called previously.
+   * @returns A promise resolving to a flat list of all descendant element details.
+   */
+  async getFullTree(): Promise<ElementsResponse> {
+    const payload: ChainedRequest & { timeout_ms?: number | null } = { // Add timeout_ms to payload type
+      selector_chain: this._selector_chain
+    };
+    if (this._timeoutMs != null) {
+      payload.timeout_ms = this._timeoutMs;
+    }
+    console.log(`[Locator] Getting full tree for element with chain: ${JSON.stringify(this._selector_chain)} and timeout: ${this._timeoutMs}`);
+    const response = await this._client._makeRequest<ElementsResponse>("/get_full_tree", payload);
+    console.log(`[Locator] Full tree retrieval found ${response.elements.length} descendant elements.`);
     return response;
   }
 }

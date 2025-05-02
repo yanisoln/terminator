@@ -35,6 +35,7 @@ pub trait AccessibilityEngine: Send + Sync {
         selector: &Selector,
         root: Option<&UIElement>,
         timeout: Option<Duration>,
+        depth: Option<usize>,
     ) -> Result<Vec<UIElement>, AutomationError>;
 
     /// Open an application by name

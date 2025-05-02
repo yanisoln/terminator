@@ -186,6 +186,7 @@ impl AccessibilityEngine for WindowsEngine {
         selector: &Selector,
         root: Option<&UIElement>,
         timeout: Option<Duration>,
+        depth: Option<usize>,
     ) -> Result<Vec<UIElement>, AutomationError> {
         let root_ele = if let Some(el) = root {
             if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
@@ -211,6 +212,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .control_type(roles)
+                    .depth(depth.unwrap_or(50) as u32)
                     .timeout(timeout_ms as u64);
 
                 let elements = matcher.find_all().map_err(|e| {
@@ -286,15 +288,36 @@ impl AccessibilityEngine for WindowsEngine {
 
                 return Ok(collected_elements);
             }
-            Selector::Name(_name) => self
-                .automation
-                .0
-                .create_property_condition(
-                    UIProperty::ControlType,
-                    Variant::from(ControlType::Window as i32),
-                    None,
-                )
-                .unwrap(),
+            Selector::Name(name) => {
+                
+                debug!("searching element by name: {}", name);
+
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .contains_name(name)
+                    .depth(depth.unwrap_or(50) as u32)
+                    .timeout(timeout_ms as u64);
+
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Name: '{}', Err: {}",
+                        name,
+                        e.to_string()
+                    ))
+                })?;
+
+                return Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect());
+            }
             Selector::Text(text) => {
                 let filter = OrFilter {
                     left: Box::new(NameFilter {
@@ -313,7 +336,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .filter(Box::new(filter)) // This is the key improvement from the example
-                    .depth(10) // Search deep enough to find most elements
+                    .depth(depth.unwrap_or(50) as u32) // Search deep enough to find most elements
                     .timeout(timeout_ms as u64); // Allow enough time for search
 
                 // Get the first matching element
@@ -374,6 +397,7 @@ impl AccessibilityEngine for WindowsEngine {
                         last_selector,
                         current_element_root.as_ref(),
                         timeout,
+                        depth,
                     );
                 } else {
                     // Should not happen due to is_empty check, but handle defensively.
@@ -455,6 +479,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .automation
                     .0
                     .create_matcher()
+                    .depth(50)
                     .from_ref(root_ele) // Start search from the correct root
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Calculate the element's ID using the same logic as WindowsUIElement::object_id
@@ -488,6 +513,8 @@ impl AccessibilityEngine for WindowsEngine {
                         let calculated_hash = hasher.finish();
                         let calculated_id_str = calculated_hash.to_string();
 
+
+
                         // Compare with the target ID
                         Ok(calculated_id_str == target_id)
                     }))
@@ -515,7 +542,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .contains_name(name)
-                    .depth(10)
+                    .depth(50)
                     .timeout(timeout_ms as u64);
 
                 let element = matcher.find_first().map_err(|e| {
@@ -549,7 +576,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .filter(Box::new(filter)) // This is the key improvement from the example
-                    .depth(10) // Search deep enough to find most elements
+                    .depth(50) // Search deep enough to find most elements
                     .timeout(timeout_ms as u64); // Allow enough time for search
 
                 // Get the first matching element
@@ -905,7 +932,7 @@ impl AccessibilityEngine for WindowsEngine {
                 control_type: ControlType::TabItem,
             }))
             .contains_name(title)
-            .depth(10)
+            .depth(50)
             .timeout(500);
 
         let window = window_matcher.find_first().map_err(|e| {

@@ -43,11 +43,16 @@ impl Locator {
 
     /// Get all elements matching this locator, waiting up to the specified timeout.
     /// If no timeout is provided, uses the locator's default timeout.
-    pub async fn all(&self, timeout: Option<Duration>) -> Result<Vec<UIElement>, AutomationError> {
+    pub async fn all(&self, timeout: Option<Duration>, depth: Option<usize>) -> Result<Vec<UIElement>, AutomationError> {
         let effective_timeout = timeout.unwrap_or(self.timeout);
         // find_elements itself handles the timeout now
         self.engine
-            .find_elements(&self.selector, self.root.as_ref(), Some(effective_timeout))
+            .find_elements(&self.selector, self.root.as_ref(), Some(effective_timeout), depth)
+    }
+
+    pub async fn first(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
+        let element = self.wait(timeout).await?;
+        Ok(element)
     }
 
     /// Wait for an element matching the locator to appear, up to the specified timeout.

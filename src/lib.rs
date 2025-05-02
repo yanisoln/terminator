@@ -51,9 +51,14 @@ pub struct Desktop {
 
 impl Desktop {
     /// Create a new instance with the default platform-specific implementation
-    pub async fn new(use_background_apps: bool, activate_app: bool) -> Result<Self, AutomationError> {
+    pub async fn new(
+        use_background_apps: bool,
+        activate_app: bool,
+    ) -> Result<Self, AutomationError> {
         let engine = platforms::create_engine(use_background_apps, activate_app)?;
-        Ok(Self { engine: Arc::from(engine) })
+        Ok(Self {
+            engine: Arc::from(engine),
+        })
     }
 
     /// Get the root UI element representing the entire desktop
@@ -116,7 +121,10 @@ impl Desktop {
     }
 
     /// Capture a screenshot of a specific monitor by name (async)
-    pub async fn capture_monitor_by_name(&self, name: &str) -> Result<ScreenshotResult, AutomationError> {
+    pub async fn capture_monitor_by_name(
+        &self,
+        name: &str,
+    ) -> Result<ScreenshotResult, AutomationError> {
         self.engine.capture_monitor_by_name(name).await
     }
 
@@ -126,7 +134,10 @@ impl Desktop {
     }
 
     /// Perform OCR on the provided screenshot data (async)
-    pub async fn ocr_screenshot(&self, screenshot: &ScreenshotResult) -> Result<String, AutomationError> {
+    pub async fn ocr_screenshot(
+        &self,
+        screenshot: &ScreenshotResult,
+    ) -> Result<String, AutomationError> {
         self.engine.ocr_screenshot(screenshot).await
     }
 
@@ -141,6 +152,8 @@ impl Desktop {
         title_contains: Option<&str>,
         timeout: Option<Duration>,
     ) -> Result<UIElement, AutomationError> {
-        self.engine.find_window_by_criteria(title_contains, timeout).await
+        self.engine
+            .find_window_by_criteria(title_contains, timeout)
+            .await
     }
 }

@@ -27,6 +27,7 @@ struct AppState {
 struct ChainedRequest {
     selector_chain: Vec<String>,
     timeout_ms: Option<u64>, // Added timeout
+    depth: Option<usize>,
 }
 
 // Request structure for typing text (with chain)
@@ -493,7 +494,7 @@ async fn all(
     // Pass timeout to all (requires core library update)
     // Note: 'all' might not inherently wait like 'first', timeout might apply
     // differently (e.g., timeout for finding the parent context).
-    match locator.all(timeout).await {
+    match locator.all(timeout, Some(payload.depth.unwrap_or(1))).await {
         Ok(elements) => {
             info!("Found {} elements matching chain", elements.len());
             let response_elements = elements.iter().map(ElementResponse::from_element).collect();
@@ -506,6 +507,56 @@ async fn all(
             Err(e.into())
         }
     }
+}
+
+async fn get_full_tree(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ChainedRequest>,
+) -> Result<Json<ElementsResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get full tree");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+
+    // Define the recursive helper function
+    fn get_children_recursive(element: &UIElement) -> Result<Vec<ElementResponse>, ApiError> {
+        let direct_children_elements = element.children()?;
+        let mut all_descendants: Vec<ElementResponse> = Vec::new();
+
+        for child_element in &direct_children_elements {
+            // 1. Add the direct child itself (converted to ElementResponse)
+            all_descendants.push(ElementResponse::from_element(child_element));
+
+            // 2. Recursively call for this child_element's descendants
+            match get_children_recursive(child_element) { // Recursive call with &UIElement
+                Ok(deeper_responses) => {
+                    // Extend the list with the descendants returned from the recursive call
+                    all_descendants.extend(deeper_responses);
+                }
+                Err(e) => {
+                    // Log error and decide how to proceed (e.g., skip this branch, return error)
+                    error!(
+                        "Error getting children recursively for element {:?}: {:?}",
+                        child_element.id(),
+                        e
+                    );
+                    // Optionally: return Err(e); // Propagate the error up
+                    // Continue processing other children for now.
+                }
+            }
+        }
+
+        Ok(all_descendants) // Return the accumulated list
+    }
+
+    // Find the root element for the subtree
+    let root_element = locator.wait(timeout).await?;
+
+    // Call the recursive function starting from the found root element
+    let elements_in_subtree = get_children_recursive(&root_element)?;
+
+    Ok(Json(ElementsResponse {
+        elements: elements_in_subtree,
+    }))
 }
 
 // Handler for getting element attributes
@@ -1204,6 +1255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/get_bounds", post(get_element_bounds))
         .route("/is_visible", post(is_element_visible))
         .route("/press_key", post(press_key_on_element))
+        .route("/get_full_tree", post(get_full_tree))
         // New Exploration/Finding Routes
         .route("/find_window", post(find_window_handler)) // New
         .route("/explore", post(explore_handler)) // New
