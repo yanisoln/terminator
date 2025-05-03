@@ -93,5 +93,5 @@ contributions are welcome! please feel free to submit issues and pull requests. 
 
 ## businesses 
 
-if you want desktop automation at scale for your business, [let's talk](https://screenpi.pe/enterprise)
+if you want desktop automation at scale for your business, [let's talk](https://mediar.ai)
 
