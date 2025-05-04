@@ -59,7 +59,7 @@ def run_example():
         # 1. Open Calculator
         print("\n--- 1. Opening Application ---")
         # Adjust app name if necessary (e.g., 'Calculator' or 'calc' on Windows)
-        client.open_application("Calc")
+        client.open_application("uwp:Microsoft.WindowsCalculator")
         sleep(2.0) # Allow app to open
 
         # 2. Create locators using chaining
