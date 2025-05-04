@@ -24,11 +24,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::debug;
 use uni_ocr::{OcrEngine, OcrProvider};
 
-use super::tree_search::{ElementFinderWithWindows, ElementsCollectorWithWindows};
+use super::tree_search::ElementsCollectorWithWindows;
 
 // Import the C function for setting attributes
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -1801,7 +1801,11 @@ impl AccessibilityEngine for MacOSEngine {
         selector: &Selector,
         root: Option<&UIElement>,
         _timeout: Option<Duration>, // Timeout not directly supported by macOS AX API like Windows UIA
+        _depth: Option<usize>,      // Depth parameter required by trait
     ) -> Result<Vec<UIElement>, AutomationError> {
+        let start_time = Instant::now();
+        let mut results: Vec<UIElement> = Vec::new();
+
         let start_element = if let Some(el) = root {
             // Try to downcast to MacOSUIElement to get the underlying AXUIElement
             if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
@@ -1969,7 +1973,8 @@ impl AccessibilityEngine for MacOSEngine {
                     for root_element in &current_roots {
                         // Find elements matching the current selector within the current root
                         let found_elements =
-                            self.find_elements(selector, Some(root_element), _timeout)?;
+                            self.find_elements(selector, Some(root_element), _timeout, None)
+                                .map_err(|e| AutomationError::PlatformError(format!("Recursive find_elements failed: {}", e)))?;
 
                         if is_last_selector {
                             // If it's the last selector, collect all found elements
@@ -2169,7 +2174,7 @@ impl AccessibilityEngine for MacOSEngine {
                 for selector in selectors {
                     // Find exactly one element matching the current selector within the current element
                     let found_elements =
-                        self.find_elements(selector, Some(&current_element), _timeout)?;
+                        self.find_elements(selector, Some(&current_element), _timeout, None)?;
 
                     match found_elements.len() {
                         1 => {
