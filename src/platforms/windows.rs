@@ -202,11 +202,11 @@ impl AccessibilityEngine for WindowsEngine {
 
         // make condition according to selector
         let condition = match selector {
-            Selector::Role { role, name: _ } => {
+            Selector::Role { role, name } => {
                 let roles = map_generic_role_to_win_roles(role);
                 debug!("searching elements by role: {}", roles);
                 // create matcher
-                let matcher = self
+                let mut matcher = self
                     .automation
                     .0
                     .create_matcher()
@@ -214,6 +214,12 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(roles)
                     .depth(depth.unwrap_or(50) as u32)
                     .timeout(timeout_ms as u64);
+
+                if let Some(name) = name {
+                    // use contains_name, its undetermined right now
+                    // wheather we should use `name` or `contains_name`
+                    matcher = matcher.contains_name(name);
+                }
 
                 let elements = matcher.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
