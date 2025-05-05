@@ -36,14 +36,25 @@ for detailed information on features, installation, usage, and the api, please v
     git clone https://github.com/mediar-ai/terminator
     cd terminator
     ```
-2.  **download & unzip the server (windows cli):**
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File .\setup_windows.ps1
-    ```
+2.  **build or download the server:**
+    *   **Windows:** Download & unzip the pre-built server:
+      ```powershell
+      powershell -ExecutionPolicy Bypass -File .\setup_windows.ps1
+      ```
+    *   **macOS:** Compile the server using Rust/Cargo:
+      ```bash
+      # Ensure you have Rust and Xcode Command Line Tools installed
+      cargo build
+      ```
 3.  **run the server:**
-    ```powershell
-    ./server_release/server.exe --debug
-    ```
+    *   **Windows:**
+      ```powershell
+      ./server_release/server.exe --debug
+      ```
+    *   **macOS:**
+      ```bash
+      ./target/debug/examples/server --debug
+      ```
 4.  **run an example client (in another terminal):**
     ```bash
     cd examples/hello-world
