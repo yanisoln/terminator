@@ -13,6 +13,7 @@ pub mod platforms;
 mod selector;
 #[cfg(test)]
 mod tests;
+pub mod utils;
 
 pub use element::{UIElement, UIElementAttributes};
 pub use errors::AutomationError;

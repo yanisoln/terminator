@@ -19,6 +19,9 @@ pub trait AccessibilityEngine: Send + Sync {
     /// Get application by name
     fn get_application_by_name(&self, name: &str) -> Result<UIElement, AutomationError>;
 
+    /// Get application by process ID
+    fn get_application_by_pid(&self, pid: i32) -> Result<UIElement, AutomationError>;
+
     /// Find elements using a selector
     fn find_element(
         &self,

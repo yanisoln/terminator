@@ -1796,6 +1796,20 @@ impl AccessibilityEngine for MacOSEngine {
         )))
     }
 
+    fn get_application_by_pid(&self, pid: i32) -> Result<UIElement, AutomationError> {
+        // Create an AXUIElement for the application with the given PID
+        let app_element = ThreadSafeAXUIElement::application(pid);
+
+        // Check if the element is valid by getting its role
+        match app_element.0.role() {
+            Ok(role) if role.to_string() == "AXApplication" => Ok(self.wrap_element(app_element)),
+            _ => Err(AutomationError::ElementNotFound(format!(
+                "Application with PID {} not found",
+                pid
+            ))),
+        }
+    }
+
     fn find_elements(
         &self,
         selector: &Selector,
