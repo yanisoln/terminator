@@ -44,7 +44,7 @@ for detailed information on features, installation, usage, and the api, please v
     *   **macOS:** Compile the server using Rust/Cargo:
       ```bash
       # Ensure you have Rust and Xcode Command Line Tools installed
-      cargo build
+      cargo build --examples
       ```
 3.  **run the server:**
     *   **Windows:**
