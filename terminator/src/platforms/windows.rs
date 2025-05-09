@@ -480,7 +480,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(roles)
                     .timeout(timeout_ms as u64);
 
-                debug!("searching element by role: {}, from: {:?}", role, root_ele);
+                debug!("searching element by role: {}, from: {:?}", roles, root_ele);
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
                         "Role: '{}', Root: {:?}, Err: {}",
@@ -1886,7 +1886,7 @@ fn map_generic_role_to_win_roles(role: &str) -> ControlType {
         "text" => ControlType::Text,
         "tree" => ControlType::Tree,
         "treeitem" => ControlType::TreeItem,
-        "data" | "dataitem" => ControlType::DataGrid,
+        "data" | "dataitem" => ControlType::DataItem,
         "datagrid" => ControlType::DataGrid,
         "url" | "urlfield" => ControlType::Edit,
         "list" => ControlType::List,

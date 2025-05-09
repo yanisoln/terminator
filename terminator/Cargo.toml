@@ -1,0 +1,46 @@
+[package]
+name = "terminator"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+anyhow = "1.0.97"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tokio = { version = "1.44.2", features = ["full"] }
+
+# OCR / Vision
+xcap = "0.5.0"
+image = "0.25.6"
+uni-ocr = { git = "https://github.com/mediar-ai/uniOCR", branch = "main" }
+tempfile = "3.19.1"
+async-trait = "0.1.88"
+base64 = "0.22.1"
+
+[lib]
+name = "terminator"
+path = "src/lib.rs"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accessibility-sys = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
+accessibility = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
+objc = "0.2.7"
+objc-foundation = "0.1.1"
+
+core-foundation = "=0.10.0"
+core-graphics = { version = "0.24.0", features = ["highsierra"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+uiautomation = { version = "0.18.0" }
+sysinfo = "0.34.2"
+
+[[example]]
+name = "server"
+path = "examples/server.rs"
+
+[dev-dependencies]
+axum = "0.8.3"
+tower-http = { version = "0.6.2", features = ["cors", "limit"] }

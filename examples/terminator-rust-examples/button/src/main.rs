@@ -10,7 +10,7 @@ fn main() -> Result<(), eframe::Error> {
     let options = NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_position([900.0, 800.0])
-            .with_inner_size([200.0, 50.0]) // Initial window size
+            .with_inner_size([300.0, 120.0]) // Adjusted window size
             .with_resizable(true)
             .with_decorations(false) // Hide window decorations
             .with_always_on_top(), // Keep window on top
@@ -37,6 +37,7 @@ struct MyApp {
     last_update_time: Option<Instant>,
     rng: rand::rngs::ThreadRng,
     processing_texts: Vec<String>,
+    prompt_text: String, // Added field for prompt input
 }
 
 impl Default for MyApp {
@@ -51,6 +52,7 @@ impl Default for MyApp {
                 "processing...".to_owned(),
                 "thinking...".to_owned(),
             ],
+            prompt_text: String::new(), // Initialize prompt_text
         }
     }
 }
@@ -89,29 +91,36 @@ impl App for MyApp {
                     );
 
                 } else {
-                    // When not processing, show the clickable button
-                    ui.add_enabled_ui(true, |ui| { // `true` because it's enabled here
-                        // Use RichText for icon and larger font
-                        let button_text = egui::RichText::new(format!("\u{25B6} {}", self.button_text))
-                            .size(20.0); // Set font size
-
-                        let button = egui::Button::new(button_text)
-                            .fill(egui::Color32::YELLOW); // Keep background color yellow
-
-                        let button_response = ui.add_sized(
-                            desired_size, // Use the calculated size
-                            button,
+                    // When not processing, show input field and button
+                    ui.vertical_centered_justified(|ui| { // Center and justify content
+                        // Input field for the prompt
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.prompt_text)
+                                .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)) // Corrected font setting
+                                .min_size(egui::vec2(ui.available_width(), 60.0)) // Set a minimum height
+                                .desired_width(f32::INFINITY) // Fill available width
+                                .hint_text("Enter your prompt here...")
                         );
 
-                        if button_response.clicked() {
+                        ui.add_space(4.0); // Space between input and button
+
+                        // Button
+                        let button_text_display = egui::RichText::new(format!("\u{25B6} {}", self.button_text))
+                            .size(20.0); // Font size for button text
+                        
+                        let start_button = egui::Button::new(button_text_display)
+                            .fill(egui::Color32::YELLOW)
+                            .min_size(egui::vec2(ui.available_width(), 30.0)); // Fill width, specific height
+
+                        if ui.add(start_button).clicked() {
+                            println!("Using prompt: '{}'", self.prompt_text); // Print the prompt
+                            // Original button click logic
                             println!("Button clicked! Starting processing...");
                             self.is_processing = true;
-                            // self.button_text = "processing....".to_owned(); // Text is now handled below
                             self.last_update_time = Some(Instant::now());
-                            // Initialize with a random processing text immediately
                             let next_text_index = self.rng.gen_range(0..self.processing_texts.len());
                             self.button_text = self.processing_texts[next_text_index].clone();
-                            // Add actual processing logic trigger here
+                            // self.prompt_text.clear(); // Optional: clear prompt after submission
                         }
                     });
                 }

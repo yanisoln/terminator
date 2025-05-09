@@ -1,0 +1,30 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Mediar Terminator Project Overview
+
+Mediar Terminator is an AI-first, cross-platform UI automation engine written in Rust.
+
+## Key Features:
+- **Cross-Platform UI Automation:** Controls native Windows and macOS applications.
+- **Accessibility API Integration:** Interacts with applications via accessibility APIs, not computer vision. This ensures reliability and speed.
+- **Agentic Workflows:** Designed specifically for agentic AI workflows.
+- **Playwright-style API:** Offers a familiar and powerful API for developers.
+- **Windows First:** Prioritizes Windows platform development and support.
+
+## Use Cases:
+- PDF-to-form autofill
+- End-to-end application automation
+- Embedded copilots
+
+## Technical Highlights:
+- **Performance:** Optimized for speed and reliability.
+- **Deep GUI Introspection:** Allows for detailed understanding and manipulation of UI elements.
+- **Modularity:** Code is structured in a modular fashion.
+- **Asynchronous:** Built with async capabilities for efficient operation.
+- **Integration-Friendly:** Designed for easy integration with LLM agents and external SDKs (e.g., Vercel AI).
+
+## Core Focus:
+The primary goal is to provide a fast, reliable, and deeply introspective UI automation engine, particularly for Windows applications, enabling advanced AI-driven automation tasks.

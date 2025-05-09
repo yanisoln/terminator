@@ -2,7 +2,7 @@ use std::time::Duration;
 use std::{hash::Hash, thread};
 
 use terminator::{AutomationError, Desktop, Selector, platforms};
-use tracing::Level;
+use tracing::{debug, Level};
 
 // like a playground, just uncomment
 #[tokio::main]
@@ -103,15 +103,30 @@ async fn main() -> Result<(), AutomationError> {
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
     let desktop = Desktop::new(false, true).await.unwrap();
-    let window = desktop.find_window_by_criteria(Some("v0 App"), Some(Duration::from_secs(10))).await.unwrap();
-    println!("window: {:?}", window.id());
-    let element = window
-        .locator(Selector::Id("9749738189699439770".to_string())).unwrap()
-        .first(Some(Duration::from_secs(10))).await.unwrap();
+    let window = desktop.find_window_by_criteria(Some("Excel"), Some(Duration::from_secs(10))).await.unwrap();
+    // println!("window: {:?}", window.id());
+    // let element = window
+    //     .locator(Selector::Id("9749738189699439770".to_string())).unwrap()
+    //     .first(Some(Duration::from_secs(10))).await.unwrap();
     // element.type_text("hello").unwrap();
 
-    println!("element: {:?}", element);
-    element.type_text("hello").unwrap();
+    // println!("element: {:?}", element);
+    // element.type_text("hello").unwrap();
+
+
+// find all data items
+window.focus().unwrap();
+    let data_items = window.locator(Selector::Name("A1".to_string())).unwrap().first(None).await.unwrap();
+    debug!("data_items: {:?}", data_items.attributes());
+    // type text in the data items
+    data_items.click().unwrap();
+    // ctrl v
+    data_items.press_key("{Ctrl}v").unwrap();
+    // for item in data_items.iter() {
+    //     println!("item: {:?}", item.attributes());
+    //     item.type_text("hello").unwrap();
+    // }
+    
     // for e in element.iter() {
     //     println!("e: {:?}", e.attributes());
     //     println!("e: {:?}", e.id());
