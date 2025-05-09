@@ -9,7 +9,7 @@
     </a>
 </p>
 
-**Terminator** is an AI-first, cross-platform UI automation library for Rust. It's designed to interact with native GUI applications on Windows using a Playwright-like API, like parsing a website. By leveraging OS-level accessibility APIs, Terminator is significantly faster and more reliable for AI agents than vision-based approaches, and can interact with background applications.
+**Terminator** is the fastest, AI-first, computer use SDK. It's designed to interact with native GUI applications on Windows using a Playwright-like API, like parsing a website. By leveraging OS-level accessibility APIs, Terminator is significantly faster and more reliable for AI agents than vision-based approaches, and can interact with background applications.
 
 > **⚠️ Experimental ⚠️:** Terminator is under active development. Expect bugs and breaking changes. Please report issues – we aim to fix them quickly!
 
