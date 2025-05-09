@@ -34,7 +34,8 @@
 
 Check out Terminator in action:
 
-- [📹 Enterprise PDF to Windows Legacy App Form](https://github.com/user-attachments/assets/024c06fa-19f2-4fc9-b52d-329768ee52d0)
+- [📹 Desktop Copilot that autocompletes your work in real time](https://www.youtube.com/watch?v=FGywvWJY7wc)
+- [📹 AI Agent that process 100 insurance claims in 5 minutes](https://www.youtube.com/watch?v=6wMNNQFj_dw)
 - [📹 Technical Overview Video](https://youtu.be/ycS9G_jpl04)
 - [📹 Technical Overview: PDF to Windows Legacy App Form](https://www.youtube.com/watch?v=CMw3iexyCMI)
 
