@@ -60,6 +60,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // New method for keyboard focusable
     fn is_keyboard_focusable(&self) -> Result<bool, AutomationError>;
+
+    // New method for mouse drag
+    fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> Result<(), AutomationError>;
 }
 
 impl UIElement {
@@ -192,6 +195,11 @@ impl UIElement {
     /// Check if element is keyboard focusable
     pub fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
         self.inner.is_keyboard_focusable()
+    }
+
+    /// Drag mouse from start to end coordinates
+    pub fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> Result<(), AutomationError> {
+        self.inner.mouse_drag(start_x, start_y, end_x, end_y)
     }
 }
 
