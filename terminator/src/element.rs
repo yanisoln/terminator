@@ -15,10 +15,12 @@ pub struct UIElement {
 #[derive(Debug)]
 pub struct UIElementAttributes {
     pub role: String,
+    pub name: Option<String>,
     pub label: Option<String>,
     pub value: Option<String>,
     pub description: Option<String>,
     pub properties: HashMap<String, Option<serde_json::Value>>,
+    pub is_keyboard_focusable: Option<bool>,
 }
 
 /// Interface for platform-specific element implementations
@@ -27,6 +29,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     fn id(&self) -> Option<String>;
     fn role(&self) -> String;
     fn attributes(&self) -> UIElementAttributes;
+    fn name(&self) -> Option<String> {
+        self.attributes().name
+    }
     fn children(&self) -> Result<Vec<UIElement>, AutomationError>;
     fn parent(&self) -> Result<Option<UIElement>, AutomationError>;
     fn bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError>; // x, y, width, height
@@ -52,6 +57,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // Add a method to clone the box
     fn clone_box(&self) -> Box<dyn UIElementImpl>;
+
+    // New method for keyboard focusable
+    fn is_keyboard_focusable(&self) -> Result<bool, AutomationError>;
 }
 
 impl UIElement {
@@ -174,6 +182,16 @@ impl UIElement {
     /// Activate the window containing this element (bring to foreground)
     pub fn activate_window(&self) -> Result<(), AutomationError> {
         self.inner.activate_window()
+    }
+
+    /// Get the element's name
+    pub fn name(&self) -> Option<String> {
+        self.inner.name()
+    }
+
+    /// Check if element is keyboard focusable
+    pub fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
+        self.inner.is_keyboard_focusable()
     }
 }
 

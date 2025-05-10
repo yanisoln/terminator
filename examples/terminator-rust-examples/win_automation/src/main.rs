@@ -1,20 +1,17 @@
 use std::time::Duration;
-use std::{hash::Hash, thread};
 
 use terminator::{AutomationError, Desktop, Selector, platforms};
-use tracing::{debug, Level};
+use tracing::{Level, debug};
 
 // like a playground, just uncomment
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
-    let engine = platforms::create_engine(true, true)?;
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
         .init();
     // get the root element
     // let root_element = engine.get_root_element();
     // println!("root element: {:?}", root_element);
-
     // Get an element by process id
     // let element_by_id = engine.get_element_by_id(12304)?;
     // println!("element by pid: {:?}", element_by_id);
@@ -103,7 +100,32 @@ async fn main() -> Result<(), AutomationError> {
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
     let desktop = Desktop::new(false, true).await.unwrap();
-    let window = desktop.find_window_by_criteria(Some("Excel"), Some(Duration::from_secs(10))).await.unwrap();
+    // desktop.activate_browser_window_by_title("Excel")?;
+    // let window = desktop.get_current_browser_window().await.unwrap();
+    // println!("window: {:?}", window.attributes());
+    // println!("window: {:?}", window.text(5).unwrap_or_default());
+    // println!("window: {:?}", window.id());
+    // let window = window
+    //     .locator(Selector::Role { role: "edit".to_string(), name: None }).unwrap()
+    //     .all(Some(Duration::from_secs(10)), None)
+    //     .await
+    //     .unwrap();
+    // for w in window.iter() {
+    //     println!("w: {:?}", w.name());
+    //     println!("w: {:?}", w.attributes());
+    // }
+    // desktop.activate_browser_window_by_title("Excel")?;
+    let app = desktop.application("Excel").unwrap();
+    // let window = app..locator(Selector::Role { role: "window".to_string(), name: None }).unwrap().first(None).await.unwrap();
+    println!("app: {:?}", app.attributes());
+    println!("app: {:?}", app.text(5).unwrap_or_default());
+    println!("app: {:?}", app.id());
+
+    // let window = desktop.get_current_browser_window().await.unwrap();
+    // println!("window: {:?}", window.attributes());
+    // println!("window: {:?}", window.text(5).unwrap_or_default());
+    // println!("window: {:?}", window.id());
+    // let window = desktop.find_window_by_criteria(Some("Excel"), Some(Duration::from_secs(10))).await.unwrap();
     // println!("window: {:?}", window.id());
     // let element = window
     //     .locator(Selector::Id("9749738189699439770".to_string())).unwrap()
@@ -113,25 +135,24 @@ async fn main() -> Result<(), AutomationError> {
     // println!("element: {:?}", element);
     // element.type_text("hello").unwrap();
 
-
-// find all data items
-window.focus().unwrap();
-    let data_items = window.locator(Selector::Name("A1".to_string())).unwrap().first(None).await.unwrap();
-    debug!("data_items: {:?}", data_items.attributes());
-    // type text in the data items
-    data_items.click().unwrap();
-    // ctrl v
-    data_items.press_key("{Ctrl}v").unwrap();
+    // find all data items
+    // window.focus().unwrap();
+    //     let data_items = window.locator(Selector::Name("A1".to_string())).unwrap().first(None).await.unwrap();
+    //     debug!("data_items: {:?}", data_items.attributes());
+    //     // type text in the data items
+    //     data_items.click().unwrap();
+    //     // ctrl v
+    //     data_items.press_key("{Ctrl}v").unwrap();
     // for item in data_items.iter() {
     //     println!("item: {:?}", item.attributes());
     //     item.type_text("hello").unwrap();
     // }
-    
+
     // for e in element.iter() {
     //     println!("e: {:?}", e.attributes());
     //     println!("e: {:?}", e.id());
     //     e.type_text("hello").unwrap();
-        
+
     // }
     // println!("element: {:?}", element.first().unwrap().attributes());
     // let text = element.first().unwrap().text(50).unwrap_or_default();

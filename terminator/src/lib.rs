@@ -157,4 +157,9 @@ impl Desktop {
             .find_window_by_criteria(title_contains, timeout)
             .await
     }
+
+    /// Get the currently focused browser window (async)
+    pub async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
+        self.engine.get_current_browser_window().await
+    }
 }

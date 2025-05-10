@@ -711,6 +711,7 @@ impl UIElementImpl for MacOSUIElement {
 
             let mut attrs = UIElementAttributes {
                 role: "window".to_string(),
+                name: None,
                 label: None,
                 value: None,
                 description: None,
@@ -730,10 +731,12 @@ impl UIElementImpl for MacOSUIElement {
                 let title_attr = AXAttribute::new(&CFString::new(title_attr_name));
                 if let Ok(value) = self.element.0.attribute(&title_attr) {
                     if let Some(cf_string) = value.downcast_into::<CFString>() {
-                        attrs.label = Some(cf_string.to_string());
+                        let title = cf_string.to_string();
+                        attrs.name = Some(title.clone());
+                        attrs.label = Some(title);
                         debug!(
                             "Found window title via {}: {:?}",
-                            title_attr_name, attrs.label
+                            title_attr_name, attrs.name
                         );
                         break;
                     }
@@ -768,6 +771,7 @@ impl UIElementImpl for MacOSUIElement {
         let mut attrs = UIElementAttributes {
             // Use our role() method which handles the mapping of AXMenuItem to button
             role: self.role(),
+            name: None,
             label: None,
             value: None,
             description: None,
@@ -782,8 +786,10 @@ impl UIElementImpl for MacOSUIElement {
         match self.element.0.attribute(&label_attr) {
             Ok(value) => {
                 if let Some(cf_string) = value.downcast_into::<CFString>() {
-                    attrs.label = Some(cf_string.to_string());
-                    debug!("Found AXTitle: {:?}", attrs.label);
+                    let title = cf_string.to_string();
+                    attrs.name = Some(title.clone());
+                    attrs.label = Some(title);
+                    debug!("Found AXTitle: {:?}", attrs.name);
                 }
             }
             Err(e) => {
@@ -793,8 +799,10 @@ impl UIElementImpl for MacOSUIElement {
                 let alt_label_attr = AXAttribute::new(&CFString::new("AXLabel"));
                 if let Ok(value) = self.element.0.attribute(&alt_label_attr) {
                     if let Some(cf_string) = value.downcast_into::<CFString>() {
-                        attrs.label = Some(cf_string.to_string());
-                        debug!("Found AXLabel: {:?}", attrs.label);
+                        let label = cf_string.to_string();
+                        attrs.name = Some(label.clone());
+                        attrs.label = Some(label);
+                        debug!("Found AXLabel: {:?}", attrs.name);
                     }
                 }
             }
@@ -2625,6 +2633,13 @@ impl AccessibilityEngine for MacOSEngine {
             title_contains
         )))
     }
+
+    async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "get_current_browser_window not yet implemented for macOS".to_string(),
+        ))
+    }
+
 
     fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
         let app_element = self.get_application_by_name(app_name)?;

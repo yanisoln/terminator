@@ -27,6 +27,41 @@ use uni_ocr::{OcrEngine, OcrProvider};
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
+// List of common browser process names (without .exe)
+const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
+    "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc"
+];
+
+// Helper function to get process name by PID using PowerShell
+fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
+    let command = format!(
+        "Get-Process -Id {} | Select-Object -ExpandProperty ProcessName",
+        pid
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
+        .output()
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to execute PowerShell to get process name: {}", e)))?;
+
+    if output.status.success() {
+        let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if process_name.is_empty() {
+            Err(AutomationError::PlatformError(format!(
+                "Process name not found for PID {}",
+                pid
+            )))
+        } else {
+            Ok(process_name)
+        }
+    } else {
+        let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(AutomationError::PlatformError(format!(
+            "PowerShell command failed to get process name for PID {}: {}",
+            pid, err_msg
+        )))
+    }
+}
+
 // thread-safety
 #[derive(Clone)]
 pub struct ThreadSafeWinUIAutomation(Arc<UIAutomation>);
@@ -222,24 +257,30 @@ impl AccessibilityEngine for WindowsEngine {
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
 
         // make condition according to selector
-        let condition = match selector {
+        match selector {
             Selector::Role { role, name: _ } => {
                 let roles = map_generic_role_to_win_roles(role);
-                debug!("searching elements by role: {}", roles);
-                // create matcher
-                let matcher = self
+                debug!("searching elements by role: {} within subtree", roles);
+                
+                // Create a condition for the control type
+                let condition = self
                     .automation
                     .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .control_type(roles)
-                    .depth(depth.unwrap_or(50) as u32)
-                    .timeout(timeout_ms as u64);
+                    .create_property_condition(
+                        UIProperty::ControlType,
+                        Variant::from(roles as i32),
+                        None,
+                    )
+                    .unwrap();
 
-                let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
-                })?;
-                debug!("found {} elements with role: {}", elements.len(), role);
+                // Use find_all with TreeScope::Subtree to ensure we only search within the root element's subtree
+                let elements = root_ele
+                    .find_all(TreeScope::Subtree, &condition)
+                    .map_err(|e| {
+                        AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
+                    })?;
+
+                debug!("found {} elements with role: {} within subtree", elements.len(), role);
                 return Ok(elements
                     .into_iter()
                     .map(|ele| {
@@ -399,55 +440,57 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Find the parent element based on all selectors except the last one.
-                let mut current_element_root = root.cloned();
-                if selectors.len() > 1 {
-                    for selector in &selectors[..selectors.len() - 1] {
-                        // Use find_element to traverse the chain up to the parent
-                        let found_parent =
-                            self.find_element(selector, current_element_root.as_ref(), timeout)?;
-                        current_element_root = Some(found_parent);
+                // Start with the initial root
+                let mut current_roots = if let Some(root) = root {
+                    vec![Some(root.clone())]
+                } else {
+                    vec![None]
+                };
+
+                // Iterate through selectors, refining the list of matching elements
+                for (i, selector) in selectors.iter().enumerate() {
+                    let mut next_roots = Vec::new();
+                    let is_last_selector = i == selectors.len() - 1;
+
+                    for root_element in &current_roots {
+                        // Find elements matching the current selector within the current root
+                        let found_elements = self.find_elements(
+                            selector,
+                            root_element.as_ref(),
+                            timeout,
+                            depth,
+                        )?;
+
+                        if is_last_selector {
+                            // If it's the last selector, collect all found elements
+                            next_roots.extend(found_elements.into_iter().map(Some));
+                        } else {
+                            // If not the last selector, and we found exactly one element,
+                            // use it as the root for the next iteration.
+                            if found_elements.len() == 1 {
+                                next_roots.push(Some(found_elements.into_iter().next().unwrap()));
+                            } else {
+                                // If 0 or >1 elements found before the last selector,
+                                // it means the path diverged or ended. No elements match the full chain.
+                                next_roots.clear();
+                                break;
+                            }
+                        }
+                    }
+
+                    current_roots = next_roots;
+                    if current_roots.is_empty() && !is_last_selector {
+                        // If no elements were found matching an intermediate selector, break early.
+                        break;
                     }
                 }
 
-                // Use the last selector to find all matching elements within the final parent.
-                if let Some(last_selector) = selectors.last() {
-                    // Call find_elements with the last selector and the found parent
-                    return self.find_elements(
-                        last_selector,
-                        current_element_root.as_ref(),
-                        timeout,
-                        depth,
-                    );
-                } else {
-                    // Should not happen due to is_empty check, but handle defensively.
-                    // If there's only one selector, find_elements is called directly.
-                    // This branch essentially handles the case of a single-selector chain,
-                    // which shouldn't occur if selectors.len() > 1 condition is met above.
-                    // If len is 1, the last_selector will be the only selector.
-                    // Let's simplify: if len == 1, the loop is skipped, and we directly call find_elements.
-                    // If len > 1, we find the parent and then call find_elements.
-                    // The case selectors.last() is always Some here because of the is_empty check.
-                    // Therefore, this else branch is unreachable. We can remove it or log an error.
-                    // Let's return an empty vec for safety, though it indicates a logic issue if reached.
-                    debug!("Unreachable code reached in find_elements Selector::Chain");
-                    return Ok(Vec::new());
-                }
+                // Convert Vec<Option<UIElement>> to Vec<UIElement> by filtering out None values
+                return Ok(current_roots.into_iter().filter_map(|x| x).collect());
             }
         };
 
-        let elements = root_ele
-            .find_all(TreeScope::Subtree, &condition)
-            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
-        let arc_elements: Vec<UIElement> = elements
-            .into_iter()
-            .map(|ele| {
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
-            })
-            .collect();
 
-        Ok(arc_elements)
     }
 
     fn find_element(
@@ -471,22 +514,29 @@ impl AccessibilityEngine for WindowsEngine {
         match selector {
             Selector::Role { role, name: _ } => {
                 let roles = map_generic_role_to_win_roles(role);
-                // use create matcher api
-                let matcher = self
+                debug!("searching element by role: {} within subtree", roles);
+                
+                // Create a condition for the control type
+                let condition = self
                     .automation
                     .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .control_type(roles)
-                    .timeout(timeout_ms as u64);
+                    .create_property_condition(
+                        UIProperty::ControlType,
+                        Variant::from(roles as i32),
+                        None,
+                    )
+                    .unwrap();
 
-                debug!("searching element by role: {}, from: {:?}", roles, root_ele);
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Role: '{}', Root: {:?}, Err: {}",
-                        role, root, e
-                    ))
-                })?;
+                // Use find_first with TreeScope::Subtree to ensure we only search within the root element's subtree
+                let element = root_ele
+                    .find_first(TreeScope::Subtree, &condition)
+                    .map_err(|e| {
+                        AutomationError::ElementNotFound(format!(
+                            "Role: '{}', Root: {:?}, Err: {}",
+                            role, root, e
+                        ))
+                    })?;
+
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
@@ -1158,7 +1208,7 @@ $latestProcess.ProcessId"#,
             }))
             .contains_name(title)
             .depth(50)
-            .timeout(500);
+            .timeout(5000);
 
         let window = window_matcher.find_first().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e))
@@ -1188,9 +1238,9 @@ $latestProcess.ProcessId"#,
 
         // first find element by matcher
         let root_ele = self.automation.0.get_root_element().unwrap();
-        let automation = WindowsEngine::new(false, false)
+        let automation_engine_instance = WindowsEngine::new(false, false) 
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        let matcher = automation
+        let matcher = automation_engine_instance 
             .automation
             .0
             .create_matcher()
@@ -1223,6 +1273,77 @@ $latestProcess.ProcessId"#,
         return Ok(UIElement::new(Box::new(WindowsUIElement {
             element: ThreadSafeWinUIElement(Arc::new(ele_res.unwrap())),
         })));
+    }
+
+    async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
+        info!("Attempting to get the current focused browser window.");
+        let focused_element_raw = self
+            .automation
+            .0
+            .get_focused_element()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get focused element: {}", e)))?;
+
+        let pid = focused_element_raw.get_process_id().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get process ID for focused element: {}", e))
+        })?;
+
+        let process_name_raw = get_process_name_by_pid(pid as i32)?;
+        let process_name = process_name_raw.to_lowercase(); // Compare lowercase
+
+        info!("Focused element belongs to process: {} (PID: {})", process_name, pid);
+
+        if KNOWN_BROWSER_PROCESS_NAMES.iter().any(|&browser_name| process_name.contains(browser_name)) {
+            // First try to get the focused element's parent chain to find a tab
+            let mut current_element = focused_element_raw.clone();
+            let mut found_tab = false;
+            
+            // Walk up the parent chain looking for a TabItem
+            for _ in 0..10 { // Limit depth to prevent infinite loops
+                if let Ok(control_type) = current_element.get_control_type() {
+                    debug!("get_current_browser_window, control_type: {:?}", control_type);
+                    if control_type == ControlType::Document {
+                        info!("Found browser tab in parent chain");
+                        found_tab = true;
+                        break;
+                    }
+                }
+                
+                match current_element.get_cached_parent() {
+                    Ok(parent) => current_element = parent,
+                    Err(_) => break,
+                }
+            }
+
+            if found_tab {
+                // If we found a tab, use the focused element
+                info!("Using focused element as it's part of a browser tab");
+                let arc_focused_element = ThreadSafeWinUIElement(Arc::new(focused_element_raw));
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_focused_element,
+                })))
+            } else {
+                // If no tab found, fall back to the main window
+                info!("No tab found in parent chain, falling back to main window");
+                match self.get_application_by_pid(pid as i32) {
+                    Ok(app_window_element) => {
+                        info!("Successfully fetched main application window for browser");
+                        Ok(app_window_element)
+                    }
+                    Err(e) => {
+                        error!("Failed to get application window by PID {} for browser {}: {}. Falling back to focused element.", pid, process_name, e);
+                        // Fallback to returning the originally focused element
+                        let arc_focused_element = ThreadSafeWinUIElement(Arc::new(focused_element_raw));
+                        Ok(UIElement::new(Box::new(WindowsUIElement {
+                            element: arc_focused_element,
+                        })))
+                    }
+                }
+            }
+        } else {
+            Err(AutomationError::ElementNotFound(
+                "Currently focused window is not a recognized browser.".to_string(),
+            ))
+        }
     }
 
     fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
@@ -1313,6 +1434,7 @@ impl UIElementImpl for WindowsUIElement {
             UIProperty::ControlType,
             UIProperty::AutomationId,
             UIProperty::FullDescription,
+            UIProperty::IsKeyboardFocusable, // Added for attributes
         ];
         for property in property_list {
             if let Ok(value) = self.element.0.get_property_value(property) {
@@ -1326,12 +1448,12 @@ impl UIElementImpl for WindowsUIElement {
         }
         UIElementAttributes {
             role: self.role(),
+            name: self.element.0.get_name().ok(),
             label: self
                 .element
                 .0
                 .get_labeled_by()
-                .ok()
-                .map(|e| e.get_name().unwrap_or_default()),
+                .ok().map(|e| e.get_name().unwrap_or_default()),
             value: self
                 .element
                 .0
@@ -1340,6 +1462,7 @@ impl UIElementImpl for WindowsUIElement {
                 .and_then(|v| v.get_string().ok()),
             description: self.element.0.get_help_text().ok(),
             properties,
+            is_keyboard_focusable: self.is_keyboard_focusable().ok(), // Added field
         }
     }
 
@@ -1608,15 +1731,16 @@ impl UIElementImpl for WindowsUIElement {
                 return Ok(());
             }
 
-            // Check Name property
-            if let Ok(name) = element.get_property_value(UIProperty::Name) {
-                if let Ok(name_text) = name.get_string() {
-                    if !name_text.is_empty() {
-                        debug!("found text in name property: {:?}", &name_text);
-                        texts.push(name_text);
-                    }
-                }
-            }
+            // Check Name property 
+            // TOdo: i dont think we should include the name in text
+            // if let Ok(name) = element.get_property_value(UIProperty::Name) {
+            //     if let Ok(name_text) = name.get_string() {
+            //         if !name_text.is_empty() {
+            //             debug!("found text in name property: {:?}", &name_text);
+            //             texts.push(name_text);
+            //         }
+            //     }
+            // }
 
             // Check Value property
             if let Ok(value) = element.get_property_value(UIProperty::ValueValue) {
@@ -1871,18 +1995,26 @@ impl UIElementImpl for WindowsUIElement {
         }
         Ok(())
     }
+
+    fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
+        let variant = self
+            .element
+            .0
+            .get_property_value(UIProperty::IsKeyboardFocusable)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        variant.try_into().map_err(|e| AutomationError::PlatformError(format!("Failed to convert IsKeyboardFocusable to bool: {:?}", e)))
+    }
 }
 
 // make easier to pass roles
 fn map_generic_role_to_win_roles(role: &str) -> ControlType {
     match role.to_lowercase().as_str() {
-        "app" | "application" => ControlType::Pane,
-        "window" => ControlType::Window,
+        "pane" | "app" | "application" => ControlType::Pane,
+        "window" | "dialog" => ControlType::Window,
         "button" => ControlType::Button,
         "checkbox" => ControlType::CheckBox,
         "menu" => ControlType::Menu,
         "menuitem" => ControlType::MenuItem,
-        "dialog" => ControlType::Window,
         "text" => ControlType::Text,
         "tree" => ControlType::Tree,
         "treeitem" => ControlType::TreeItem,
@@ -1913,7 +2045,6 @@ fn map_generic_role_to_win_roles(role: &str) -> ControlType {
         "thumb" => ControlType::Thumb,
         "document" => ControlType::Document,
         "splitbutton" => ControlType::SplitButton,
-        "pane" => ControlType::Pane,
         "header" => ControlType::Header,
         "headeritem" => ControlType::HeaderItem,
         "table" => ControlType::Table,

@@ -92,13 +92,6 @@ struct OcrImagePathRequest {
     image_path: String,
 }
 
-// Request structure for OCR on raw screenshot data (base64 encoded)
-#[derive(Deserialize)]
-struct OcrScreenshotRequest {
-    image_base64: String,
-    width: u32,
-    height: u32,
-}
 
 // Request structure for expectations (can often reuse ChainedRequest)
 // Add optional timeout
@@ -153,6 +146,7 @@ struct BasicResponse {
 #[derive(Serialize, Clone)]
 struct ElementResponse {
     role: String,
+    name: Option<String>,
     label: Option<String>,
     id: Option<String>,
     text: Option<String>,
@@ -160,6 +154,7 @@ struct ElementResponse {
     visible: Option<bool>,
     enabled: Option<bool>,
     focused: Option<bool>,
+    is_keyboard_focusable: Option<bool>,
 }
 
 impl ElementResponse {
@@ -167,13 +162,15 @@ impl ElementResponse {
         let attrs = element.attributes();
         Self {
             role: attrs.role,
+            name: element.name(),
             label: attrs.label,
             id: element.id(),
             text: Some(element.text(1).unwrap_or_default()),
             bounds: Some(element.bounds().unwrap_or_default()),
-            visible: Some(element.is_visible().unwrap_or_default()),
-            enabled: Some(element.is_enabled().unwrap_or_default()),
-            focused: Some(element.is_focused().unwrap_or_default()),
+            visible: Some(element.is_visible().unwrap_or(false)),
+            enabled: Some(element.is_enabled().unwrap_or(false)),
+            focused: Some(element.is_focused().unwrap_or(false)),
+            is_keyboard_focusable: element.is_keyboard_focusable().ok(),
         }
     }
 }
@@ -217,6 +214,7 @@ struct AttributesResponse {
     description: Option<String>,
     properties: HashMap<String, Option<serde_json::Value>>,
     id: Option<String>,
+    is_keyboard_focusable: Option<bool>,
 }
 
 // Response structure for element bounds
@@ -514,9 +512,7 @@ async fn get_full_tree(
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
     info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get full tree");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms);
-
+    
     // Define the recursive helper function
     fn get_children_recursive(element: &UIElement) -> Result<Vec<ElementResponse>, ApiError> {
         let direct_children_elements = element.children()?;
@@ -547,6 +543,40 @@ async fn get_full_tree(
 
         Ok(all_descendants) // Return the accumulated list
     }
+
+    // Handle empty selector chain case
+    if payload.selector_chain.is_empty() {
+        info!("Empty selector chain, getting full tree of all applications");
+        let mut all_elements: Vec<ElementResponse> = Vec::new();
+        
+        // Get all applications
+        let applications = state.desktop.applications()?;
+        
+        // Process each application and its children
+        for app in applications {
+            // Add the application itself
+            all_elements.push(ElementResponse::from_element(&app));
+            
+            // Get all descendants of this application
+            match get_children_recursive(&app) {
+                Ok(descendants) => {
+                    all_elements.extend(descendants);
+                }
+                Err(e) => {
+                    error!("Error getting descendants for application {:?}: {:?}", app.id(), e);
+                    // Continue with other applications
+                }
+            }
+        }
+        
+        return Ok(Json(ElementsResponse {
+            elements: all_elements,
+        }));
+    }
+
+    // Original logic for non-empty selector chain
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
     // Find the root element for the subtree
     let root_element = locator.wait(timeout).await?;
@@ -587,6 +617,7 @@ async fn get_element_attributes(
         description: attrs.description,
         properties: attrs.properties,
         id: element_id, // Use the ID obtained from the element
+        is_keyboard_focusable: attrs.is_keyboard_focusable,
     }))
     // Note: The original 'match locator.attributes(timeout).await' logic was incorrect
     // because locator didn't have .attributes() and element.attributes() is sync.
@@ -844,6 +875,7 @@ async fn explore_handler(
             // Create the dummy root parent response
             let root_parent = ElementResponse {
                 role: "root".to_string(),
+                name: Some("Screen Root".to_string()),
                 label: None,
                 id: None,
                 text: Some("Screen Root".to_string()), // More descriptive text
@@ -851,6 +883,7 @@ async fn explore_handler(
                 visible: Some(true), // Root is conceptually always visible
                 enabled: Some(true), // Root is conceptually always enabled
                 focused: Some(false), // Root itself cannot be focused
+                is_keyboard_focusable: None,
             };
 
             // Get top-level applications/windows
@@ -1162,6 +1195,7 @@ async fn expect_element_text_equals(
             let attrs = element.attributes();
             Ok(Json(ElementResponse {
                 role: attrs.role,
+                name: element.name(),
                 label: attrs.label,
                 id: element.id(),
                 text: Some(payload.expected_text.to_string()),
@@ -1169,6 +1203,7 @@ async fn expect_element_text_equals(
                 visible: Some(element.is_visible().unwrap_or_default()),
                 enabled: Some(element.is_enabled().unwrap_or_default()),
                 focused: Some(element.is_focused().unwrap_or_default()),
+                is_keyboard_focusable: element.is_keyboard_focusable().ok(),
             }))
         }
         Err(e) => {
@@ -1209,6 +1244,28 @@ async fn activate_app_handler(
         Err(e) => {
             error!("Failed to activate application window: {}", e);
             Err(ApiError::from(e)) // Convert AutomationError to ApiError
+        }
+    }
+}
+
+// --- NEW HANDLER for current browser window --- //
+async fn get_current_browser_window_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!("Attempting to get current browser window");
+    match state.desktop.get_current_browser_window().await {
+        Ok(element) => {
+            info!(
+                "Current browser window found: role={}, label={:?}, id={:?}",
+                element.role(),
+                element.attributes().label,
+                element.id()
+            );
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            error!("Failed to get current browser window: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -1279,6 +1336,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/expect_text_equals", post(expect_element_text_equals))
         // OCR Actions
         .route("/ocr_image_path", post(ocr_image_path))
+        // New endpoint for current browser window
+        .route("/current_browser_window", get(get_current_browser_window_handler))
         // State and Layers
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
         .layer(cors)

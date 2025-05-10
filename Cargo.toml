@@ -5,12 +5,13 @@ members = [
     "examples/terminator-rust-examples/button",    # Assuming this is a crate
     "examples/terminator-rust-examples/popup",     # Assuming this is a crate
     "examples/terminator-rust-examples/server",    # Assuming this is the crate in the 'server' subdirectory
+    "examples/terminator-rust-examples/win_automation", # Assuming this is the crate in the 'win_automation' subdirectory
     # Add other crates from examples/terminator-rust-examples if they exist
 ]
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.2.1"   # From your original Cargo.toml
+version = "0.2.2"   # From your original Cargo.toml
 edition = "2021"    # From your original Cargo.toml
 # authors = ["Your Name <you@example.com>"] # Consider adding this
 # license = "MIT OR Apache-2.0"            # Consider adding this

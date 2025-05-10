@@ -3,6 +3,7 @@ use crate::platforms::AccessibilityEngine;
 use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use std::fmt::Debug;
+use std::time::Duration;
 
 pub struct LinuxEngine;
 
@@ -115,6 +116,22 @@ impl AccessibilityEngine for LinuxEngine {
             "Linux implementation is not yet available".to_string(),
         ))
     }
+
+    async fn find_window_by_criteria(
+        &self,
+        title_contains: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "find_window_by_criteria not yet implemented for Linux".to_string(),
+        ))
+    }
+
+    async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "get_current_browser_window not yet implemented for Linux".to_string(),
+        ))
+    }
 }
 
 // Placeholder LinuxUIElement that implements UIElementImpl
@@ -142,11 +159,16 @@ impl UIElementImpl for LinuxUIElement {
     fn attributes(&self) -> UIElementAttributes {
         UIElementAttributes {
             role: "".to_string(),
+            name: None,
             label: None,
             value: None,
             description: None,
             properties: std::collections::HashMap::new(),
         }
+    }
+
+    fn name(&self) -> Option<String> {
+        None
     }
 
     fn children(&self) -> Result<Vec<UIElement>, AutomationError> {
