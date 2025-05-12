@@ -84,7 +84,7 @@ For more details, see the [Getting Started Guide](https://docs.screenpi.pe/termi
 ## Explore Further
 
 -   **Vercel AI SDK Example:** Learn how to use Terminator with AI in the [PDF-to-Form example](https://github.com/mediar-ai/terminator/tree/main/examples/pdf-to-form).
--   **MCP (Mediar Control Plane):** Discover [how to Vibe Work using MCP](https://github.com/mediar-ai/terminator/tree/main/mcp).
+-   **MCP:** Discover [how to Vibe Work using MCP](https://github.com/mediar-ai/terminator/tree/main/mcp).
 
 ## Technical Details & Debugging
 
