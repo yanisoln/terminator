@@ -147,6 +147,15 @@ struct MouseDragRequest {
     timeout_ms: Option<u64>,
 }
 
+// Request structure for scrolling
+#[derive(Deserialize)]
+struct ScrollRequest {
+    selector_chain: Vec<String>,
+    direction: String,  // "up", "down", "left", "right"
+    amount: f64,       // Number of scroll increments
+    timeout_ms: Option<u64>,
+}
+
 // Basic response structure
 #[derive(Serialize)]
 struct BasicResponse {
@@ -1304,6 +1313,32 @@ async fn mouse_drag_handler(
     }))
 }
 
+// Handler for scrolling an element
+async fn scroll_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ScrollRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, direction = %payload.direction, amount = payload.amount, timeout = ?payload.timeout_ms, "Attempting to scroll element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+
+    // Wait for the element
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for scrolling: {}", e);
+        ApiError::from(e)
+    })?;
+
+    // Call scroll on the element
+    element.scroll(&payload.direction, payload.amount).map_err(|e| {
+        error!("Failed to scroll element: {}", e);
+        ApiError::from(e)
+    })?;
+
+    Ok(Json(BasicResponse {
+        message: format!("Scrolled {} by {} increments", payload.direction, payload.amount),
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use tracing subscriber with settings appropriate for environment
@@ -1374,6 +1409,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/current_browser_window", get(get_current_browser_window_handler))
         // State and Layers
         .route("/mouse_drag", post(mouse_drag_handler))
+        .route("/scroll", post(scroll_handler))
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
         .layer(cors)
         .with_state(shared_state);

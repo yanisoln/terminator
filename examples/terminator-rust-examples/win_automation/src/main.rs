@@ -115,11 +115,33 @@ async fn main() -> Result<(), AutomationError> {
     //     println!("w: {:?}", w.attributes());
     // }
     // desktop.activate_browser_window_by_title("Excel")?;
-    let app = desktop.application("Excel").unwrap();
+    let app = desktop.application("Cursor").unwrap();
+    
+    // Debug logging
+    println!("Found Cursor application");
+    println!("App attributes: {:?}", app.attributes());
+    
+    // Try to find the editor area
+    // let editor = app.locator(Selector::Role { role: "edit".to_string(), name: None })
+    //     .unwrap()
+    //     .first(None)
+    //     .await
+    //     .unwrap();
+    
+    // println!("Found editor element: {:?}", editor.attributes());
+    
+    // Focus the editor
+    // editor.focus().unwrap();
+    // std::thread::sleep(Duration::from_millis(500));
+    
+    // Try scrolling with a smaller amount first
+    app.scroll("down", 100.0).unwrap();
+    // editor.press_key("{page_down}").unwrap();
+    println!("Scroll attempted");
     // let window = app..locator(Selector::Role { role: "window".to_string(), name: None }).unwrap().first(None).await.unwrap();
-    println!("app: {:?}", app.attributes());
-    println!("app: {:?}", app.text(5).unwrap_or_default());
-    println!("app: {:?}", app.id());
+    // println!("app: {:?}", app.attributes());
+    // println!("app: {:?}", app.text(5).unwrap_or_default());
+    // println!("app: {:?}", app.id());
 
     // let window = desktop.get_current_browser_window().await.unwrap();
     // println!("window: {:?}", window.attributes());

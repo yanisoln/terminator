@@ -20,7 +20,7 @@ use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
-use uiautomation::types::{Point, ScrollAmount, TreeScope, UIProperty};
+use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 
@@ -297,41 +297,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .automation
                     .0
                     .create_matcher()
-                    .from_ref(root_ele) // Start search from the correct root
+                    .from_ref(root_ele)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        // Calculate the element's ID using the same logic as WindowsUIElement::object_id
-                        let name = e.get_name().unwrap_or_default();
-                        let role = match e.get_control_type() {
-                            Ok(ct) => ct.to_string(),
-                            Err(err) => return Err(err),
-                        };
-                        let text = e
-                            .get_property_value(uiautomation::types::UIProperty::ValueValue)
-                            .ok()
-                            .map(|v| v.to_string())
-                            .unwrap_or_default();
-                        let automation_id = e.get_automation_id().unwrap_or_default();
-                        let help_text = e.get_help_text().unwrap_or_default();
-                        let class_name = e.get_classname().unwrap_or_default();
-                        let process_id = match e.get_process_id() {
-                            Ok(pid) => pid,
-                            Err(err) => return Err(err),
-                        };
-
-                        let combined_string = format!(
-                            "{} {} {} {} {} {} {}",
-                            name, role, text, automation_id, help_text, class_name, process_id
-                        );
-
-                        use std::collections::hash_map::DefaultHasher;
-                        use std::hash::{Hash, Hasher};
-                        let mut hasher = DefaultHasher::new();
-                        combined_string.hash(&mut hasher);
-                        let calculated_hash = hasher.finish();
-                        let calculated_id_str = calculated_hash.to_string();
-
-                        // Compare with the target ID
-                        Ok(calculated_id_str == target_id)
+                        // Use the common function to generate ID
+                        match generate_element_id(e) {
+                            Ok(calculated_id) => Ok(calculated_id.to_string() == target_id),
+                            Err(_) => Ok(false)
+                        }
                     }))
                     .timeout(timeout_ms as u64);
 
@@ -550,41 +522,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .depth(50)
-                    .from_ref(root_ele) // Start search from the correct root
+                    .from_ref(root_ele)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        // Calculate the element's ID using the same logic as WindowsUIElement::object_id
-                        let name = e.get_name().unwrap_or_default();
-                        let role = match e.get_control_type() {
-                            Ok(ct) => ct.to_string(),
-                            Err(err) => return Err(err),
-                        };
-                        let text = e
-                            .get_property_value(uiautomation::types::UIProperty::ValueValue)
-                            .ok()
-                            .map(|v| v.to_string())
-                            .unwrap_or_default();
-                        let automation_id = e.get_automation_id().unwrap_or_default();
-                        let help_text = e.get_help_text().unwrap_or_default();
-                        let class_name = e.get_classname().unwrap_or_default();
-                        let process_id = match e.get_process_id() {
-                            Ok(pid) => pid,
-                            Err(err) => return Err(err),
-                        };
-
-                        let combined_string = format!(
-                            "{} {} {} {} {} {} {}",
-                            name, role, text, automation_id, help_text, class_name, process_id
-                        );
-
-                        use std::collections::hash_map::DefaultHasher;
-                        use std::hash::{Hash, Hasher};
-                        let mut hasher = DefaultHasher::new();
-                        combined_string.hash(&mut hasher);
-                        let calculated_hash = hasher.finish();
-                        let calculated_id_str = calculated_hash.to_string();
-
-                        // Compare with the target ID
-                        Ok(calculated_id_str == target_id)
+                        // Use the common function to generate ID
+                        match generate_element_id(e) {
+                            Ok(calculated_id) => Ok(calculated_id.to_string() == target_id),
+                            Err(_) => Ok(false)
+                        }
                     }))
                     .timeout(timeout_ms as u64);
 
@@ -1392,26 +1336,8 @@ impl Debug for WindowsUIElement {
 
 impl UIElementImpl for WindowsUIElement {
     fn object_id(&self) -> usize {
-        // use different hashed properties as object_id
-        let mut hasher = DefaultHasher::new();
-        let name = self.element.0.get_name().unwrap_or_default();
-        let role = self.element.0.get_control_type().unwrap().to_string();
-        let text = self
-            .element
-            .0
-            .get_property_value(UIProperty::ValueValue)
-            .unwrap_or_default();
-        let automation_id = self.element.0.get_automation_id().unwrap_or_default();
-        let help_text = self.element.0.get_help_text().unwrap_or_default();
-        let class_name = self.element.0.get_classname().unwrap_or_default();
-        let process_id = self.element.0.get_process_id().unwrap_or_default();
-
-        let combined_string = format!(
-            "{} {} {} {} {} {} {}",
-            name, role, text, automation_id, help_text, class_name, process_id
-        );
-        combined_string.hash(&mut hasher);
-        hasher.finish() as usize
+        // Use the common function to generate ID
+        generate_element_id(&self.element.0).unwrap_or(0)
     }
 
     fn id(&self) -> Option<String> {
@@ -1708,13 +1634,13 @@ impl UIElementImpl for WindowsUIElement {
             .element
             .0
             .get_control_type()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get control type: {:?}", e)))?;
         // check if element accepts input, similar :D
         debug!("pressing key with control_type: {:#?}", control_type);
         self.element
             .0
             .send_keys(key, 10)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to press key: {:?}", e)))
     }
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
@@ -1958,41 +1884,123 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn scroll(&self, direction: &str, amount: f64) -> Result<(), AutomationError> {
-        // TODO does not work
-        let scroll_pattern = self
-            .element
-            .0
-            .get_pattern::<patterns::UIScrollPattern>()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        // First try to focus the element
+        self.focus().map_err(|e| AutomationError::PlatformError(format!("Failed to focus element: {:?}", e)))?;
 
-        let scroll_amount = if amount > 0.0 {
-            ScrollAmount::SmallIncrement
-        } else if amount < 0.0 {
-            ScrollAmount::SmallDecrement
-        } else {
-            ScrollAmount::NoAmount
-        };
+        // Only support up/down directions
+        match direction {
+            "up" | "down" => {
+                // Convert amount to number of key presses (round to nearest integer)
+                let times = amount.abs().round() as usize;
+                if times == 0 {
+                    return Ok(());
+                }
 
-        let times = amount.abs() as usize;
-        for _ in 0..times {
-            match direction {
-                "up" => scroll_pattern
-                    .scroll(ScrollAmount::NoAmount, scroll_amount)
-                    .map_err(|e| AutomationError::PlatformError(e.to_string())),
-                "down" => scroll_pattern
-                    .scroll(ScrollAmount::NoAmount, scroll_amount)
-                    .map_err(|e| AutomationError::PlatformError(e.to_string())),
-                "left" => scroll_pattern
-                    .scroll(scroll_amount, ScrollAmount::NoAmount)
-                    .map_err(|e| AutomationError::PlatformError(e.to_string())),
-                "right" => scroll_pattern
-                    .scroll(scroll_amount, ScrollAmount::NoAmount)
-                    .map_err(|e| AutomationError::PlatformError(e.to_string())),
-                _ => Err(AutomationError::UnsupportedOperation(
-                    "Invalid scroll direction".to_string(),
-                )),
-            }?
+                // Send the appropriate key based on direction
+                let key = if direction == "up" { "{page_up}" } else { "{page_down}" };
+                for _ in 0..times {
+                    self.press_key(key)?;
+                }
+            },
+            _ => return Err(AutomationError::UnsupportedOperation(
+                "Only 'up' and 'down' scroll directions are supported".to_string(),
+            )),
         }
+
+        /* Original implementation commented out
+        // Try to get the scroll pattern first
+        let scroll_pattern = self.element.0.get_pattern::<patterns::UIScrollPattern>();
+        let scroll_item_pattern = self.element.0.get_pattern::<patterns::UIScrollItemPattern>();
+        
+        if let Ok(scroll_pattern) = scroll_pattern {
+            // If we have a scroll pattern, use it
+            let scroll_amount = if amount > 0.0 {
+                ScrollAmount::SmallIncrement
+            } else if amount < 0.0 {
+                ScrollAmount::SmallDecrement
+            } else {
+                ScrollAmount::NoAmount
+            };
+
+            let times = amount.abs() as usize;
+            for _ in 0..times {
+                match direction {
+                    "up" => scroll_pattern
+                        .scroll(ScrollAmount::NoAmount, scroll_amount)
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll up: {:?}", e))),
+                    "down" => scroll_pattern
+                        .scroll(ScrollAmount::NoAmount, scroll_amount)
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll down: {:?}", e))),
+                    "left" => scroll_pattern
+                        .scroll(scroll_amount, ScrollAmount::NoAmount)
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll left: {:?}", e))),
+                    "right" => scroll_pattern
+                        .scroll(scroll_amount, ScrollAmount::NoAmount)
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll right: {:?}", e))),
+                    _ => Err(AutomationError::UnsupportedOperation(
+                        "Invalid scroll direction".to_string(),
+                    )),
+                }?;
+            }
+        } else if let Ok(scroll_item_pattern) = scroll_item_pattern {
+            // If we have a scroll item pattern, use it
+            let times = amount.abs() as usize;
+            for _ in 0..times {
+                match direction {
+                    "up" => scroll_item_pattern
+                        .scroll_into_view()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item up: {:?}", e))),
+                    "down" => scroll_item_pattern
+                        .scroll_into_view()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item down: {:?}", e))),
+                    "left" => scroll_item_pattern
+                        .scroll_into_view()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item left: {:?}", e))),
+                    "right" => scroll_item_pattern
+                        .scroll_into_view()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item right: {:?}", e))),
+                    _ => Err(AutomationError::UnsupportedOperation(
+                        "Invalid scroll direction".to_string(),
+                    )),
+                }?;
+            }
+        } else {
+            // If no scroll patterns available, fall back to mouse wheel simulation
+            use windows::Win32::UI::Input::KeyboardAndMouse::{
+                INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
+            };
+            use std::thread::sleep;
+            use std::time::Duration;
+
+            // Get the element's bounds to calculate center point
+            let rect = self.element.0.get_bounding_rectangle()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to get element bounds: {:?}", e)))?;
+            
+            let center_x = rect.get_left() + rect.get_width() / 2;
+            let center_y = rect.get_top() + rect.get_height() / 2;
+
+            // Move mouse to center of element
+            let mi = MOUSEINPUT {
+                dx: center_x,
+                dy: center_y,
+                mouseData: if amount > 0.0 { 120u32 } else { 0xFFFF_FF88u32 }, // 120 for up, -120 (as unsigned) for down
+                dwFlags: MOUSEEVENTF_WHEEL,
+                time: 0,
+                dwExtraInfo: 0,
+            };
+            let input = INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 { mi },
+            };
+
+            let times = amount.abs() as usize;
+            // Simulate wheel clicks
+            for _ in 0..times {
+                unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
+                sleep(Duration::from_millis(50)); // Small delay between wheel events
+            }
+        }
+        */
         Ok(())
     }
 
@@ -2151,4 +2159,43 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
     } else {
         None
     }
+}
+
+// Add this function before the WindowsUIElement implementation
+fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
+    let mut hasher = DefaultHasher::new();
+    
+    // Get basic properties
+    let name = element.get_name().unwrap_or_default();
+    let role = element.get_control_type().unwrap().to_string();
+    let text = element
+        .get_property_value(UIProperty::ValueValue)
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    let automation_id = element.get_automation_id().unwrap_or_default();
+    let help_text = element.get_help_text().unwrap_or_default();
+    let class_name = element.get_classname().unwrap_or_default();
+    let process_id = element.get_process_id().unwrap_or_default();
+
+    // Get bounds information
+    // TODO: there is a risk, if the element is moved etc. should find more robust way
+    let bounds = element.get_bounding_rectangle().unwrap_or_default();
+    let bounds_str = format!(
+        "{:.0}_{:.0}_{:.0}_{:.0}",
+        bounds.get_left(),
+        bounds.get_top(),
+        bounds.get_width(),
+        bounds.get_height()
+    );
+
+    // Combine all properties
+    let combined_string = format!(
+        "{} {} {} {} {} {} {} {}",
+        name, role, text, automation_id, help_text, class_name, process_id, bounds_str
+    );
+
+    // Hash the combined string
+    combined_string.hash(&mut hasher);
+    Ok(hasher.finish() as usize)
 }
