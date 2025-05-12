@@ -1,5 +1,11 @@
 # terminator 🤖
 
+
+
+https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
+
+
+
 <p style="text-align: center;">
     <a href="https://discord.gg/dU9EBuw7Uq">
         <img src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white&style=flat-square" alt="Join us on Discord">
