@@ -116,10 +116,11 @@ async fn main() -> Result<(), AutomationError> {
     // }
     // desktop.activate_browser_window_by_title("Excel")?;
     let app = desktop.application("Cursor").unwrap();
+    app.type_text("hello a very long text that describe how the universe works: after the big bang, the universe expanded and the stars formed. the planets formed and the life formed. the humans formed and the computers formed. the internet formed and the web formed. the browsers formed and the html formed. the css formed and the javascript formed. the php formed and the mysql formed. the java formed and the android formed. the ios formed and the iphone formed. the ipad formed and the macbook formed. the macbook air formed and the macbook pro formed. the macbook pro retina formed and the macbook pro with retina display formed. the macbook pro with retina display 3k formed and the macbook pro with retina display 4k formed. the macbook pro with retina display 5k formed and the macbook pro with retina display 6k formed. the macbook pro with retina display 7k formed and the macbook pro with retina display 8k formed. the macbook pro with retina display 9k formed and the macbook pro with retina display 10k formed.", true)?;
     
     // Debug logging
-    println!("Found Cursor application");
-    println!("App attributes: {:?}", app.attributes());
+    // println!("Found Cursor application");
+    // println!("App attributes: {:?}", app.attributes());
     
     // Try to find the editor area
     // let editor = app.locator(Selector::Role { role: "edit".to_string(), name: None })
@@ -135,9 +136,9 @@ async fn main() -> Result<(), AutomationError> {
     // std::thread::sleep(Duration::from_millis(500));
     
     // Try scrolling with a smaller amount first
-    app.scroll("down", 100.0).unwrap();
+    // app.scroll("down", 100.0).unwrap();
     // editor.press_key("{page_down}").unwrap();
-    println!("Scroll attempted");
+    // println!("Scroll attempted");
     // let window = app..locator(Selector::Role { role: "window".to_string(), name: None }).unwrap().first(None).await.unwrap();
     // println!("app: {:?}", app.attributes());
     // println!("app: {:?}", app.text(5).unwrap_or_default());

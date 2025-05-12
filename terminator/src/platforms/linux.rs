@@ -219,7 +219,7 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn type_text(&self, _text: &str) -> Result<(), AutomationError> {
+    fn type_text(&self, _text: &str, _use_clipboard: bool) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

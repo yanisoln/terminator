@@ -1073,7 +1073,7 @@ impl UIElementImpl for MacOSUIElement {
         })
     }
 
-    fn type_text(&self, text: &str) -> Result<(), AutomationError> {
+    fn type_text(&self, text: &str, _use_clipboard: bool) -> Result<(), AutomationError> {
         // First, try to focus the element, but continue even if focus fails for web inputs
         match self.focus() {
             Ok(_) => debug!("Successfully focused element for typing"),

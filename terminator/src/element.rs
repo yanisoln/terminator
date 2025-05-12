@@ -40,7 +40,7 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     fn right_click(&self) -> Result<(), AutomationError>;
     fn hover(&self) -> Result<(), AutomationError>;
     fn focus(&self) -> Result<(), AutomationError>;
-    fn type_text(&self, text: &str) -> Result<(), AutomationError>;
+    fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError>;
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError>;
     fn set_value(&self, value: &str) -> Result<(), AutomationError>;
@@ -127,8 +127,8 @@ impl UIElement {
     }
 
     /// Type text into this element
-    pub fn type_text(&self, text: &str) -> Result<(), AutomationError> {
-        self.inner.type_text(text)
+    pub fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
+        self.inner.type_text(text, use_clipboard)
     }
 
     /// Press a key while this element is focused

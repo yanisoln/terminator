@@ -36,6 +36,7 @@ struct TypeTextRequest {
     selector_chain: Vec<String>,
     text: String,
     timeout_ms: Option<u64>, // Added timeout
+    use_clipboard: Option<bool>, // Optional flag for fast typing using clipboard
 }
 
 // Request structure for getting text (with chain)
@@ -458,23 +459,26 @@ async fn type_text_into_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TypeTextRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.text, timeout = ?payload.timeout_ms, "Attempting to type text");
+    info!(chain = ?payload.selector_chain, text = %payload.text, timeout = ?payload.timeout_ms, use_clipboard = ?payload.use_clipboard, "Attempting to type text");
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
     let timeout = get_timeout(payload.timeout_ms);
 
-    // Pass timeout to type_text (requires core library update)
-    match locator.type_text(&payload.text, timeout).await {
-        Ok(_) => {
-            info!("Text typed successfully");
-            Ok(Json(BasicResponse {
-                message: "Text typed successfully".to_string(),
-            }))
-        }
-        Err(e) => {
-            error!("Failed to type text into element: {}", e);
-            Err(e.into())
-        }
-    }
+    // Get the element first
+    let element = locator.wait(timeout).await?;
+
+    // Type text using the specified method
+    element.type_text(&payload.text, payload.use_clipboard.unwrap_or(false))?;
+    
+    let method = if payload.use_clipboard.unwrap_or(false) {
+        "clipboard"
+    } else {
+        "standard"
+    };
+    
+    info!("Text typed successfully using {} method", method);
+    Ok(Json(BasicResponse {
+        message: format!("Text typed successfully using {} method", method),
+    }))
 }
 
 // Handler for getting text from an element

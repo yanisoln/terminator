@@ -23,6 +23,7 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
+use arboard::Clipboard;
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -1615,18 +1616,50 @@ impl UIElementImpl for WindowsUIElement {
         self.focus()
     }
 
-    fn type_text(&self, text: &str) -> Result<(), AutomationError> {
+    fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
         let control_type = self
             .element
             .0
             .get_control_type()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        // check if element accepts input
-        debug!("typing text with control_type: {:#?}", control_type);
-        self.element
-            .0
-            .send_text(text, 10)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))
+        
+        debug!("typing text with control_type: {:#?}, use_clipboard: {}", control_type, use_clipboard);
+
+        if use_clipboard {
+            // Save current clipboard content
+            let original_clipboard = Clipboard::new()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
+                .get_text()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to get clipboard content: {}", e)))?;
+
+            // Set new text to clipboard
+            Clipboard::new()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
+                .set_text(text)
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to set clipboard content: {}", e)))?;
+
+            // Focus the element
+            self.focus()?;
+
+            // Send Ctrl+V to paste
+            self.press_key("{ctrl}v")?;
+
+            // Restore original clipboard content
+            if !original_clipboard.is_empty() {
+                Clipboard::new()
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
+                    .set_text(&original_clipboard)
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to restore clipboard content: {}", e)))?;
+            }
+
+            Ok(())
+        } else {
+            // Use standard typing method
+            self.element
+                .0
+                .send_text(text, 10)
+                .map_err(|e| AutomationError::PlatformError(e.to_string()))
+        }
     }
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError> {

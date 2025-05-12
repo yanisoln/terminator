@@ -229,12 +229,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1df21f715862ede32a0c525ce2ca4d52626bb0007f8c18b87a384503ac33e70"
 dependencies = [
  "clipboard-win",
+ "image 0.25.6",
  "log",
  "objc2 0.6.1",
  "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -4700,11 +4704,12 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.2.0"
+version = "0.2.3"
 dependencies = [
  "accessibility",
  "accessibility-sys",
  "anyhow",
+ "arboard",
  "async-trait",
  "axum",
  "base64",
