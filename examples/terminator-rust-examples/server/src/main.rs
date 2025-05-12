@@ -464,7 +464,7 @@ async fn type_text_into_element(
     let timeout = get_timeout(payload.timeout_ms);
 
     // Get the element first
-    let element = locator.wait(timeout).await?;
+    let element = locator.first(timeout).await?;
 
     // Type text using the specified method
     element.type_text(&payload.text, payload.use_clipboard.unwrap_or(false))?;

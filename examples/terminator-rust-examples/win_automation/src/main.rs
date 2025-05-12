@@ -115,9 +115,25 @@ async fn main() -> Result<(), AutomationError> {
     //     println!("w: {:?}", w.attributes());
     // }
     // desktop.activate_browser_window_by_title("Excel")?;
-    let app = desktop.application("Cursor").unwrap();
-    app.type_text("hello a very long text that describe how the universe works: after the big bang, the universe expanded and the stars formed. the planets formed and the life formed. the humans formed and the computers formed. the internet formed and the web formed. the browsers formed and the html formed. the css formed and the javascript formed. the php formed and the mysql formed. the java formed and the android formed. the ios formed and the iphone formed. the ipad formed and the macbook formed. the macbook air formed and the macbook pro formed. the macbook pro retina formed and the macbook pro with retina display formed. the macbook pro with retina display 3k formed and the macbook pro with retina display 4k formed. the macbook pro with retina display 5k formed and the macbook pro with retina display 6k formed. the macbook pro with retina display 7k formed and the macbook pro with retina display 8k formed. the macbook pro with retina display 9k formed and the macbook pro with retina display 10k formed.", true)?;
-    
+    // let app = desktop.application("Cursor").unwrap();
+    // app.type_text("hello a very long text that describe how the universe works: after the big bang, the universe expanded and the stars formed. the planets formed and the life formed. the humans formed and the computers formed. the internet formed and the web formed. the browsers formed and the html formed. the css formed and the javascript formed. the php formed and the mysql formed. the java formed and the android formed. the ios formed and the iphone formed. the ipad formed and the macbook formed. the macbook air formed and the macbook pro formed. the macbook pro retina formed and the macbook pro with retina display formed. the macbook pro with retina display 3k formed and the macbook pro with retina display 4k formed. the macbook pro with retina display 5k formed and the macbook pro with retina display 6k formed. the macbook pro with retina display 7k formed and the macbook pro with retina display 8k formed. the macbook pro with retina display 9k formed and the macbook pro with retina display 10k formed.", true)?;
+
+    // in firefox, get all edit elements and type hello in each of them
+    let app = desktop.application("firefox").unwrap();
+    let elements = app.locator(Selector::Role { role: "edit".to_string(), name: None }).unwrap().all(None, None).await.unwrap();
+    for element in elements.iter() {
+        // element.type_text("hello", true)?;
+
+        if element.is_keyboard_focusable().unwrap_or(false) {
+            println!("element: {:?}", element.attributes());
+            println!("element: {:?}", element.id());
+            element.type_text("hello a very long text that describe how the universe works", true)?;
+        }
+
+        // println!("element: {:?}", element.attributes());
+        // println!("element: {:?}", element.id());
+    }
+
     // Debug logging
     // println!("Found Cursor application");
     // println!("App attributes: {:?}", app.attributes());
