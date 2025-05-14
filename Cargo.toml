@@ -11,7 +11,7 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.2.5"   # From your original Cargo.toml
+version = "0.2.6"   # From your original Cargo.toml
 edition = "2021"    # From your original Cargo.toml
 # authors = ["Your Name <you@example.com>"] # Consider adding this
 # license = "MIT OR Apache-2.0"            # Consider adding this

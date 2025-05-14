@@ -2,6 +2,8 @@ use crate::errors::AutomationError;
 use crate::selector::Selector;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::time::Instant;
+use tracing::{info, instrument, warn};
 
 use super::{ClickResult, Locator};
 
@@ -72,8 +74,21 @@ impl UIElement {
     }
 
     /// Get the element's ID
+    #[instrument(skip(self))]
     pub fn id(&self) -> Option<String> {
-        self.inner.id()
+        let start = Instant::now();
+        info!("Getting element ID");
+        
+        let id = self.inner.id();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            element_id = id.as_deref().unwrap_or_default(),
+            "Element ID retrieved"
+        );
+        
+        id
     }
 
     /// Get the element's role (e.g., "button", "textfield")
@@ -102,18 +117,54 @@ impl UIElement {
     }
 
     /// Click on this element
+    #[instrument(skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
-        self.inner.click()
+        let start = Instant::now();
+        info!("Clicking element");
+        
+        let result = self.inner.click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element clicked"
+        );
+        
+        result
     }
 
     /// Double-click on this element
+    #[instrument(skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
-        self.inner.double_click()
+        let start = Instant::now();
+        info!("Double clicking element");
+        
+        let result = self.inner.double_click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element double clicked"
+        );
+        
+        result
     }
 
     /// Right-click on this element
+    #[instrument(skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
-        self.inner.right_click()
+        let start = Instant::now();
+        info!("Right clicking element");
+        
+        let result = self.inner.right_click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element right clicked"
+        );
+        
+        result
     }
 
     /// Hover over this element
@@ -147,8 +198,21 @@ impl UIElement {
     }
 
     /// Check if element is enabled
+    #[instrument(skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
-        self.inner.is_enabled()
+        let start = Instant::now();
+        info!("Checking if element is enabled");
+        
+        let is_enabled = self.inner.is_enabled()?;
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            is_enabled,
+            "Element enabled status checked"
+        );
+        
+        Ok(is_enabled)
     }
 
     /// Check if element is visible
@@ -188,8 +252,21 @@ impl UIElement {
     }
 
     /// Get the element's name
+    #[instrument(skip(self))]
     pub fn name(&self) -> Option<String> {
-        self.inner.name()
+        let start = Instant::now();
+        info!("Getting element name");
+        
+        let name = self.inner.name();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            element_name = name.as_deref().unwrap_or_default(),
+            "Element name retrieved"
+        );
+        
+        name
     }
 
     /// Check if element is keyboard focusable

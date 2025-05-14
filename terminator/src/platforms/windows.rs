@@ -24,6 +24,7 @@ use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 use arboard::Clipboard;
+use uiautomation::patterns::UILegacyIAccessiblePattern;
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -2212,7 +2213,6 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
     let process_id = element.get_process_id().unwrap_or_default();
 
     // Get bounds information
-    // TODO: there is a risk, if the element is moved etc. should find more robust way
     let bounds = element.get_bounding_rectangle().unwrap_or_default();
     let bounds_str = format!(
         "{:.0}_{:.0}_{:.0}_{:.0}",
@@ -2230,5 +2230,20 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
 
     // Hash the combined string
     combined_string.hash(&mut hasher);
+
+    // --- Add legacy accessibility state for improved uniqueness ---
+    if let Ok(legacy_pattern) = element.get_pattern::<UILegacyIAccessiblePattern>() {
+        if let Ok(state) = legacy_pattern.get_state() {
+            state.hash(&mut hasher);
+        }
+        if let Ok(legacy_role) = legacy_pattern.get_role() {
+            legacy_role.hash(&mut hasher);
+        }
+        if let Ok(child_id) = legacy_pattern.get_child_id() {
+            child_id.hash(&mut hasher);
+        }
+    }
+    // ------------------------------------------------------------
+
     Ok(hasher.finish() as usize)
 }
