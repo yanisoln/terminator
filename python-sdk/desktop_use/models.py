@@ -46,6 +46,7 @@ class AttributesResponse:
     value: Optional[str] = None
     description: Optional[str] = None
     id: Optional[str] = None
+    is_keyboard_focusable: Optional[bool] = None
 
 @dataclass
 class BoundsResponse:
