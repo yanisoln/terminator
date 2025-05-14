@@ -65,6 +65,7 @@ export interface AttributesResponse {
   description?: string | null;
   properties: { [key: string]: any | null }; // Using 'any' for simplicity with serde_json::Value
   id?: string | null;
+  is_keyboard_focusable?: boolean | null;
 }
 
 export interface BoundsResponse {

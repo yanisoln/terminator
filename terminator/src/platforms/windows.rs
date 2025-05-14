@@ -462,6 +462,34 @@ impl AccessibilityEngine for WindowsEngine {
                 // Convert Vec<Option<UIElement>> to Vec<UIElement> by filtering out None values
                 return Ok(current_roots.into_iter().filter_map(|x| x).collect());
             }
+            Selector::ClassName(classname) => {
+                debug!("searching elements by class name: {}", classname);
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter(Box::new(ClassNameFilter {
+                        classname: classname.clone(),
+                    }))
+                    .depth(depth.unwrap_or(50) as u32)
+                    .timeout(timeout_ms as u64);
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "ClassName: '{}', Err: {}",
+                        classname,
+                        e.to_string()
+                    ))
+                })?;
+                return Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect());
+            }
         };
 
 
@@ -642,6 +670,30 @@ impl AccessibilityEngine for WindowsEngine {
                         "Element not found after traversing chain".to_string(),
                     )
                 });
+            }
+            Selector::ClassName(classname) => {
+                debug!("searching element by class name: {}", classname);
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter(Box::new(ClassNameFilter {
+                        classname: classname.clone(),
+                    }))
+                    .depth(50)
+                    .timeout(timeout_ms as u64);
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "ClassName: '{}', Err: {}",
+                        classname,
+                        e.to_string()
+                    ))
+                })?;
+                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
+                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_ele,
+                })));
             }
         }
     }

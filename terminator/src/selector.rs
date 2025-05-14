@@ -19,6 +19,8 @@ pub enum Selector {
     Filter(usize), // Uses an ID to reference a filter predicate stored separately
     /// Chain multiple selectors
     Chain(Vec<Selector>),
+    /// Select by class name
+    ClassName(String),
 }
 
 impl From<&str> for Selector {
@@ -41,9 +43,13 @@ impl From<&str> for Selector {
                 role: s.to_string(),
                 name: None,
             },
-            _ if s.contains("Name:") || s.contains("name:") => {
+            _ if s.starts_with("Name:") || s.starts_with("name:") => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Name(parts[1].to_string())
+            }
+            _ if s.to_lowercase().starts_with("classname:") => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::ClassName(parts[1].to_string())
             }
             _ if s.contains(':') => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
