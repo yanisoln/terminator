@@ -1,30 +1,90 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
 # Mediar Terminator Project Overview
 
-Mediar Terminator is an AI-first, cross-platform UI automation engine written in Rust.
+Mediar Terminator is an AI-first, cross-platform UI automation engine written in Rust, designed to provide fast and reliable desktop automation capabilities.
 
-## Key Features:
-- **Cross-Platform UI Automation:** Controls native Windows and macOS applications.
-- **Accessibility API Integration:** Interacts with applications via accessibility APIs, not computer vision. This ensures reliability and speed.
-- **Agentic Workflows:** Designed specifically for agentic AI workflows.
-- **Playwright-style API:** Offers a familiar and powerful API for developers.
-- **Windows First:** Prioritizes Windows platform development and support.
+## Core Architecture
 
-## Use Cases:
-- PDF-to-form autofill
-- End-to-end application automation
-- Embedded copilots
+### Server Component
+- Written in Rust
+- Provides the core automation engine
+- Handles OS-level accessibility API interactions
+- Built with async capabilities for efficient operation
 
-## Technical Highlights:
-- **Performance:** Optimized for speed and reliability.
-- **Deep GUI Introspection:** Allows for detailed understanding and manipulation of UI elements.
-- **Modularity:** Code is structured in a modular fashion.
-- **Asynchronous:** Built with async capabilities for efficient operation.
-- **Integration-Friendly:** Designed for easy integration with LLM agents and external SDKs (e.g., Vercel AI).
+### SDK Components
+1. **TypeScript SDK**
+   - Main client library
+   - Playwright-style API
+   - Located in `ts-sdk/`
+   - Published to npm
 
-## Core Focus:
-The primary goal is to provide a fast, reliable, and deeply introspective UI automation engine, particularly for Windows applications, enabling advanced AI-driven automation tasks.
+2. **Python SDK**
+   - Alternative client library
+   - Located in `python-sdk/`
+   - Published to PyPI
+
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|---------|-------|
+| Windows | ✅ Primary | Full features, best performance |
+| macOS | 🟡 Secondary | Core functionality available |
+| Linux | ❌ Not Supported | No current plans |
+
+## Key Technical Features
+
+### Core Capabilities
+- **Accessibility API Integration:** Uses OS-level accessibility APIs instead of computer vision
+- **Background App Control:** Can interact with applications even when not in focus
+- **Deep UI Introspection:** Detailed understanding of UI elements and their properties
+- **Cross-Platform Design:** Unified API across supported platforms
+
+### Performance Characteristics
+- **Speed:** Optimized for fast execution
+- **Reliability:** Stable and consistent behavior
+- **Resource Efficiency:** Low overhead operation
+
+### Integration Points
+- **AI Agent Integration:** Designed for seamless LLM agent integration
+- **External SDK Support:** Compatible with frameworks like Vercel AI
+- **API Design:** Playwright-inspired interface for familiarity
+
+## Development Guidelines
+
+### Code Organization
+- **Modular Structure:** Clear separation of concerns
+- **SDK Independence:** Separate packages for different languages
+- **Server-First Design:** Core functionality in Rust server
+
+### Testing & Debugging
+- **Windows Tools:**
+  - Accessibility Insights for Windows
+  - FlaUInspect for UI element inspection
+- **Debug Mode:** Available via `--debug` flag
+
+### Release Process
+- Automated server releases via GitHub Actions
+- Manual SDK releases to respective package registries
+- Version tagging for coordinated releases
+
+## Use Cases
+1. PDF-to-form autofill automation
+2. End-to-end application testing
+3. AI-driven desktop copilots
+4. Business process automation
+5. Legacy application integration
+
+## Technical Dependencies
+- **Windows:** uiautomation-rs
+- **macOS:** Native Accessibility API
+- **Build Tools:** Rust/Cargo, npm, pip
+
+## Project Status
+- **Development Stage:** Experimental
+- **Primary Focus:** Windows platform
+- **Community:** Active Discord community
+- **Documentation:** Available at docs.screenpi.pe/terminator
