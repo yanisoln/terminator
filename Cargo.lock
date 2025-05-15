@@ -4036,6 +4036,7 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
@@ -4704,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.2.5"
+version = "0.2.7"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4718,6 +4719,7 @@ dependencies = [
  "image 0.25.6",
  "objc",
  "objc-foundation",
+ "reqwest",
  "serde",
  "serde_json",
  "sysinfo",
