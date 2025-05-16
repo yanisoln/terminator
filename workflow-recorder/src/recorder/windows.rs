@@ -375,13 +375,11 @@ fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<Strin
         if !process_handle.is_invalid() {
             // TODO: Get application name from process handle
             // This would require using GetModuleFileNameEx or similar
-            // For simplicity, we'll leave it as None for now
+            // For simplicity, leaving it as None for now
         }
         
         // Find the main window for this process
-        // This is a simplified approach; in a real implementation,
-        // you would enumerate all windows and find the one matching the process ID
-        // For simplicity, we'll leave window_title as None for now
+        // This is a simplified approach
     }
     
     (window_title, application_name)
