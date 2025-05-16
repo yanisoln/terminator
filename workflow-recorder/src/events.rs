@@ -31,6 +31,30 @@ pub struct UiElement {
     
     /// The window title
     pub window_title: Option<String>,
+    
+    /// The bounding rectangle of the UI element
+    pub bounding_rect: Option<Rect>,
+    
+    /// Whether the UI element is enabled
+    pub is_enabled: Option<bool>,
+    
+    /// Whether the UI element has keyboard focus
+    pub has_keyboard_focus: Option<bool>,
+    
+    /// The hierarchy path to this element (from root)
+    pub hierarchy_path: Option<String>,
+    
+    /// The value of the UI element (for input fields, etc.)
+    pub value: Option<String>,
+}
+
+/// Represents a rectangle
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 /// Represents the type of mouse button

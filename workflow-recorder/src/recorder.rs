@@ -1,6 +1,6 @@
 use crate::{
     MouseButton, MouseEvent, MouseEventType, Position, RecordedWorkflow, UiElement, WindowEvent,
-    WorkflowEvent, WorkflowRecorderError, Result
+    WorkflowEvent, WorkflowRecorderError, Result, IntentGroup, IntentGroupingConfig, extract_intent_groups
 };
 use std::{
     fs::File,
@@ -149,5 +149,67 @@ impl WorkflowRecorder {
                 workflow.add_event(event);
             }
         }
+    }
+    
+    /// Extract intent groups from the recorded workflow
+    pub fn extract_intent_groups(&self) -> Result<Vec<IntentGroup>> {
+        let workflow = self.workflow.lock().map_err(|e| {
+            WorkflowRecorderError::SaveError(format!("Failed to lock workflow: {}", e))
+        })?;
+        
+        Ok(extract_intent_groups(&workflow))
+    }
+    
+    /// Extract intent groups with custom configuration
+    pub fn extract_intent_groups_with_config(&self, config: IntentGroupingConfig) -> Result<Vec<IntentGroup>> {
+        let workflow = self.workflow.lock().map_err(|e| {
+            WorkflowRecorderError::SaveError(format!("Failed to lock workflow: {}", e))
+        })?;
+        
+        Ok(crate::intent::group_events(&workflow, &config))
+    }
+    
+    /// Save the extracted intent groups to a file
+    pub fn save_intent_groups<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let groups = self.extract_intent_groups()?;
+        
+        // Create a serializable representation of the groups
+        #[derive(serde::Serialize)]
+        struct SerializableIntentGroup {
+            name: String,
+            start_time: u64,
+            end_time: u64,
+            event_count: usize,
+            application_context: Option<SerializableAppContext>,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct SerializableAppContext {
+            application_name: Option<String>,
+            window_title: Option<String>,
+        }
+        
+        let serializable_groups: Vec<SerializableIntentGroup> = groups.into_iter()
+            .map(|group| {
+                SerializableIntentGroup {
+                    name: group.name,
+                    start_time: group.start_time,
+                    end_time: group.end_time,
+                    event_count: group.events.len(),
+                    application_context: group.application_context.map(|ctx| {
+                        SerializableAppContext {
+                            application_name: ctx.application_name,
+                            window_title: ctx.window_title,
+                        }
+                    }),
+                }
+            })
+            .collect();
+        
+        let json = serde_json::to_string_pretty(&serializable_groups)?;
+        let mut file = File::create(path)?;
+        file.write_all(json.as_bytes())?;
+        
+        Ok(())
     }
 } 

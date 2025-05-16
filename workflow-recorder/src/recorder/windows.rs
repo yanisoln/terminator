@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 use {
     std::ffi::OsString,
     std::os::windows::ffi::OsStringExt,
+    std::path::Path,
     uiautomation::{UIAutomation, UIElement as WinUIElement},
     windows::{
         Win32::Foundation::{HWND, LPARAM, POINT, WPARAM},
@@ -21,11 +22,13 @@ use {
             CallNextHookEx, HC_ACTION, WH_KEYBOARD_LL, WH_MOUSE_LL, KBDLLHOOKSTRUCT,
             MSLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN,
             WM_RBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+            EnumWindows, IsWindowVisible, GetWindow, GW_OWNER,
         },
         Win32::System::Threading::{
             GetCurrentProcessId, GetCurrentThreadId, OpenProcess, PROCESS_QUERY_INFORMATION,
             PROCESS_VM_READ,
         },
+        Win32::System::ProcessStatus::GetModuleFileNameExW,
         Win32::UI::Accessibility::{
             AccessibleObjectFromPoint, IAccessible,
         },
@@ -337,13 +340,31 @@ fn get_ui_element_at_point(automation: &UIAutomation, x: i32, y: i32) -> Option<
             let control_type = element.get_control_type_name().ok();
             let process_id = element.get_process_id().ok().map(|pid| pid as u32);
             
+            // Get additional properties
+            let is_enabled = element.get_is_enabled().ok();
+            let has_keyboard_focus = element.get_has_keyboard_focus().ok();
+            let value = element.get_value().ok();
+            
+            // Get bounding rectangle
+            let bounding_rect = element.get_bounding_rectangle().ok().map(|rect| {
+                crate::events::Rect {
+                    x: rect.left as i32,
+                    y: rect.top as i32,
+                    width: (rect.right - rect.left) as i32,
+                    height: (rect.bottom - rect.top) as i32,
+                }
+            });
+            
+            // Get hierarchy path
+            let hierarchy_path = get_element_hierarchy_path(&element);
+
             // Get window title and application name
             let (window_title, application_name) = if let Some(pid) = process_id {
                 get_window_info_for_process(pid)
             } else {
                 (None, None)
             };
-            
+
             Some(UiElement {
                 name,
                 automation_id,
@@ -352,9 +373,51 @@ fn get_ui_element_at_point(automation: &UIAutomation, x: i32, y: i32) -> Option<
                 process_id,
                 application_name,
                 window_title,
+                bounding_rect,
+                is_enabled,
+                has_keyboard_focus,
+                hierarchy_path,
+                value,
             })
         }
         Err(_) => None,
+    }
+}
+
+/// Get the hierarchy path for an element
+#[cfg(target_os = "windows")]
+fn get_element_hierarchy_path(element: &WinUIElement) -> Option<String> {
+    let mut path = Vec::new();
+    let mut current = Some(element.clone());
+    
+    // Traverse up the tree to build the path
+    while let Some(elem) = current {
+        let name = elem.get_name().ok().unwrap_or_default();
+        let control_type = elem.get_control_type_name().ok().unwrap_or_default();
+        let automation_id = elem.get_automation_id().ok().unwrap_or_default();
+        
+        // Create a identifier for this element
+        let identifier = if !automation_id.is_empty() {
+            format!("{}[{}]", control_type, automation_id)
+        } else if !name.is_empty() {
+            format!("{}[{}]", control_type, name)
+        } else {
+            control_type
+        };
+        
+        path.push(identifier);
+        
+        // Move to parent
+        current = elem.get_parent().ok();
+    }
+    
+    // Reverse the path to get root->leaf order
+    path.reverse();
+    
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.join("/"))
     }
 }
 
@@ -363,7 +426,7 @@ fn get_ui_element_at_point(automation: &UIAutomation, x: i32, y: i32) -> Option<
 fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<String>) {
     let mut window_title = None;
     let mut application_name = None;
-    
+
     unsafe {
         // Open the process to get its name
         let process_handle = OpenProcess(
@@ -371,16 +434,71 @@ fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<Strin
             false,
             process_id,
         );
-        
+
         if !process_handle.is_invalid() {
-            // TODO: Get application name from process handle
-            // This would require using GetModuleFileNameEx or similar
-            // For simplicity, leaving it as None for now
+            // Get the executable path using GetModuleFileNameEx
+            use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
+            use std::path::Path;
+            
+            let mut buffer = [0u16; 260]; // MAX_PATH
+            if GetModuleFileNameExW(process_handle, None, &mut buffer) > 0 {
+                if let Ok(path_str) = String::from_utf16_lossy(&buffer[..]).trim_end_matches('\0').to_string().into() {
+                    if let Some(file_name) = Path::new(&path_str).file_name() {
+                        if let Some(name) = file_name.to_str() {
+                            application_name = Some(name.to_string());
+                        }
+                    }
+                }
+            }
+            
+            // Close the process handle
+            process_handle.close();
+        }
+
+        // Find the main window for this process
+        // Use EnumWindows to find windows belonging to the process
+        use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId};
+        
+        struct EnumWindowsData {
+            target_pid: u32,
+            window_handle: Option<HWND>,
         }
         
-        // Find the main window for this process
-        // This is a simplified approach
+        let mut data = EnumWindowsData {
+            target_pid: process_id,
+            window_handle: None,
+        };
+        
+        extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> i32 {
+            unsafe {
+                let data = &mut *(lparam.0 as *mut EnumWindowsData);
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(hwnd, &mut pid);
+                
+                if pid == data.target_pid {
+                    // Check if this is a visible, non-child window
+                    use windows::Win32::UI::WindowsAndMessaging::{IsWindowVisible, GetWindow, GW_OWNER};
+                    if IsWindowVisible(hwnd).as_bool() && GetWindow(hwnd, GW_OWNER).is_null() {
+                        data.window_handle = Some(hwnd);
+                        return 0; // Stop enumeration
+                    }
+                }
+                
+                1 // Continue enumeration
+            }
+        }
+        
+        EnumWindows(Some(enum_windows_proc), LPARAM(&mut data as *mut _ as isize));
+        
+        // Get the window title if we found a window
+        if let Some(hwnd) = data.window_handle {
+            let mut buffer = [0u16; 512];
+            let len = GetWindowTextW(hwnd, &mut buffer);
+            if len > 0 {
+                window_title = Some(String::from_utf16_lossy(&buffer[..len as usize]));
+            }
+        }
     }
-    
+
     (window_title, application_name)
 } 
