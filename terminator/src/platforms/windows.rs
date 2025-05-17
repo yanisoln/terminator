@@ -527,30 +527,29 @@ impl AccessibilityEngine for WindowsEngine {
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
 
         match selector {
-            Selector::Role { role, name: _ } => {
+            Selector::Role { role, name } => {
                 let roles = map_generic_role_to_win_roles(role);
                 debug!("searching element by role: {} within subtree", roles);
                 
-                // Create a condition for the control type
-                let condition = self
-                    .automation
-                    .0
-                    .create_property_condition(
-                        UIProperty::ControlType,
-                        Variant::from(roles as i32),
-                        None,
-                    )
-                    .unwrap();
+                // create matcher, with ref root same as subtree
+                let mut matcher = self
+                        .automation
+                        .0
+                        .create_matcher()
+                        .from_ref(root_ele)
+                        .control_type(roles)
+                        .timeout(timeout_ms as u64);
+
+                if let Some(name) = name {
+                    // use contains_name, its undetermined right now
+                    // wheather we should use `name` or `contains_name`
+                    matcher = matcher.contains_name(name);
+                }
 
                 // Use find_first with TreeScope::Subtree to ensure we only search within the root element's subtree
-                let element = root_ele
-                    .find_first(TreeScope::Subtree, &condition)
-                    .map_err(|e| {
-                        AutomationError::ElementNotFound(format!(
-                            "Role: '{}', Root: {:?}, Err: {}",
-                            role, root, e
-                        ))
-                    })?;
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
+                })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
