@@ -1,3 +1,4 @@
+// simple example to scrap whatsapp
 use std::{hash::Hash, thread};
 use std::time::Duration;
 
@@ -26,7 +27,7 @@ async fn main() -> Result<(), AutomationError> {
 
     let grp_per = Selector::Role { 
         role: "listitem".to_string(), 
-        name: Some("vivek bhaiya".to_string()),
+        name: Some("tribhuwan".to_string()),
     };
 
     let ch_list_ele = engine.find_element(&ch_list, Some(&wh_root), None)?;
