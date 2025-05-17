@@ -2,6 +2,8 @@ use crate::errors::AutomationError;
 use crate::selector::Selector;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::time::Instant;
+use tracing::{info, instrument, warn};
 
 use super::{ClickResult, Locator};
 
@@ -15,10 +17,12 @@ pub struct UIElement {
 #[derive(Debug)]
 pub struct UIElementAttributes {
     pub role: String,
+    pub name: Option<String>,
     pub label: Option<String>,
     pub value: Option<String>,
     pub description: Option<String>,
     pub properties: HashMap<String, Option<serde_json::Value>>,
+    pub is_keyboard_focusable: Option<bool>,
 }
 
 /// Interface for platform-specific element implementations
@@ -27,6 +31,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     fn id(&self) -> Option<String>;
     fn role(&self) -> String;
     fn attributes(&self) -> UIElementAttributes;
+    fn name(&self) -> Option<String> {
+        self.attributes().name
+    }
     fn children(&self) -> Result<Vec<UIElement>, AutomationError>;
     fn parent(&self) -> Result<Option<UIElement>, AutomationError>;
     fn bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError>; // x, y, width, height
@@ -35,7 +42,7 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     fn right_click(&self) -> Result<(), AutomationError>;
     fn hover(&self) -> Result<(), AutomationError>;
     fn focus(&self) -> Result<(), AutomationError>;
-    fn type_text(&self, text: &str) -> Result<(), AutomationError>;
+    fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError>;
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError>;
     fn set_value(&self, value: &str) -> Result<(), AutomationError>;
@@ -52,6 +59,12 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // Add a method to clone the box
     fn clone_box(&self) -> Box<dyn UIElementImpl>;
+
+    // New method for keyboard focusable
+    fn is_keyboard_focusable(&self) -> Result<bool, AutomationError>;
+
+    // New method for mouse drag
+    fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> Result<(), AutomationError>;
 }
 
 impl UIElement {
@@ -61,8 +74,21 @@ impl UIElement {
     }
 
     /// Get the element's ID
+    #[instrument(skip(self))]
     pub fn id(&self) -> Option<String> {
-        self.inner.id()
+        let start = Instant::now();
+        info!("Getting element ID");
+        
+        let id = self.inner.id();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            element_id = id.as_deref().unwrap_or_default(),
+            "Element ID retrieved"
+        );
+        
+        id
     }
 
     /// Get the element's role (e.g., "button", "textfield")
@@ -91,18 +117,54 @@ impl UIElement {
     }
 
     /// Click on this element
+    #[instrument(skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
-        self.inner.click()
+        let start = Instant::now();
+        info!("Clicking element");
+        
+        let result = self.inner.click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element clicked"
+        );
+        
+        result
     }
 
     /// Double-click on this element
+    #[instrument(skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
-        self.inner.double_click()
+        let start = Instant::now();
+        info!("Double clicking element");
+        
+        let result = self.inner.double_click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element double clicked"
+        );
+        
+        result
     }
 
     /// Right-click on this element
+    #[instrument(skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
-        self.inner.right_click()
+        let start = Instant::now();
+        info!("Right clicking element");
+        
+        let result = self.inner.right_click();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            "Element right clicked"
+        );
+        
+        result
     }
 
     /// Hover over this element
@@ -116,8 +178,8 @@ impl UIElement {
     }
 
     /// Type text into this element
-    pub fn type_text(&self, text: &str) -> Result<(), AutomationError> {
-        self.inner.type_text(text)
+    pub fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
+        self.inner.type_text(text, use_clipboard)
     }
 
     /// Press a key while this element is focused
@@ -136,8 +198,21 @@ impl UIElement {
     }
 
     /// Check if element is enabled
+    #[instrument(skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
-        self.inner.is_enabled()
+        let start = Instant::now();
+        info!("Checking if element is enabled");
+        
+        let is_enabled = self.inner.is_enabled()?;
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            is_enabled,
+            "Element enabled status checked"
+        );
+        
+        Ok(is_enabled)
     }
 
     /// Check if element is visible
@@ -174,6 +249,34 @@ impl UIElement {
     /// Activate the window containing this element (bring to foreground)
     pub fn activate_window(&self) -> Result<(), AutomationError> {
         self.inner.activate_window()
+    }
+
+    /// Get the element's name
+    #[instrument(skip(self))]
+    pub fn name(&self) -> Option<String> {
+        let start = Instant::now();
+        info!("Getting element name");
+        
+        let name = self.inner.name();
+        
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            element_name = name.as_deref().unwrap_or_default(),
+            "Element name retrieved"
+        );
+        
+        name
+    }
+
+    /// Check if element is keyboard focusable
+    pub fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
+        self.inner.is_keyboard_focusable()
+    }
+
+    /// Drag mouse from start to end coordinates
+    pub fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> Result<(), AutomationError> {
+        self.inner.mouse_drag(start_x, start_y, end_x, end_y)
     }
 }
 

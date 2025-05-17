@@ -7,19 +7,101 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::env;
-use std::net::SocketAddr;
+use std::{collections::HashMap, env};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use tracing::{Level, error, info}; // Import env module
+use tracing::{error, info, instrument, debug};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+
+// Cache entry with timestamp for expiration
+struct CacheEntry {
+    element: UIElement,
+    last_accessed: Instant,
+}
 
 // Shared application state
 struct AppState {
     desktop: Arc<Desktop>,
+    element_cache: Arc<tokio::sync::RwLock<HashMap<String, CacheEntry>>>,
+    cache_ttl: Duration,
+}
+
+impl AppState {
+    fn new(desktop: Arc<Desktop>) -> Self {
+        Self {
+            desktop,
+            element_cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            cache_ttl: Duration::from_secs(300), // 300 second TTL by default
+        }
+    }
+
+    // Helper to get cache key from selector chain, now returns Option<String>
+    // Only use the last element if it's an ID selector
+    fn get_cache_key(selector_chain: &[String]) -> Option<String> {
+        if let Some(last_selector) = selector_chain.last() {
+            if last_selector.starts_with('#') {
+                debug!(last_selector = %last_selector, "Valid cache key (ID selector): {}", last_selector);
+                return Some(last_selector.clone());
+            } else {
+                debug!(original_chain = ?selector_chain, last_selector = %last_selector, "Invalid cache key (last element is not an ID selector). Caching/retrieval will be skipped for this chain.");
+                return None;
+            }
+        }
+        debug!(original_chain = ?selector_chain, "Empty selector chain or invalid structure. Caching/retrieval will be skipped.");
+        None
+    }
+
+    // Helper to get element from cache
+    async fn get_cached_element(&self, selector_chain: &[String]) -> Option<UIElement> {
+        if let Some(cache_key) = Self::get_cache_key(selector_chain) {
+            let mut cache = self.element_cache.write().await;
+            debug!(cache_key = %cache_key, "Attempting to retrieve element from cache using derived key for chain: {:?}", selector_chain);
+
+            if let Some(entry) = cache.get_mut(&cache_key) {
+                if entry.last_accessed.elapsed() < self.cache_ttl {
+                    entry.last_accessed = Instant::now();
+                    debug!(cache_key = %cache_key, "Cache hit: Element found and not expired for chain: {:?}", selector_chain);
+                    return Some(entry.element.clone());
+                } else {
+                    debug!(cache_key = %cache_key, "Cache miss: Element found but expired for chain: {:?}. Removing from cache.", selector_chain);
+                    cache.remove(&cache_key);
+                }
+            } else {
+                debug!(cache_key = %cache_key, "Cache miss: Element not found in cache for chain: {:?}", selector_chain);
+            }
+        } else {
+            // Reason for skipping is logged by get_cache_key
+            debug!(original_chain = ?selector_chain, "Cache lookup skipped for this chain as it does not qualify for caching by ID selector rule.");
+        }
+        None
+    }
+
+    // Helper to store element in cache
+    async fn cache_element(&self, selector_chain: &[String], element: UIElement) {
+        if let Some(cache_key) = Self::get_cache_key(selector_chain) {
+            let mut cache = self.element_cache.write().await;
+            
+            let element_id = element.id().unwrap_or_else(|| "N/A".to_string());
+            let element_role = element.attributes().role;
+            debug!(cache_key = %cache_key, element_id = %element_id, element_role = %element_role, "Caching element using derived key for chain: {:?}", selector_chain);
+            
+            cache.insert(cache_key.clone(), CacheEntry {
+                element,
+                last_accessed: Instant::now(),
+            });
+            debug!("Current cache size: {}. Item cached with key: {} for chain: {:?}", cache.len(), cache_key, selector_chain);
+            // Optionally, log all keys if verbose logging is desired
+            // for (key, entry) in cache.iter() {
+            //     debug!(cached_item_key = %key, last_accessed = ?entry.last_accessed.elapsed(), "Item in cache");
+            // }
+        } else {
+            // Reason for skipping is logged by get_cache_key
+            debug!(original_chain = ?selector_chain, "Element caching skipped for this chain as it does not qualify for caching by ID selector rule.");
+        }
+    }
 }
 
 // Base request structure with selector chain
@@ -35,7 +117,8 @@ struct ChainedRequest {
 struct TypeTextRequest {
     selector_chain: Vec<String>,
     text: String,
-    timeout_ms: Option<u64>, // Added timeout
+    timeout_ms: Option<u64>,     // Added timeout
+    use_clipboard: Option<bool>, // Optional flag for fast typing using clipboard
 }
 
 // Request structure for getting text (with chain)
@@ -92,14 +175,6 @@ struct OcrImagePathRequest {
     image_path: String,
 }
 
-// Request structure for OCR on raw screenshot data (base64 encoded)
-#[derive(Deserialize)]
-struct OcrScreenshotRequest {
-    image_base64: String,
-    width: u32,
-    height: u32,
-}
-
 // Request structure for expectations (can often reuse ChainedRequest)
 // Add optional timeout
 #[derive(Deserialize)]
@@ -113,7 +188,6 @@ struct ExpectRequest {
 struct ExpectTextRequest {
     selector_chain: Vec<String>,
     expected_text: String,
-    max_depth: Option<usize>, // Needed for element.text() call within expect_text_equals
     timeout_ms: Option<u64>,
 }
 
@@ -143,6 +217,26 @@ struct ExploreRequest {
     timeout_ms: Option<u64>,             // Added timeout
 }
 
+// Add at the top with other request structs
+#[derive(Deserialize)]
+struct MouseDragRequest {
+    selector_chain: Vec<String>,
+    start_x: f64,
+    start_y: f64,
+    end_x: f64,
+    end_y: f64,
+    timeout_ms: Option<u64>,
+}
+
+// Request structure for scrolling
+#[derive(Deserialize)]
+struct ScrollRequest {
+    selector_chain: Vec<String>,
+    direction: String, // "up", "down", "left", "right"
+    amount: f64,       // Number of scroll increments
+    timeout_ms: Option<u64>,
+}
+
 // Basic response structure
 #[derive(Serialize)]
 struct BasicResponse {
@@ -150,30 +244,34 @@ struct BasicResponse {
 }
 
 // Response structure for element details
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 struct ElementResponse {
+    id: Option<String>,
     role: String,
     label: Option<String>,
-    id: Option<String>,
+    name: Option<String>,
     text: Option<String>,
-    bounds: Option<(f64, f64, f64, f64)>,
     visible: Option<bool>,
     enabled: Option<bool>,
     focused: Option<bool>,
+    is_keyboard_focusable: Option<bool>,
+    bounds: Option<(f64, f64, f64, f64)>,
 }
 
 impl ElementResponse {
     fn from_element(element: &UIElement) -> Self {
         let attrs = element.attributes();
         Self {
+            id: element.id(),
             role: attrs.role,
             label: attrs.label,
-            id: element.id(),
-            text: Some(element.text(1).unwrap_or_default()),
-            bounds: Some(element.bounds().unwrap_or_default()),
-            visible: Some(element.is_visible().unwrap_or_default()),
-            enabled: Some(element.is_enabled().unwrap_or_default()),
-            focused: Some(element.is_focused().unwrap_or_default()),
+            name: attrs.name,
+            text: element.text(1).ok(),
+            visible: element.is_visible().ok(),
+            enabled: element.is_enabled().ok(),
+            focused: element.is_focused().ok(),
+            is_keyboard_focusable: element.is_keyboard_focusable().ok(),
+            bounds: element.bounds().ok(),
         }
     }
 }
@@ -217,6 +315,7 @@ struct AttributesResponse {
     description: Option<String>,
     properties: HashMap<String, Option<serde_json::Value>>,
     id: Option<String>,
+    is_keyboard_focusable: Option<bool>,
 }
 
 // Response structure for element bounds
@@ -359,7 +458,7 @@ async fn root() -> &'static str {
     "Terminator API Server Ready"
 }
 
-// Helper to get timeout duration from optional ms
+// Helper function to get timeout duration
 fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
     timeout_ms.map(Duration::from_millis)
 }
@@ -392,94 +491,178 @@ fn create_locator_for_chain(
 }
 
 // Handler for finding an element
+#[instrument(skip(state, payload), fields(selector_chain = ?payload.selector_chain))]
 async fn first(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to find element (first)");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms); // Convert Option<u64> to Option<Duration>
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to find first element");
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache");
+        return Ok(Json(ElementResponse::from_element(&element)));
+    }
 
-    // Pass the timeout to the locator's wait method (requires core library update)
-    match locator.wait(timeout).await {
+    // If not in cache, find the element
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    
+    match locator.first(timeout).await {
         Ok(element) => {
-            info!(element_id = ?element.id(), role = element.role(), "Element found (first)");
+            // Cache the element
+            if let Some(id) = element.id() {
+                let cache_key = vec![format!("#{}", id)];
+                state.cache_element(&cache_key, element.clone()).await;
+            }
+            
+            info!("Element found successfully");
             Ok(Json(ElementResponse::from_element(&element)))
         }
         Err(e) => {
-            error!("Failed finding element (first): {}", e); // Use error! macro
-            Err(e.into()) // Convert AutomationError to ApiError
+            error!("Failed to find element: {}", e);
+            Err(e.into())
         }
     }
 }
 
 // Handler for clicking an element
+#[instrument(skip(state, payload), fields(selector_chain = ?payload.selector_chain))]
 async fn click_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
-) -> Result<Json<ClickResponse>, ApiError> {
+) -> Result<Json<BasicResponse>, ApiError> {
     info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to click element");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms);
-
-    // Pass timeout to click (requires core library update)
-    match locator.click(timeout).await {
-        Ok(result) => {
-            info!("Element clicked successfully");
-            Ok(Json(result.into()))
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache for clicking");
+        match element.click() {
+            Ok(_) => {
+                info!("Element clicked successfully using cached element");
+                Ok(Json(BasicResponse {
+                    message: "Element clicked successfully".to_string(),
+                }))
+            }
+            Err(e) => {
+                error!("Failed to click cached element: {}", e);
+                Err(e.into())
+            }
         }
-        Err(e) => {
-            error!("Failed to click element: {}", e);
-            Err(e.into())
+    } else {
+        // If not in cache, find the element
+        let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+        let timeout = get_timeout(payload.timeout_ms);
+        
+        match locator.first(timeout).await {
+            Ok(element) => {
+                // Cache the element using its ID as the cache key
+                if let Some(id) = element.id() {
+                    let cache_key = vec![format!("#{}", id)];
+                    state.cache_element(&cache_key, element.clone()).await;
+                }
+                
+                match element.click() {
+                    Ok(_) => {
+                        info!("Element clicked successfully");
+                        Ok(Json(BasicResponse {
+                            message: "Element clicked successfully".to_string(),
+                        }))
+                    }
+                    Err(e) => {
+                        error!("Failed to click element: {}", e);
+                        Err(e.into())
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to find element for clicking: {}", e);
+                Err(e.into())
+            }
         }
     }
 }
 
 // Handler for typing text into an element
+#[instrument(skip(state, payload), fields(selector_chain = ?payload.selector_chain, text_length = payload.text.len()))]
 async fn type_text_into_element(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TypeTextRequest>,
 ) -> Result<Json<BasicResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.text, timeout = ?payload.timeout_ms, "Attempting to type text");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms);
-
-    // Pass timeout to type_text (requires core library update)
-    match locator.type_text(&payload.text, timeout).await {
-        Ok(_) => {
-            info!("Text typed successfully");
-            Ok(Json(BasicResponse {
-                message: "Text typed successfully".to_string(),
-            }))
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to type text");
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache for typing");
+        match element.type_text(&payload.text, payload.use_clipboard.unwrap_or(false)) {
+            Ok(_) => {
+                info!("Text typed successfully using cached element");
+                Ok(Json(BasicResponse {
+                    message: "Text typed successfully".to_string(),
+                }))
+            }
+            Err(e) => {
+                error!("Failed to type text using cached element: {}", e);
+                Err(e.into())
+            }
         }
-        Err(e) => {
-            error!("Failed to type text into element: {}", e);
-            Err(e.into())
+    } else {
+        // If not in cache, find the element
+        let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+        let timeout = get_timeout(payload.timeout_ms);
+        
+        match locator.first(timeout).await {
+            Ok(element) => {
+                // Cache the element using its ID as the cache key
+                if let Some(id) = element.id() {
+                    let cache_key = vec![format!("#{}", id)];
+                    state.cache_element(&cache_key, element.clone()).await;
+                }
+                
+                match element.type_text(&payload.text, payload.use_clipboard.unwrap_or(false)) {
+                    Ok(_) => {
+                        info!("Text typed successfully");
+                        Ok(Json(BasicResponse {
+                            message: "Text typed successfully".to_string(),
+                        }))
+                    }
+                    Err(e) => {
+                        error!("Failed to type text: {}", e);
+                        Err(e.into())
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to find element for typing: {}", e);
+                Err(e.into())
+            }
         }
     }
 }
 
 // Handler for getting text from an element
+#[instrument(skip(state, payload), fields(selector_chain = ?payload.selector_chain))]
 async fn get_element_text(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<GetTextRequest>,
 ) -> Result<Json<TextResponse>, ApiError> {
-    let max_depth = payload.max_depth.unwrap_or(5);
-    info!(chain = ?payload.selector_chain, max_depth, timeout = ?payload.timeout_ms, "Attempting to get text");
+    let start = Instant::now();
+    info!("Starting text extraction operation");
+
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
     let timeout = get_timeout(payload.timeout_ms);
 
-    // Pass timeout to text (requires core library update)
-    match locator.text(max_depth, timeout).await {
-        Ok(text) => {
-            info!("Text retrieved successfully (length: {})", text.len());
-            Ok(Json(TextResponse { text }))
-        }
-        Err(e) => {
-            error!("Failed to get text from element: {}", e);
-            Err(e.into())
-        }
-    }
+    let element = locator.first(timeout).await?;
+    let text = element.text(payload.max_depth.unwrap_or(1))?;
+
+    let duration = start.elapsed();
+    info!(
+        duration_ms = duration.as_millis(),
+        text_length = text.len(),
+        "Completed text extraction operation"
+    );
+
+    Ok(Json(TextResponse { text }))
 }
 
 // Handler for finding multiple elements
@@ -488,22 +671,32 @@ async fn all(
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
     info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to find all elements");
+    
+    // For 'all' operations, we don't use the cache since we need fresh results
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
     let timeout = get_timeout(payload.timeout_ms);
-
-    // Pass timeout to all (requires core library update)
-    // Note: 'all' might not inherently wait like 'first', timeout might apply
-    // differently (e.g., timeout for finding the parent context).
-    match locator.all(timeout, Some(payload.depth.unwrap_or(1))).await {
+    
+    match locator.all(timeout, payload.depth).await {
         Ok(elements) => {
-            info!("Found {} elements matching chain", elements.len());
-            let response_elements = elements.iter().map(ElementResponse::from_element).collect();
+            info!(count = elements.len(), "Elements found successfully");
+            
+            // Cache each element individually using its ID as the cache key
+            for element in &elements {
+                if let Some(id) = element.id() {
+                    let cache_key = vec![format!("#{}", id)];
+                    state.cache_element(&cache_key, element.clone()).await;
+                }
+            }
+            
             Ok(Json(ElementsResponse {
-                elements: response_elements,
+                elements: elements
+                    .into_iter()
+                    .map(|element| ElementResponse::from_element(&element))
+                    .collect(),
             }))
         }
         Err(e) => {
-            error!("Failed to find all elements: {}", e);
+            error!("Failed to find elements: {}", e);
             Err(e.into())
         }
     }
@@ -514,8 +707,6 @@ async fn get_full_tree(
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
     info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get full tree");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms);
 
     // Define the recursive helper function
     fn get_children_recursive(element: &UIElement) -> Result<Vec<ElementResponse>, ApiError> {
@@ -527,7 +718,8 @@ async fn get_full_tree(
             all_descendants.push(ElementResponse::from_element(child_element));
 
             // 2. Recursively call for this child_element's descendants
-            match get_children_recursive(child_element) { // Recursive call with &UIElement
+            match get_children_recursive(child_element) {
+                // Recursive call with &UIElement
                 Ok(deeper_responses) => {
                     // Extend the list with the descendants returned from the recursive call
                     all_descendants.extend(deeper_responses);
@@ -547,6 +739,44 @@ async fn get_full_tree(
 
         Ok(all_descendants) // Return the accumulated list
     }
+
+    // Handle empty selector chain case
+    if payload.selector_chain.is_empty() {
+        info!("Empty selector chain, getting full tree of all applications");
+        let mut all_elements: Vec<ElementResponse> = Vec::new();
+
+        // Get all applications
+        let applications = state.desktop.applications()?;
+
+        // Process each application and its children
+        for app in applications {
+            // Add the application itself
+            all_elements.push(ElementResponse::from_element(&app));
+
+            // Get all descendants of this application
+            match get_children_recursive(&app) {
+                Ok(descendants) => {
+                    all_elements.extend(descendants);
+                }
+                Err(e) => {
+                    error!(
+                        "Error getting descendants for application {:?}: {:?}",
+                        app.id(),
+                        e
+                    );
+                    // Continue with other applications
+                }
+            }
+        }
+
+        return Ok(Json(ElementsResponse {
+            elements: all_elements,
+        }));
+    }
+
+    // Original logic for non-empty selector chain
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
 
     // Find the root element for the subtree
     let root_element = locator.wait(timeout).await?;
@@ -577,7 +807,10 @@ async fn get_element_attributes(
     // Then get the attributes
     let attrs = element.attributes(); // This call is synchronous and doesn't need await/timeout here
 
-    info!("Attributes retrieved successfully for element ID: {:?}", element_id);
+    info!(
+        "Attributes retrieved successfully for element ID: {:?}",
+        element_id
+    );
 
     // Construct and return the response
     Ok(Json(AttributesResponse {
@@ -587,6 +820,7 @@ async fn get_element_attributes(
         description: attrs.description,
         properties: attrs.properties,
         id: element_id, // Use the ID obtained from the element
+        is_keyboard_focusable: attrs.is_keyboard_focusable,
     }))
     // Note: The original 'match locator.attributes(timeout).await' logic was incorrect
     // because locator didn't have .attributes() and element.attributes() is sync.
@@ -759,159 +993,79 @@ async fn find_window_handler(
 }
 
 // Handler for exploring an element's children
+#[instrument(skip(state, payload), fields(selector_chain = ?payload.selector_chain))]
 async fn explore_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ExploreRequest>,
 ) -> Result<Json<ExploreResponse>, ApiError> {
-    // Handle case where selector_chain might be null/empty for exploring root
-    match &payload.selector_chain {
-        Some(chain) if !chain.is_empty() => {
-            // --- Existing logic for exploring a specific element --- 
-            let locator = create_locator_for_chain(&state, chain)?;
-            let timeout = get_timeout(payload.timeout_ms);
-            info!(chain = ?payload.selector_chain, timeout = ?timeout, "Attempting to explore element");
+    let start = Instant::now();
+    info!("Starting element exploration");
 
-            // Wait for the parent element first, using the timeout
-            let parent_element = locator.wait(timeout).await.map_err(ApiError::from)?;
-            let parent_response = ElementResponse::from_element(&parent_element);
-            let children_elements = parent_element.children().map_err(ApiError::from)?;
+    let locator = if let Some(chain) = &payload.selector_chain {
+        create_locator_for_chain(&state, chain)?
+    } else {
+        state.desktop.locator(Selector::Role {
+            role: "window".to_string(),
+            name: None,
+        })
+    };
 
-            info!(
-                "Exploration successful, found {} children for parent role={}, label={:?}",
-                children_elements.len(),
-                parent_response.role,
-                parent_response.label
-            );
+    let timeout = get_timeout(payload.timeout_ms);
+    let element = locator.first(timeout).await?;
 
-            let detailed_children: Vec<ExploredElementDetail> = children_elements
-                .into_iter() // Consume the vector
-                .map(|child_element| {
-                    let attrs = child_element.attributes();
-                    let bounds_res = child_element.bounds();
-                    let bounds = match bounds_res {
-                        Ok((x, y, width, height)) => Some(BoundsResponse {
-                            x,
-                            y,
-                            width,
-                            height,
-                        }),
-                        Err(_) => None,
-                    };
-                    let text = child_element.text(1).unwrap_or_default();
-                    let child_id = child_element.id(); // Get ID once
-                    let child_role = attrs.role.clone(); // Clone role
-                    let child_name = attrs.label.clone(); // Clone name
+    let parent = ElementResponse::from_element(&element);
+    let mut children = Vec::new();
 
-                    let suggested_selector =
-                        match (child_role.as_str(), &child_id, &child_name) {
-                            (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
-                            (_, _, Some(name)) if !name.is_empty() => {
-                                format!("name:\"{}\"", name.replace('"', "\\\"")) // Correct escaping for name
-                            }
-                            (role, _, _) => format!("role:{}", role),
-                        };
+    let children_start = Instant::now();
+    info!("Starting children exploration");
 
-                    // Get children IDs for this child (can be empty)
-                    let grandchildren_ids = child_element.children()
-                        .map(|gc| gc.into_iter().filter_map(|g| g.id()).collect())
-                        .unwrap_or_else(|_| Vec::new());
+    for child in element.children()? {
+        let child_id = child.id().unwrap_or_default();
+        let child_bounds = child.bounds().ok();
+        let child_bounds_response = child_bounds.map(|(x, y, width, height)| BoundsResponse {
+            x,
+            y,
+            width,
+            height,
+        });
 
-                    ExploredElementDetail {
-                        role: child_role,
-                        name: child_name,
-                        id: child_id,
-                        bounds,
-                        value: attrs.value,
-                        description: attrs.description,
-                        text: Some(text),
-                        parent_id: parent_element.id(), // ID of the element being explored
-                        children_ids: grandchildren_ids,
-                        suggested_selector,
-                    }
-                })
-                .collect();
+        let child_attrs = child.attributes();
+        let child_text = child.text(1).ok();
 
-            Ok(Json(ExploreResponse {
-                parent: parent_response,
-                children: detailed_children,
-            }))
-            // --- End of existing logic ---
-        }
-        _ => {
-            // --- New logic for exploring the screen (root) ---
-            info!("Exploring screen (getting top-level applications)");
+        let suggested_selector = format!(
+            "role:{} name:'{}'",
+            child_attrs.role,
+            child_attrs.name.clone().unwrap_or_default()
+        );
 
-            // Create the dummy root parent response
-            let root_parent = ElementResponse {
-                role: "root".to_string(),
-                label: None,
-                id: None,
-                text: Some("Screen Root".to_string()), // More descriptive text
-                bounds: Some((0.0, 0.0, 0.0, 0.0)), // Bounds are not applicable
-                visible: Some(true), // Root is conceptually always visible
-                enabled: Some(true), // Root is conceptually always enabled
-                focused: Some(false), // Root itself cannot be focused
-            };
-
-            // Get top-level applications/windows
-            let applications = state.desktop.applications().map_err(ApiError::from)?;
-            info!("Found {} top-level applications/windows", applications.len());
-
-            let detailed_children: Vec<ExploredElementDetail> = applications
-                .into_iter()
-                .map(|app_element| {
-                    let attrs = app_element.attributes();
-                    let bounds_res = app_element.bounds();
-                    let bounds = match bounds_res {
-                        Ok((x, y, width, height)) => Some(BoundsResponse {
-                            x,
-                            y,
-                            width,
-                            height,
-                        }),
-                        Err(_) => None,
-                    };
-                    let text = app_element.text(1).unwrap_or_default();
-                    let app_id = app_element.id();
-                    let app_role = attrs.role.clone();
-                    let app_name = attrs.label.clone();
-
-                    let suggested_selector =
-                        match (app_role.as_str(), &app_id, &app_name) {
-                            (_, Some(id), _) if !id.is_empty() => format!("#{}", id),
-                            (_, _, Some(name)) if !name.is_empty() => {
-                                format!("name:\"{}\"", name.replace('"', "\\\""))
-                            }
-                            (role, _, _) => format!("role:{}", role),
-                        };
-                    
-                    // Get children IDs for this app window (can be empty)
-                    let children_ids = app_element.children()
-                        .map(|gc| gc.into_iter().filter_map(|g| g.id()).collect())
-                        .unwrap_or_else(|_| Vec::new());
-
-                    ExploredElementDetail {
-                        role: app_role,
-                        name: app_name,
-                        id: app_id,
-                        bounds,
-                        value: attrs.value,
-                        description: attrs.description,
-                        text: Some(text),
-                        parent_id: None, // Top-level windows have no UI parent in this context
-                        children_ids, // IDs of direct children of the window
-                        suggested_selector,
-                    }
-                })
-                .collect();
-
-            Ok(Json(ExploreResponse {
-                parent: root_parent,
-                children: detailed_children,
-            }))
-            // --- End of new logic ---
-        }
+        children.push(ExploredElementDetail {
+            role: child_attrs.role,
+            name: child_attrs.name,
+            id: Some(child_id),
+            bounds: child_bounds_response,
+            value: child_attrs.value,
+            description: child_attrs.description,
+            text: child_text,
+            parent_id: parent.id.clone(),
+            children_ids: Vec::new(),
+            suggested_selector,
+        });
     }
+
+    let children_duration = children_start.elapsed();
+    info!(
+        children_count = children.len(),
+        children_duration_ms = children_duration.as_millis(),
+        "Completed children exploration"
+    );
+
+    let duration = start.elapsed();
+    info!(
+        duration_ms = duration.as_millis(),
+        "Completed element exploration"
+    );
+
+    Ok(Json(ExploreResponse { parent, children }))
 }
 
 // Handler for opening a file
@@ -966,12 +1120,14 @@ async fn run_command(
 }
 
 // Handler for capturing the primary screen and performing OCR
-async fn capture_screen(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<OcrResponse>, ApiError> {
+async fn capture_screen(State(state): State<Arc<AppState>>) -> Result<Json<OcrResponse>, ApiError> {
     info!("Attempting to capture primary screen and perform OCR");
     // 1. Capture screen
-    let screenshot_result = state.desktop.capture_screen().await.map_err(ApiError::from)?;
+    let screenshot_result = state
+        .desktop
+        .capture_screen()
+        .await
+        .map_err(ApiError::from)?;
     info!("Screen captured successfully, performing OCR...");
 
     // 2. Perform OCR directly
@@ -1108,18 +1264,40 @@ async fn expect_element_visible(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ExpectRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element visible");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let timeout = get_timeout(payload.timeout_ms); // Uses Locator's default if None
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Expecting element to be visible");
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache for visibility check");
+        if element.is_visible().unwrap_or(false) {
+            info!("Cached element is visible");
+            return Ok(Json(ElementResponse::from_element(&element)));
+        }
+    }
 
-    match locator.expect_visible(timeout).await {
+    // If not in cache or not visible, find the element
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    
+    match locator.first(timeout).await {
         Ok(element) => {
-            info!("Element found and is visible");
-            Ok(Json(ElementResponse::from_element(&element)))
+            // Cache the element
+            state.cache_element(&payload.selector_chain, element.clone()).await;
+            
+            if element.is_visible().unwrap_or(false) {
+                info!("Element is visible");
+                Ok(Json(ElementResponse::from_element(&element)))
+            } else {
+                error!("Element is not visible");
+                Err(AutomationError::ElementNotFound(format!(
+                    "Element {:?} is not visible",
+                    payload.selector_chain
+                )).into())
+            }
         }
         Err(e) => {
-            error!("Expect visible failed: {}", e);
-            Err(e.into()) // Includes Timeout error
+            error!("Failed to find element for visibility check: {}", e);
+            Err(e.into())
         }
     }
 }
@@ -1128,17 +1306,39 @@ async fn expect_element_enabled(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ExpectRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to expect element enabled");
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Expecting element to be enabled");
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache for enabled check");
+        if element.is_enabled().unwrap_or(false) {
+            info!("Cached element is enabled");
+            return Ok(Json(ElementResponse::from_element(&element)));
+        }
+    }
+
+    // If not in cache or not enabled, find the element
     let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
     let timeout = get_timeout(payload.timeout_ms);
-
-    match locator.expect_enabled(timeout).await {
+    
+    match locator.first(timeout).await {
         Ok(element) => {
-            info!("Element found and is enabled");
-            Ok(Json(ElementResponse::from_element(&element)))
+            // Cache the element
+            state.cache_element(&payload.selector_chain, element.clone()).await;
+            
+            if element.is_enabled().unwrap_or(false) {
+                info!("Element is enabled");
+                Ok(Json(ElementResponse::from_element(&element)))
+            } else {
+                error!("Element is not enabled");
+                Err(AutomationError::ElementNotFound(format!(
+                    "Element {:?} is not enabled",
+                    payload.selector_chain
+                )).into())
+            }
         }
         Err(e) => {
-            error!("Expect enabled failed: {}", e);
+            error!("Failed to find element for enabled check: {}", e);
             Err(e.into())
         }
     }
@@ -1148,31 +1348,39 @@ async fn expect_element_text_equals(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ExpectTextRequest>,
 ) -> Result<Json<ElementResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, text = %payload.expected_text, depth = ?payload.max_depth, timeout = ?payload.timeout_ms, "Attempting to expect text equals");
-    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
-    let max_depth = payload.max_depth.unwrap_or(5);
-    let timeout = get_timeout(payload.timeout_ms);
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Expecting element text to equal");
+    
+    // Try to get from cache first
+    if let Some(element) = state.get_cached_element(&payload.selector_chain).await {
+        info!("Found element in cache for text check");
+        if element.text(1).unwrap_or_default() == payload.expected_text {
+            info!("Cached element text matches");
+            return Ok(Json(ElementResponse::from_element(&element)));
+        }
+    }
 
-    match locator
-        .expect_text_equals(&payload.expected_text, max_depth, timeout)
-        .await
-    {
+    // If not in cache or text doesn't match, find the element
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    
+    match locator.first(timeout).await {
         Ok(element) => {
-            info!("Element found and text matches");
-            let attrs = element.attributes();
-            Ok(Json(ElementResponse {
-                role: attrs.role,
-                label: attrs.label,
-                id: element.id(),
-                text: Some(payload.expected_text.to_string()),
-                bounds: Some(element.bounds().unwrap_or_default()),
-                visible: Some(element.is_visible().unwrap_or_default()),
-                enabled: Some(element.is_enabled().unwrap_or_default()),
-                focused: Some(element.is_focused().unwrap_or_default()),
-            }))
+            // Cache the element
+            state.cache_element(&payload.selector_chain, element.clone()).await;
+            
+            if element.text(1).unwrap_or_default() == payload.expected_text {
+                info!("Element text matches");
+                Ok(Json(ElementResponse::from_element(&element)))
+            } else {
+                error!("Element text does not match");
+                Err(AutomationError::ElementNotFound(format!(
+                    "Element {:?} text does not match expected text",
+                    payload.selector_chain
+                )).into())
+            }
         }
         Err(e) => {
-            error!("Expect text equals failed: {}", e);
+            error!("Failed to find element for text check: {}", e);
             Err(e.into())
         }
     }
@@ -1198,7 +1406,8 @@ async fn activate_app_handler(
     // 3. Activate the application (using existing desktop method or a new one)
     // Example: state.desktop.activate_application_by_element(&app_element)?;
     // Or maybe: element.activate_window()?; (using existing trait method)
-    match element.activate_window() { // Now `element` is defined
+    match element.activate_window() {
+        // Now `element` is defined
         // Assuming activate_window brings app to front
         Ok(_) => {
             info!("Application window containing element activated successfully");
@@ -1213,36 +1422,109 @@ async fn activate_app_handler(
     }
 }
 
+// --- NEW HANDLER for current browser window --- //
+async fn get_current_browser_window_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ElementResponse>, ApiError> {
+    info!("Attempting to get current browser window");
+    match state.desktop.get_current_browser_window().await {
+        Ok(element) => {
+            info!(
+                "Current browser window found: role={}, label={:?}, id={:?}",
+                element.role(),
+                element.attributes().label,
+                element.id()
+            );
+            Ok(Json(ElementResponse::from_element(&element)))
+        }
+        Err(e) => {
+            error!("Failed to get current browser window: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+// Handler for mouse_drag
+async fn mouse_drag_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<MouseDragRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, start_x = payload.start_x, start_y = payload.start_y, end_x = payload.end_x, end_y = payload.end_y, timeout = ?payload.timeout_ms, "Attempting to mouse_drag element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    // Wait for the element (reuse locator.wait)
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for mouse_drag: {}", e);
+        ApiError::from(e)
+    })?;
+    // Call mouse_drag on the element
+    element
+        .mouse_drag(
+            payload.start_x,
+            payload.start_y,
+            payload.end_x,
+            payload.end_y,
+        )
+        .map_err(|e| {
+            error!("Failed to mouse_drag element: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(BasicResponse {
+        message: "Mouse drag performed successfully".to_string(),
+    }))
+}
+
+// Handler for scrolling an element
+async fn scroll_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ScrollRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, direction = %payload.direction, amount = payload.amount, timeout = ?payload.timeout_ms, "Attempting to scroll element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+
+    // Wait for the element
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for scrolling: {}", e);
+        ApiError::from(e)
+    })?;
+
+    // Call scroll on the element
+    element
+        .scroll(&payload.direction, payload.amount)
+        .map_err(|e| {
+            error!("Failed to scroll element: {}", e);
+            ApiError::from(e)
+        })?;
+
+    Ok(Json(BasicResponse {
+        message: format!(
+            "Scrolled {} by {} increments",
+            payload.direction, payload.amount
+        ),
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Use tracing subscriber with settings appropriate for environment
-    tracing_subscriber::fmt() // Use fmt subscriber
-        // Consider .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()) for RUST_LOG control
-        .with_max_level(Level::INFO) // Default to INFO, can override with RUST_LOG=debug
+    // Initialize tracing with timestamps and more detailed formatting
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_timer(tracing_subscriber::fmt::time::time())
+        .with_span_events(FmtSpan::CLOSE)
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(true)
+        .with_line_number(true)
         .init();
 
-    info!("Initializing Terminator server...");
+    info!("Starting Terminator server");
+    let start = Instant::now();
 
-    // Initialize the Desktop instance
-    // Make Desktop::new async if it performs async operations internally
-    let desktop = Desktop::new(false, true)
-        .await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-    let shared_state = Arc::new(AppState {
-        desktop: Arc::new(desktop),
-    });
-    info!("Desktop automation backend initialized.");
+    let desktop = Arc::new(Desktop::new(false, false).await?);
+    let app_state = Arc::new(AppState::new(desktop));
 
-    // Define a permissive CORS policy
-    let cors = CorsLayer::new()
-        .allow_origin(Any) // Allows any origin
-        .allow_methods(Any) // Allows any method (GET, POST, etc.)
-        .allow_headers(Any); // Allows any header
-
-    // Define request body limit (e.g., 50MB)
-    const BODY_LIMIT: usize = 500000 * 1024 * 1024; 
-
-    // Build our application with routes and layers
     let app = Router::new()
         .route("/", get(root))
         // Core Locator Actions
@@ -1279,10 +1561,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/expect_text_equals", post(expect_element_text_equals))
         // OCR Actions
         .route("/ocr_image_path", post(ocr_image_path))
+        // New endpoint for current browser window
+        .route(
+            "/current_browser_window",
+            get(get_current_browser_window_handler),
+        )
         // State and Layers
-        .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
-        .layer(cors)
-        .with_state(shared_state);
+        .route("/mouse_drag", post(mouse_drag_handler))
+        .route("/scroll", post(scroll_handler))
+        .layer(RequestBodyLimitLayer::new(500000 * 1024 * 1024))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
+        .with_state(app_state);
 
     // Determine port
     let default_port = 9375;
@@ -1291,12 +1585,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok()) // Try parsing the string to u16
         .unwrap_or(default_port); // Use default if env var not set or invalid
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    info!("Server listening on http://{} with {}MB body limit", addr, BODY_LIMIT / (1024 * 1024));
+    let addr = format!("127.0.0.1:{}", port);
+    info!("Server listening on {}", addr);
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
-    info!("Server shutting down."); // Added shutdown message
+    let duration = start.elapsed();
+    info!(
+        duration_ms = duration.as_millis(),
+        "Server shutdown complete"
+    );
 
     Ok(())
 }

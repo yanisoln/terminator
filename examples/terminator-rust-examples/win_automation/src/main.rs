@@ -1,24 +1,22 @@
 use std::time::Duration;
-use std::{hash::Hash, thread};
 
 use terminator::{AutomationError, Desktop, Selector, platforms};
-use tracing::Level;
+use tracing::{Level, debug};
 
 // like a playground, just uncomment
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
-    let engine = platforms::create_engine(true, true)?;
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
         .init();
     // get the root element
     // let root_element = engine.get_root_element();
     // println!("root element: {:?}", root_element);
-
     // Get an element by process id
     // let element_by_id = engine.get_element_by_id(12304)?;
     // println!("element by pid: {:?}", element_by_id);
 
+    
     // get the focused element
     // let focused_element = engine.get_focused_element()?;
     // println!("Focused element: {:?}", focused_element);
@@ -103,20 +101,99 @@ async fn main() -> Result<(), AutomationError> {
     // Let's try opening notepad blank first, then finding the edit area and setting its value.
     // let notepad_app = engine.open_application("notepad")?;
     let desktop = Desktop::new(false, true).await.unwrap();
-    let window = desktop.find_window_by_criteria(Some("v0 App"), Some(Duration::from_secs(10))).await.unwrap();
-    println!("window: {:?}", window.id());
-    let element = window
-        .locator(Selector::Id("9749738189699439770".to_string())).unwrap()
-        .first(Some(Duration::from_secs(10))).await.unwrap();
+    // desktop.activate_browser_window_by_title("Excel")?;
+    // let window = desktop.get_current_browser_window().await.unwrap();
+    // println!("window: {:?}", window.attributes());
+    // println!("window: {:?}", window.text(5).unwrap_or_default());
+    // println!("window: {:?}", window.id());
+    // let window = window
+    //     .locator(Selector::Role { role: "edit".to_string(), name: None }).unwrap()
+    //     .all(Some(Duration::from_secs(10)), None)
+    //     .await
+    //     .unwrap();
+    // for w in window.iter() {
+    //     println!("w: {:?}", w.name());
+    //     println!("w: {:?}", w.attributes());
+    // }
+    // desktop.activate_browser_window_by_title("Excel")?;
+    // let app = desktop.application("Cursor").unwrap();
+    // app.type_text("hello a very long text that describe how the universe works: after the big bang, the universe expanded and the stars formed. the planets formed and the life formed. the humans formed and the computers formed. the internet formed and the web formed. the browsers formed and the html formed. the css formed and the javascript formed. the php formed and the mysql formed. the java formed and the android formed. the ios formed and the iphone formed. the ipad formed and the macbook formed. the macbook air formed and the macbook pro formed. the macbook pro retina formed and the macbook pro with retina display formed. the macbook pro with retina display 3k formed and the macbook pro with retina display 4k formed. the macbook pro with retina display 5k formed and the macbook pro with retina display 6k formed. the macbook pro with retina display 7k formed and the macbook pro with retina display 8k formed. the macbook pro with retina display 9k formed and the macbook pro with retina display 10k formed.", true)?;
+
+    // in firefox, get all edit elements and type hello in each of them
+    // let app = desktop.application("firefox").unwrap();
+    let window = desktop.get_current_browser_window().await.unwrap();
+    let elements = window.locator(Selector::Role { role: "edit".to_string(), name: None }).unwrap().all(None, None).await.unwrap();
+    for element in elements.iter() {
+        // element.type_text("hello", true)?;
+
+        if element.is_keyboard_focusable().unwrap_or(false) {
+            println!("element: {:?}", element.attributes());
+            println!("element: {:?}", element.id());
+            // element.type_text("hello a very long text that describe how the universe works", true)?;
+        }
+
+        // println!("element: {:?}", element.attributes());
+        // println!("element: {:?}", element.id());
+    }
+
+    // Debug logging
+    // println!("Found Cursor application");
+    // println!("App attributes: {:?}", app.attributes());
+    
+    // Try to find the editor area
+    // let editor = app.locator(Selector::Role { role: "edit".to_string(), name: None })
+    //     .unwrap()
+    //     .first(None)
+    //     .await
+    //     .unwrap();
+    
+    // println!("Found editor element: {:?}", editor.attributes());
+    
+    // Focus the editor
+    // editor.focus().unwrap();
+    // std::thread::sleep(Duration::from_millis(500));
+    
+    // Try scrolling with a smaller amount first
+    // app.scroll("down", 100.0).unwrap();
+    // editor.press_key("{page_down}").unwrap();
+    // println!("Scroll attempted");
+    // let window = app..locator(Selector::Role { role: "window".to_string(), name: None }).unwrap().first(None).await.unwrap();
+    // println!("app: {:?}", app.attributes());
+    // println!("app: {:?}", app.text(5).unwrap_or_default());
+    // println!("app: {:?}", app.id());
+
+    // let window = desktop.get_current_browser_window().await.unwrap();
+    // println!("window: {:?}", window.attributes());
+    // println!("window: {:?}", window.text(5).unwrap_or_default());
+    // println!("window: {:?}", window.id());
+    // let window = desktop.find_window_by_criteria(Some("Excel"), Some(Duration::from_secs(10))).await.unwrap();
+    // println!("window: {:?}", window.id());
+    // let element = window
+    //     .locator(Selector::Id("9749738189699439770".to_string())).unwrap()
+    //     .first(Some(Duration::from_secs(10))).await.unwrap();
     // element.type_text("hello").unwrap();
 
-    println!("element: {:?}", element);
-    element.type_text("hello").unwrap();
+    // println!("element: {:?}", element);
+    // element.type_text("hello").unwrap();
+
+    // find all data items
+    // window.focus().unwrap();
+    //     let data_items = window.locator(Selector::Name("A1".to_string())).unwrap().first(None).await.unwrap();
+    //     debug!("data_items: {:?}", data_items.attributes());
+    //     // type text in the data items
+    //     data_items.click().unwrap();
+    //     // ctrl v
+    //     data_items.press_key("{Ctrl}v").unwrap();
+    // for item in data_items.iter() {
+    //     println!("item: {:?}", item.attributes());
+    //     item.type_text("hello").unwrap();
+    // }
+
     // for e in element.iter() {
     //     println!("e: {:?}", e.attributes());
     //     println!("e: {:?}", e.id());
     //     e.type_text("hello").unwrap();
-        
+
     // }
     // println!("element: {:?}", element.first().unwrap().attributes());
     // let text = element.first().unwrap().text(50).unwrap_or_default();

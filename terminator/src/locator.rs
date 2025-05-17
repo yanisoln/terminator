@@ -123,9 +123,9 @@ impl Locator {
 
     /// Type text into the first matching element, waiting up to the specified timeout.
     /// If no timeout is provided, uses the locator's default timeout.
-    pub async fn type_text(&self, text: &str, timeout: Option<Duration>) -> Result<(), AutomationError> {
+    pub async fn type_text(&self, text: &str, use_clipboard: bool, timeout: Option<Duration>) -> Result<(), AutomationError> {
         let element = self.wait(timeout).await?;
-        element.type_text(text)
+        element.type_text(text, use_clipboard)
     }
 
     /// Press a key on the first matching element, waiting up to the specified timeout.
