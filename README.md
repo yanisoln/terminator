@@ -40,7 +40,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
 The [benchmark test](./terminator/src/tests/e2e_tests.rs) illustrates how fast Terminator can query the UI. It finds all edit elements in about **80&nbsp;ms**, showcasing a big speed advantage over vision-based tools.
 
-This [form-filling app](https://www.mediar.ai/) can read & fills forms as soon as you see them in <1s using Gemini.
+This [form-filling app](https://www.mediar.ai/) can read & fills forms as soon as you see them in <1s end-to-end using Gemini.
 
 ## Demos
 
