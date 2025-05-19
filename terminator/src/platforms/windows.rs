@@ -1704,10 +1704,13 @@ impl UIElementImpl for WindowsUIElement {
 
         if use_clipboard {
             // Save current clipboard content
-            let original_clipboard = Clipboard::new()
+            let original_clipboard = match Clipboard::new()
                 .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
                 .get_text()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to get clipboard content: {}", e)))?;
+            {
+                Ok(text) => Some(text),
+                Err(_) => None, // Handle case where clipboard is empty or contains non-text content
+            };
 
             // Set new text to clipboard
             Clipboard::new()
@@ -1721,12 +1724,18 @@ impl UIElementImpl for WindowsUIElement {
             // Send Ctrl+V to paste
             self.press_key("{ctrl}v")?;
 
-            // Restore original clipboard content
-            if !original_clipboard.is_empty() {
+            // Restore original clipboard content if we had any
+            if let Some(original) = original_clipboard {
                 Clipboard::new()
                     .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                    .set_text(&original_clipboard)
+                    .set_text(&original)
                     .map_err(|e| AutomationError::PlatformError(format!("Failed to restore clipboard content: {}", e)))?;
+            } else {
+                // Clear clipboard if it was empty originally
+                Clipboard::new()
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
+                    .clear()
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to clear clipboard: {}", e)))?;
             }
 
             Ok(())
