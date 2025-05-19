@@ -5598,6 +5598,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wh-scrapper"
+version = "0.2.8"
+dependencies = [
+ "terminator",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "which"
 version = "6.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

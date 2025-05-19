@@ -1,0 +1,10 @@
+[package]
+name = "wh-scrapper"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+terminator = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }

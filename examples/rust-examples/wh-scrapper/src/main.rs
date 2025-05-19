@@ -1,9 +1,8 @@
-// simple example to scrap whatsapp
 use std::{hash::Hash, thread};
 use std::time::Duration;
 
-use terminator::{platforms, AutomationError, Desktop, Selector};
 use tracing::Level;
+use terminator::{platforms, AutomationError, Desktop, Selector};
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
@@ -13,7 +12,7 @@ async fn main() -> Result<(), AutomationError> {
         .with_max_level(Level::DEBUG)
         .init();
 
-    let wh_root = engine.open_application("whatsapp")?;
+    let wh_root = engine.open_application("uwp:whatsapp")?;
     println!("opened application: {:?}", wh_root);
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -27,7 +26,7 @@ async fn main() -> Result<(), AutomationError> {
 
     let grp_per = Selector::Role { 
         role: "listitem".to_string(), 
-        name: Some("tribhuwan".to_string()),
+        name: Some("vivek bhaiya".to_string()),
     };
 
     let ch_list_ele = engine.find_element(&ch_list, Some(&wh_root), None)?;
@@ -50,3 +49,4 @@ async fn main() -> Result<(), AutomationError> {
 
     Ok(())
 }
+
