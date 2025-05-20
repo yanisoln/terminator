@@ -5601,6 +5601,8 @@ dependencies = [
 name = "wh-scrapper"
 version = "0.2.8"
 dependencies = [
+ "serde",
+ "serde_json",
  "terminator",
  "tokio",
  "tracing",
