@@ -258,29 +258,33 @@ impl AccessibilityEngine for WindowsEngine {
 
         // make condition according to selector
         match selector {
-            Selector::Role { role, name: _ } => {
-                let roles = map_generic_role_to_win_roles(role);
-                debug!("searching elements by role: {} within subtree", roles);
-                
-                // Create a condition for the control type
-                let condition = self
+            Selector::Role { role, name } => {
+                let win_control_type = map_generic_role_to_win_roles(role);
+                debug!(
+                    "searching elements by role: {:?} (from: {}), name_filter: {:?}, depth: {:?}, timeout: {}ms, within: {:?}",
+                    win_control_type, role, name, depth, timeout_ms, root_ele.get_name().unwrap_or_default()
+                );
+
+                let actual_depth = depth.unwrap_or(50) as u32;
+
+                let matcher_builder = self
                     .automation
                     .0
-                    .create_property_condition(
-                        UIProperty::ControlType,
-                        Variant::from(roles as i32),
-                        None,
-                    )
-                    .unwrap();
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .control_type(win_control_type)
+                    .depth(actual_depth)
+                    .timeout(timeout_ms as u64);
+   
+                
+                let elements = matcher_builder.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Role: '{}' (mapped to {:?}), Name: {:?}, Err: {}",
+                        role, win_control_type, name, e
+                    ))
+                })?;
 
-                // Use find_all with TreeScope::Subtree to ensure we only search within the root element's subtree
-                let elements = root_ele
-                    .find_all(TreeScope::Subtree, &condition)
-                    .map_err(|e| {
-                        AutomationError::ElementNotFound(format!("Role: '{}', Err: {}", role, e))
-                    })?;
-
-                debug!("found {} elements with role: {} within subtree", elements.len(), role);
+                debug!("found {} elements with role: {} (mapped to {:?}), name_filter: {:?}", elements.len(), role, win_control_type, name);
                 return Ok(elements
                     .into_iter()
                     .map(|ele| {
@@ -525,30 +529,29 @@ impl AccessibilityEngine for WindowsEngine {
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
 
         match selector {
-            Selector::Role { role, name: _ } => {
-                let roles = map_generic_role_to_win_roles(role);
-                debug!("searching element by role: {} within subtree", roles);
-                
-                // Create a condition for the control type
-                let condition = self
+            Selector::Role { role, name } => {
+                let win_control_type = map_generic_role_to_win_roles(role);
+                debug!(
+                    "searching element by role: {:?} (from: {}), name_filter: {:?}, timeout: {}ms, within: {:?}",
+                    win_control_type, role, name, timeout_ms, root_ele.get_name().unwrap_or_default()
+                );
+
+                let matcher_builder = self
                     .automation
                     .0
-                    .create_property_condition(
-                        UIProperty::ControlType,
-                        Variant::from(roles as i32),
-                        None,
-                    )
-                    .unwrap();
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .control_type(win_control_type)
+                    .depth(50) // Default depth for find_element
+                    .timeout(timeout_ms as u64);
 
-                // Use find_first with TreeScope::Subtree to ensure we only search within the root element's subtree
-                let element = root_ele
-                    .find_first(TreeScope::Subtree, &condition)
-                    .map_err(|e| {
-                        AutomationError::ElementNotFound(format!(
-                            "Role: '{}', Root: {:?}, Err: {}",
-                            role, root, e
-                        ))
-                    })?;
+
+                let element = matcher_builder.find_first().map_err(|e| {
+                     AutomationError::ElementNotFound(format!(
+                        "Role: '{}' (mapped to {:?}), Name: {:?}, Root: {:?}, Err: {}",
+                        role, win_control_type, name, root, e
+                    ))
+                })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
@@ -1701,10 +1704,13 @@ impl UIElementImpl for WindowsUIElement {
 
         if use_clipboard {
             // Save current clipboard content
-            let original_clipboard = Clipboard::new()
+            let original_clipboard = match Clipboard::new()
                 .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
                 .get_text()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to get clipboard content: {}", e)))?;
+            {
+                Ok(text) => Some(text),
+                Err(_) => None, // Handle case where clipboard is empty or contains non-text content
+            };
 
             // Set new text to clipboard
             Clipboard::new()
@@ -1718,12 +1724,18 @@ impl UIElementImpl for WindowsUIElement {
             // Send Ctrl+V to paste
             self.press_key("{ctrl}v")?;
 
-            // Restore original clipboard content
-            if !original_clipboard.is_empty() {
+            // Restore original clipboard content if we had any
+            if let Some(original) = original_clipboard {
                 Clipboard::new()
                     .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                    .set_text(&original_clipboard)
+                    .set_text(&original)
                     .map_err(|e| AutomationError::PlatformError(format!("Failed to restore clipboard content: {}", e)))?;
+            } else {
+                // Clear clipboard if it was empty originally
+                Clipboard::new()
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
+                    .clear()
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to clear clipboard: {}", e)))?;
             }
 
             Ok(())
@@ -1903,20 +1915,11 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
-        // start a instance of `uiautomation` just to check the
-        // current focused element is same as focused element or not
-        let automation = WindowsEngine::new(false, false)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        let focused_element = automation
-            .automation
-            .0
-            .get_focused_element()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        if Arc::ptr_eq(&self.element.0, &Arc::new(focused_element)) {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        // The original implementation was inefficient:
+        // It created a new WindowsEngine and compared the focused element's Arc pointer,
+        // which is not reliable and very slow.
+        // The uiautomation::UIElement provides a direct has_keyboard_focus() method.
+        self.element.0.has_keyboard_focus().map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
     }
 
     fn perform_action(&self, action: &str) -> Result<(), AutomationError> {
@@ -2122,13 +2125,22 @@ impl UIElementImpl for WindowsUIElement {
 
     // New method for mouse drag
     fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> Result<(), AutomationError> {
-        use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEINPUT, SendInput,
-        };
-        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         use std::thread::sleep;
         use std::time::Duration;
+        self.mouse_click_and_hold(start_x, start_y)?;
+        sleep(Duration::from_millis(20));
+        self.mouse_move(end_x, end_y)?;
+        sleep(Duration::from_millis(20));
+        self.mouse_release()?;
+        Ok(())
+    }
 
+    // New mouse control methods
+    fn mouse_click_and_hold(&self, x: f64, y: f64) -> Result<(), AutomationError> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEINPUT, SendInput,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
             let screen_w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
             let screen_h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
@@ -2136,64 +2148,90 @@ impl UIElementImpl for WindowsUIElement {
             let abs_y = ((y / screen_h as f64) * 65535.0).round() as i32;
             (abs_x, abs_y)
         }
-
-        fn mouse_move_abs(x: f64, y: f64) {
-            let (abs_x, abs_y) = to_absolute(x, y);
-            let mi = MOUSEINPUT {
-                dx: abs_x,
-                dy: abs_y,
-                mouseData: 0,
-                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            let input = INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi },
-            };
-            unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
+        let (abs_x, abs_y) = to_absolute(x, y);
+        let move_input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: abs_x,
+                    dy: abs_y,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let down_input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_LEFTDOWN,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        unsafe {
+            SendInput(&[move_input], std::mem::size_of::<INPUT>() as i32);
+            SendInput(&[down_input], std::mem::size_of::<INPUT>() as i32);
         }
-
-        fn click_and_hold() {
-            let mi = MOUSEINPUT {
-                dx: 0,
-                dy: 0,
-                mouseData: 0,
-                dwFlags: MOUSEEVENTF_LEFTDOWN,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            let input = INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi },
-            };
-            unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
+        Ok(())
+    }
+    fn mouse_move(&self, x: f64, y: f64) -> Result<(), AutomationError> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEINPUT, SendInput,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+        fn to_absolute(x: f64, y: f64) -> (i32, i32) {
+            let screen_w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+            let screen_h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+            let abs_x = ((x / screen_w as f64) * 65535.0).round() as i32;
+            let abs_y = ((y / screen_h as f64) * 65535.0).round() as i32;
+            (abs_x, abs_y)
         }
-
-        fn release_mouse() {
-            let mi = MOUSEINPUT {
-                dx: 0,
-                dy: 0,
-                mouseData: 0,
-                dwFlags: MOUSEEVENTF_LEFTUP,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            let input = INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi },
-            };
-            unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
+        let (abs_x, abs_y) = to_absolute(x, y);
+        let move_input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: abs_x,
+                    dy: abs_y,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        unsafe {
+            SendInput(&[move_input], std::mem::size_of::<INPUT>() as i32);
         }
-
-        // Move to start
-        mouse_move_abs(start_x, start_y);
-        sleep(Duration::from_millis(20));
-        click_and_hold();
-        sleep(Duration::from_millis(20));
-        mouse_move_abs(end_x, end_y);
-        sleep(Duration::from_millis(20));
-        release_mouse();
+        Ok(())
+    }
+    fn mouse_release(&self) -> Result<(), AutomationError> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTUP, MOUSEINPUT, SendInput,
+        };
+        let up_input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_LEFTUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        unsafe {
+            SendInput(&[up_input], std::mem::size_of::<INPUT>() as i32);
+        }
         Ok(())
     }
 }
@@ -2271,14 +2309,30 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
 // Add this function before the WindowsUIElement implementation
 fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
     // Get stable properties that are less likely to change
-    let control_type = element.get_control_type().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let name = element.get_name().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let automation_id = element.get_automation_id().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let class_name = element.get_classname().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let bounds = element.get_bounding_rectangle().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let runtime_id = element.get_runtime_id().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    let help_text = element.get_help_text().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-    
+    // Try cached versions first, fallback to live versions
+    let control_type = element.get_cached_control_type()
+        .or_else(|_| element.get_control_type())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get control type: {}", e)))?;
+    let name = element.get_cached_name()
+        .or_else(|_| element.get_name())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get name: {}", e)))?;
+    let automation_id = element.get_cached_automation_id()
+        .or_else(|_| element.get_automation_id())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get automation ID: {}", e)))?;
+    let class_name = element.get_cached_classname()
+        .or_else(|_| element.get_classname())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get classname: {}", e)))?;
+    let bounds = element.get_cached_bounding_rectangle()
+        .or_else(|_| element.get_bounding_rectangle())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get bounding rectangle: {}", e)))?;
+    // runtime_id is fundamental and less likely to have a distinct cached vs. live fetch issue here
+    // It's usually retrieved when the element handle is obtained.
+    let runtime_id = element.get_runtime_id()
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime ID: {}", e)))?;
+    let help_text = element.get_cached_help_text()
+        .or_else(|_| element.get_help_text())
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get help text: {}", e)))?;
+
     // Create a stable string representation
     let id_string = format!(
         "{}:{}:{}:{}:{}:{}:{}:{}:{:?}:{}",
