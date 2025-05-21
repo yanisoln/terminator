@@ -716,6 +716,7 @@ impl UIElementImpl for MacOSUIElement {
                 value: None,
                 description: None,
                 properties,
+                is_keyboard_focusable: Some(false), // macos: not implemented
             };
 
             // Special handling for window title - try multiple attributes
@@ -776,6 +777,7 @@ impl UIElementImpl for MacOSUIElement {
             value: None,
             description: None,
             properties,
+            is_keyboard_focusable: Some(false), // macos: not implemented
         };
 
         // Debug attribute collection
@@ -1425,9 +1427,38 @@ impl UIElementImpl for MacOSUIElement {
         self.focus()
     }
 
-    fn mouse_drag(&self, _start_x: f64, _start_y: f64, _end_x: f64, _end_y: f64) -> Result<(), AutomationError> {
+    fn mouse_drag(
+        &self,
+        _start_x: f64,
+        _start_y: f64,
+        _end_x: f64,
+        _end_y: f64,
+    ) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "mouse_drag is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
+        // Not implemented for macOS yet
+        Ok(false)
+    }
+
+    fn mouse_click_and_hold(&self, _x: f64, _y: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "mouse_click_and_hold is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn mouse_move(&self, _x: f64, _y: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "mouse_move is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn mouse_release(&self) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "mouse_release is not implemented for macOS yet".to_string(),
         ))
     }
 }
@@ -1831,9 +1862,6 @@ impl AccessibilityEngine for MacOSEngine {
         _timeout: Option<Duration>, // Timeout not directly supported by macOS AX API like Windows UIA
         _depth: Option<usize>,      // Depth parameter required by trait
     ) -> Result<Vec<UIElement>, AutomationError> {
-        let start_time = Instant::now();
-        let mut results: Vec<UIElement> = Vec::new();
-
         let start_element = if let Some(el) = root {
             // Try to downcast to MacOSUIElement to get the underlying AXUIElement
             if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
@@ -2000,9 +2028,14 @@ impl AccessibilityEngine for MacOSEngine {
 
                     for root_element in &current_roots {
                         // Find elements matching the current selector within the current root
-                        let found_elements =
-                            self.find_elements(selector, Some(root_element), _timeout, None)
-                                .map_err(|e| AutomationError::PlatformError(format!("Recursive find_elements failed: {}", e)))?;
+                        let found_elements = self
+                            .find_elements(selector, Some(root_element), _timeout, None)
+                            .map_err(|e| {
+                                AutomationError::PlatformError(format!(
+                                    "Recursive find_elements failed: {}",
+                                    e
+                                ))
+                            })?;
 
                         if is_last_selector {
                             // If it's the last selector, collect all found elements
@@ -2031,6 +2064,9 @@ impl AccessibilityEngine for MacOSEngine {
                 }
                 Ok(current_roots) // Return all elements found by the last selector
             }
+            Selector::ClassName(_) => Err(AutomationError::UnsupportedOperation(
+                "ClassName selector is not yet supported for macOS".to_string(),
+            )),
         }
     }
 
@@ -2229,6 +2265,9 @@ impl AccessibilityEngine for MacOSEngine {
                 // If the loop completes, current_element holds the final result
                 Ok(current_element)
             }
+            Selector::ClassName(_) => Err(AutomationError::UnsupportedOperation(
+                "ClassName selector is not yet supported for macOS".to_string(),
+            )),
         }
     }
 
@@ -2645,7 +2684,6 @@ impl AccessibilityEngine for MacOSEngine {
             "get_current_browser_window not yet implemented for macOS".to_string(),
         ))
     }
-
 
     fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
         let app_element = self.get_application_by_name(app_name)?;
