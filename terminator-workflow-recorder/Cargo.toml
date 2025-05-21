@@ -1,5 +1,5 @@
 [package]
-name = "workflow-recorder"
+name = "terminator-workflow-recorder"
 version = "0.1.0"
 edition = "2021"
 description = "A crate for recording user workflows on Windows"
