@@ -9,12 +9,10 @@
 mod events;
 mod recorder;
 mod error;
-mod intent;
 
 pub use events::*;
 pub use recorder::*;
 pub use error::*;
-pub use intent::*;
 
 #[cfg(test)]
 mod tests {

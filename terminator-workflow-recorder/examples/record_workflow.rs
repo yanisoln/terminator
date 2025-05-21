@@ -1,7 +1,8 @@
-use workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig, IntentGroupingConfig};
+use tokio_stream::StreamExt;
+use workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use std::path::PathBuf;
 use tokio::signal::ctrl_c;
-use tracing::{info, debug, error, Level};
+use tracing::{info, debug, Level};
 use tracing_subscriber::FmtSubscriber;
 // use std::panic::AssertUnwindSafe; // Not used due to async limitation
 
@@ -33,7 +34,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a recorder
     let mut recorder = WorkflowRecorder::new("Example Workflow".to_string(), config);
     debug!("Starting recording...");
+    let mut event_stream = recorder.event_stream();
     recorder.start().await.expect("Failed to start recorder");
+    // Process events from the stream
+    while let Some(event) = event_stream.next().await {
+        println!("Received event: {:?}", event);
+    }
     info!("Recording started. Interact with your desktop...");
     debug!("Waiting for Ctrl+C signal...");
     ctrl_c().await.expect("Failed to wait for Ctrl+C");

@@ -1,13 +1,13 @@
 use crate::{
     KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, UiElement,
-    WorkflowEvent, WorkflowRecorderError, Result, WorkflowRecorderConfig
+    WorkflowEvent, Result, WorkflowRecorderConfig
 };
 use std::{
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc::UnboundedSender;
-use tracing::{warn, debug, info, error};
-use rdev::{Event, EventType, Button, Key};
+use tokio::sync::broadcast;
+use tracing::{debug, info, error};
+use rdev::{EventType, Button, Key};
 use uiautomation::{UIAutomation, UIElement as WinUIElement};
 use uiautomation::types::{Point, UIProperty};
 use windows::Win32::Foundation::POINT;
@@ -15,7 +15,7 @@ use windows::Win32::Foundation::POINT;
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
     /// The event sender
-    event_tx: UnboundedSender<WorkflowEvent>,
+    event_tx: broadcast::Sender<WorkflowEvent>,
     
     /// The configuration
     config: WorkflowRecorderConfig,
@@ -29,7 +29,7 @@ impl WindowsRecorder {
     /// Create a new Windows recorder
     pub fn new(
         config: WorkflowRecorderConfig,
-        event_tx: UnboundedSender<WorkflowEvent>,
+        event_tx: broadcast::Sender<WorkflowEvent>,
     ) -> Result<Self> {
         info!("[LOG] windows.rs loaded");
         debug!("Initializing Windows recorder with config: {:?}", config);
@@ -149,7 +149,7 @@ impl WindowsRecorder {
                         };
                         let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                     }
-                    EventType::Wheel { delta_x, delta_y } => {
+                    EventType::Wheel { delta_x: _, delta_y: _ } => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Wheel,
@@ -352,7 +352,10 @@ fn get_element_hierarchy_path(element: &WinUIElement) -> Option<String> {
 
 /// Get window information for the given process ID
 #[cfg(target_os = "windows")]
-fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<String>) {
+fn get_window_info_for_process(_process_id: u32) -> (Option<String>, Option<String>) {
     // TODO: Implement window info gathering using UI Automation
     (None, None)
 } 
+
+
+
