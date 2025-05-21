@@ -66,7 +66,7 @@ pub enum MouseButton {
 }
 
 /// Represents the type of mouse event
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MouseEventType {
     Click,
     DoubleClick,

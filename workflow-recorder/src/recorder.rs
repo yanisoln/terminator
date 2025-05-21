@@ -93,6 +93,8 @@ impl WorkflowRecorder {
             tokio::spawn(async move {
                 Self::process_events(workflow, &mut event_rx).await;
             });
+
+
             
             Ok(())
         }
