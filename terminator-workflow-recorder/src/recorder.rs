@@ -100,7 +100,7 @@ impl WorkflowRecorder {
             self.windows_recorder = Some(windows_recorder);
             
             // Start the event processing task
-            let mut event_rx = self.event_tx.subscribe();
+            let event_rx = self.event_tx.subscribe();
             tokio::spawn(async move {
                 Self::process_events(workflow, event_rx).await;
             });
