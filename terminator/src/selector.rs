@@ -60,6 +60,10 @@ impl From<&str> for Selector {
                     name: Some(parts[1].to_string()),
                 }
             }
+            _ if s.to_lowercase().starts_with("uinativeid:") => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::UINativeId(parts[1].trim().to_string())
+            }
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
