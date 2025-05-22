@@ -13,6 +13,8 @@ pub enum Selector {
     Text(String),
     /// Select using XPath-like query
     Path(String),
+    // Select by using Native Automation id, (eg: `AutomationID` for windows)
+    UINativeId(String),
     /// Select by multiple attributes (key-value pairs)
     Attributes(BTreeMap<String, String>),
     /// Filter current elements by a predicate
