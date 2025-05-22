@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 *   **Cross-Platform (Windows Focus):** Automate native GUI applications on Windows (primary) and macOS.
 *   **Deep UI Introspection:** Enables detailed understanding and control of complex UI elements.
 *   **Background App Interaction:** Capable of interacting with applications even if they are not in focus.
+*   **Human workflow recording & compilation:** Can record human workflows and compile into AI decision tree that runs 10000x faster, only using AI as fallback during inference.
 
 ## Benchmarks
 
