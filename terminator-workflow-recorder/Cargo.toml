@@ -29,7 +29,7 @@ windows = { version = "0.61.1", features = [
 ]}
 
 [lib]
-name = "workflow_recorder"
+name = "terminator_workflow_recorder"
 path = "src/lib.rs"
 
 [[example]]
