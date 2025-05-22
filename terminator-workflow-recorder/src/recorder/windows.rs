@@ -3,8 +3,9 @@ use crate::{
     WorkflowEvent, Result, WorkflowRecorderConfig
 };
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 use tokio::sync::broadcast;
 use tracing::{debug, info, error};
@@ -368,92 +369,137 @@ fn get_element_hierarchy_path(element: &WinUIElement) -> Option<String> {
 /// Get window information for the given process ID
 #[cfg(target_os = "windows")]
 fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<String>) {
-    // Get Application Name
-    let app_name = match get_process_name_by_pid_recorder(process_id as i32) {
-        Ok(name) => Some(name),
-        Err(e) => {
-            error!("Failed to get process name for PID {}: {}", process_id, e);
-            None
-        }
-    };
+    let (tx, rx) = mpsc::channel();
+    let pid_clone = process_id;
 
-    // Get Window Title
-    let window_title = match UIAutomation::new() {
-        Ok(automation) => {
-            match automation.get_root_element() {
-                Ok(root) => {
-                    let condition = match automation.create_property_condition(
-                        UIProperty::ProcessId,
-                        (process_id as i32).into(), // UIAutomation expects i32
-                        None,
-                    ) {
-                        Ok(cond) => cond,
-                        Err(e) => {
-                            error!("Failed to create process ID condition: {}", e);
-                            return (None, app_name); // Return app_name even if window title fails
-                        }
-                    };
+    std::thread::spawn(move || {
+        let app_name = match get_process_name_by_pid_recorder(pid_clone as i32) {
+            Ok(name) => Some(name),
+            Err(e) => {
+                error!("Failed to get process name for PID {} (within get_window_info_for_process thread): {}", pid_clone, e);
+                None
+            }
+        };
 
-                    // Try to find the main window element. 
-                    // First, search direct children, then try a deeper search in the subtree.
-                    match root.find_first(uiautomation::types::TreeScope::Children, &condition)
-                        .or_else(|_| root.find_first(uiautomation::types::TreeScope::Subtree, &condition)) {
-                        Ok(app_element) => app_element.get_name().ok(),
-                        Err(e) => {
-                            error!(
-                                "Failed to find app element for PID {}: {}",
-                                process_id,
-                                e
-                            );
-                            None
+        let window_title = match UIAutomation::new() {
+            Ok(automation) => {
+                match automation.get_root_element() {
+                    Ok(root) => {
+                        let condition = match automation.create_property_condition(
+                            UIProperty::ProcessId,
+                            (pid_clone as i32).into(),
+                            None,
+                        ) {
+                            Ok(cond) => cond,
+                            Err(e) => {
+                                error!("Failed to create process ID condition for PID {}: {}", pid_clone, e);
+                                let _ = tx.send((None, app_name));
+                                return;
+                            }
+                        };
+
+                        match root.find_first(uiautomation::types::TreeScope::Children, &condition)
+                            .or_else(|e| {
+                                debug!("Could not find window for PID {} in children (error: {}), trying subtree.", pid_clone, e);
+                                root.find_first(uiautomation::types::TreeScope::Subtree, &condition)
+                            }) {
+                            Ok(app_element) => app_element.get_name().ok(),
+                            Err(e) => {
+                                error!(
+                                    "Failed to find app element for PID {}: {}",
+                                    pid_clone,
+                                    e
+                                );
+                                None
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    error!("Failed to get root UI element: {}", e);
-                    None
+                    Err(e) => {
+                        error!("Failed to get root UI element for PID {}: {}", pid_clone, e);
+                        None
+                    }
                 }
             }
-        }
-        Err(e) => {
-            error!("Failed to create UIAutomation instance: {}", e);
-            None
-        }
-    };
+            Err(e) => {
+                error!("Failed to create UIAutomation instance for PID {}: {}", pid_clone, e);
+                None
+            }
+        };
+        let _ = tx.send((window_title, app_name));
+    });
 
-    (window_title, app_name)
+    let timeout_duration = Duration::from_secs(3);
+
+    match rx.recv_timeout(timeout_duration) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            error!("Timeout getting window info for PID {}", process_id);
+            let app_name_fallback = match get_process_name_by_pid_recorder(process_id as i32) {
+                Ok(name) => Some(name),
+                Err(e) => {
+                    error!("Fallback failed to get process name for PID {} after timeout: {}", process_id, e);
+                    None
+                }
+            };
+            (None, app_name_fallback)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            error!("Channel disconnected while getting window info for PID {}. This might indicate the spawned thread panicked.", process_id);
+            let app_name_fallback = match get_process_name_by_pid_recorder(process_id as i32) {
+                Ok(name) => Some(name),
+                Err(e) => {
+                    error!("Fallback failed to get process name for PID {} after disconnect: {}", process_id, e);
+                    None
+                }
+            };
+            (None, app_name_fallback)
+        }
+    }
 }
 
-// Helper function to get process name by PID using PowerShell, adapted for recorder context
+// Helper function to get process name by PID using PowerShell, with a timeout
 fn get_process_name_by_pid_recorder(pid: i32) -> std::result::Result<String, String> {
-    let command = format!(
+    let (tx, rx) = mpsc::channel();
+    let command_str = format!(
         "Get-Process -Id {} | Select-Object -ExpandProperty ProcessName",
         pid
     );
-    match std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-    {
-        Ok(output) => {
-            if output.status.success() {
-                let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if process_name.is_empty() {
-                    Err(format!("Process name not found for PID {}", pid))
+
+    std::thread::spawn(move || {
+        let result = match std::process::Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command_str])
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if process_name.is_empty() {
+                        Err(format!("Process name not found for PID {} (stdout was empty)", pid))
+                    } else {
+                        Ok(process_name)
+                    }
                 } else {
-                    Ok(process_name)
+                    let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    Err(format!(
+                        "PowerShell command failed to get process name for PID {}: {}",
+                        pid, err_msg
+                    ))
                 }
-            } else {
-                let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                Err(format!(
-                    "PowerShell command failed to get process name for PID {}: {}",
-                    pid, err_msg
-                ))
             }
-        }
-        Err(e) => Err(format!(
-            "Failed to execute PowerShell to get process name: {}",
-            e
-        )),
+            Err(e) => Err(format!(
+                "Failed to execute PowerShell to get process name for PID {}: {}",
+                pid, e
+            )),
+        };
+        let _ = tx.send(result);
+    });
+
+    let timeout_duration = Duration::from_secs(2);
+
+    match rx.recv_timeout(timeout_duration) {
+        Ok(result_from_thread) => result_from_thread,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!("Timeout getting process name for PID {} via PowerShell", pid)),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("Channel disconnected while getting process name for PID {} via PowerShell. Thread might have panicked.", pid)),
     }
 } 
 
