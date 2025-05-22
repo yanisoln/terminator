@@ -19,6 +19,7 @@ anyhow = "1.0"
 chrono = "0.4"
 ctrlc = "3.4"
 rdev = "0.5.2"
+dashmap = "6.1.0"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

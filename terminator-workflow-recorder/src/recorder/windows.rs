@@ -13,6 +13,7 @@ use rdev::{EventType, Button, Key};
 use uiautomation::{UIAutomation, UIElement as WinUIElement};
 use uiautomation::types::{Point, UIProperty};
 use windows::Win32::Foundation::POINT;
+use dashmap::DashMap;
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -27,6 +28,9 @@ pub struct WindowsRecorder {
 
     /// Signal to stop the listener thread
     stop_indicator: Arc<AtomicBool>,
+
+    /// Cache for process information (PID -> (Window Title, App Name))
+    process_info_cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -41,12 +45,14 @@ impl WindowsRecorder {
         
         let last_mouse_pos = Arc::new(Mutex::new(None));
         let stop_indicator = Arc::new(AtomicBool::new(false));
+        let process_info_cache = Arc::new(DashMap::new());
         
         let mut recorder = Self {
             event_tx,
             config,
             last_mouse_pos,
             stop_indicator,
+            process_info_cache,
         };
         
         // Set up event listener
@@ -63,6 +69,7 @@ impl WindowsRecorder {
         let last_mouse_pos = Arc::clone(&self.last_mouse_pos);
         let capture_ui_elements = self.config.capture_ui_elements;
         let stop_indicator_clone = Arc::clone(&self.stop_indicator);
+        let process_info_cache_clone = Arc::clone(&self.process_info_cache);
         
         std::thread::spawn(move || {
             // Create a new UIAutomation instance in this thread
@@ -114,7 +121,7 @@ impl WindowsRecorder {
                             
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element = get_ui_element_at_point(&automation, x, y);
+                                ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
                             }
                             
                             let mouse_event = MouseEvent {
@@ -137,7 +144,7 @@ impl WindowsRecorder {
                             
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element = get_ui_element_at_point(&automation, x, y);
+                                ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
                             }
                             
                             let mouse_event = MouseEvent {
@@ -271,7 +278,12 @@ fn key_to_u32(key: &Key) -> u32 {
 
 /// Get the UI element at the given point
 #[cfg(target_os = "windows")]
-fn get_ui_element_at_point(automation: &UIAutomation, x: i32, y: i32) -> Option<UiElement> {
+fn get_ui_element_at_point(
+    automation: &UIAutomation,
+    x: i32,
+    y: i32,
+    process_info_cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
+) -> Option<UiElement> {
     debug!("Getting UI element at point ({}, {})", x, y);
     
     match automation.element_from_point(Point::from(POINT { x, y })) {
@@ -301,7 +313,7 @@ fn get_ui_element_at_point(automation: &UIAutomation, x: i32, y: i32) -> Option<
             
             let (window_title, application_name) = if let Some(pid) = process_id {
                 debug!("Getting window info for process {}", pid);
-                get_window_info_for_process(pid)
+                get_window_info_for_process(pid, Arc::clone(&process_info_cache))
             } else {
                 (None, None)
             };
@@ -368,7 +380,17 @@ fn get_element_hierarchy_path(element: &WinUIElement) -> Option<String> {
 
 /// Get window information for the given process ID
 #[cfg(target_os = "windows")]
-fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<String>) {
+fn get_window_info_for_process(
+    process_id: u32,
+    cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
+) -> (Option<String>, Option<String>) {
+    // Check cache first
+    if let Some(cached_info) = cache.get(&process_id) {
+        debug!("Cache hit for PID {}: ({:?}, {:?})", process_id, cached_info.0, cached_info.1);
+        return cached_info.clone();
+    }
+    debug!("Cache miss for PID {}", process_id);
+
     let (tx, rx) = mpsc::channel();
     let pid_clone = process_id;
 
@@ -431,9 +453,16 @@ fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<Strin
     let timeout_duration = Duration::from_secs(3);
 
     match rx.recv_timeout(timeout_duration) {
-        Ok(result) => result,
+        Ok(result) => {
+            // Cache the result before returning
+            debug!("Caching result for PID {}: ({:?}, {:?})", process_id, result.0, result.1);
+            cache.insert(process_id, result.clone());
+            result
+        }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             error!("Timeout getting window info for PID {}", process_id);
+            // Fallback: try to get app_name directly if the combined operation timed out.
+            // This call to get_process_name_by_pid_recorder also has its own timeout.
             let app_name_fallback = match get_process_name_by_pid_recorder(process_id as i32) {
                 Ok(name) => Some(name),
                 Err(e) => {
@@ -441,10 +470,16 @@ fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<Strin
                     None
                 }
             };
-            (None, app_name_fallback)
+            // Cache the fallback result as well, to avoid re-running the timeout logic immediately.
+            // It's possible the UI automation part is what's consistently failing/timing out.
+            let fallback_result = (None, app_name_fallback);
+            debug!("Caching fallback result for PID {}: ({:?}, {:?})", process_id, fallback_result.0, fallback_result.1);
+            cache.insert(process_id, fallback_result.clone());
+            fallback_result
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             error!("Channel disconnected while getting window info for PID {}. This might indicate the spawned thread panicked.", process_id);
+            // Fallback: attempt to get the app_name as a last resort.
             let app_name_fallback = match get_process_name_by_pid_recorder(process_id as i32) {
                 Ok(name) => Some(name),
                 Err(e) => {
@@ -452,7 +487,11 @@ fn get_window_info_for_process(process_id: u32) -> (Option<String>, Option<Strin
                     None
                 }
             };
-            (None, app_name_fallback)
+            // Cache this fallback result too.
+            let fallback_result = (None, app_name_fallback);
+            debug!("Caching fallback result (after disconnect) for PID {}: ({:?}, {:?})", process_id, fallback_result.0, fallback_result.1);
+            cache.insert(process_id, fallback_result.clone());
+            fallback_result
         }
     }
 }
