@@ -5,7 +5,9 @@ members = [
     "terminator-workflow-recorder", 
     "examples/terminator-rust-examples/button",   
     "examples/terminator-rust-examples/server", 
-    "examples/terminator-rust-examples/win_automation", 
+    "examples/terminator-rust-examples/win_automation",
+    "bindings/python",
+    "bindings/node"
 ]
 
 # Shared metadata for workspace members

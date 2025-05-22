@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
-mod element;
-mod errors;
-mod locator;
+pub mod element;
+pub mod errors;
+pub mod locator;
 pub mod platforms;
-mod selector;
+pub mod selector;
 #[cfg(test)]
 mod tests;
 pub mod utils;
@@ -440,3 +440,12 @@ impl Desktop {
         Ok(window_tree_root)
     }
 }
+
+impl Clone for Desktop {
+    fn clone(&self) -> Self {
+        Self {
+            engine: self.engine.clone(),
+        }
+    }
+}
+
