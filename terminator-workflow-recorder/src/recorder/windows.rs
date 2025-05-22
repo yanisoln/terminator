@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{
     sync::{Arc, Mutex},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::broadcast;
 use tracing::{debug, info, error};
@@ -22,6 +23,9 @@ pub struct WindowsRecorder {
     
     /// The last mouse position
     last_mouse_pos: Arc<Mutex<Option<(i32, i32)>>>,
+
+    /// Signal to stop the listener thread
+    stop_indicator: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "windows")]
@@ -35,11 +39,13 @@ impl WindowsRecorder {
         debug!("Initializing Windows recorder with config: {:?}", config);
         
         let last_mouse_pos = Arc::new(Mutex::new(None));
+        let stop_indicator = Arc::new(AtomicBool::new(false));
         
         let mut recorder = Self {
             event_tx,
             config,
             last_mouse_pos,
+            stop_indicator,
         };
         
         // Set up event listener
@@ -55,6 +61,7 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let last_mouse_pos = Arc::clone(&self.last_mouse_pos);
         let capture_ui_elements = self.config.capture_ui_elements;
+        let stop_indicator_clone = Arc::clone(&self.stop_indicator);
         
         std::thread::spawn(move || {
             // Create a new UIAutomation instance in this thread
@@ -66,7 +73,13 @@ impl WindowsRecorder {
                 }
             };
             
+
+            let callback_stop_indicator = stop_indicator_clone.clone();
             if let Err(error) = rdev::listen(move |event| {
+                if callback_stop_indicator.load(Ordering::SeqCst) {
+                    return;
+                }
+
                 match event.event_type {
                     EventType::KeyPress(key) => {
                         let keyboard_event = KeyboardEvent {
@@ -164,6 +177,7 @@ impl WindowsRecorder {
             }) {
                 error!("Failed to listen for events: {:?}", error);
             }
+            info!("Rdev event listener thread has finished or encountered an error.");
         });
         
         Ok(())
@@ -171,7 +185,9 @@ impl WindowsRecorder {
     
     /// Stop recording
     pub fn stop(&self) -> Result<()> {
-        debug!("Stopping Windows recorder...");
+        debug!("Attempting to stop Windows recorder...");
+        self.stop_indicator.store(true, Ordering::SeqCst);
+        info!("Windows recorder stop signal sent. Event processing will cease. The underlying rdev listener may remain active until program termination.");
         Ok(())
     }
 }
