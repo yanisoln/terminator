@@ -2,6 +2,7 @@
 
 
 
+
 https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
 
@@ -14,6 +15,12 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
         <img src="https://img.shields.io/badge/read_the-docs-blue" alt="docs">
     </a>
 </p>
+
+
+<p style="text-align: center;">
+    <img style="text-align: center;" src="https://github.com/user-attachments/assets/4a206b9c-5d24-4b10-a35a-1871eb3571e8" alt="." width="600">
+</p>
+
 
 **Terminator** is the best computer use AI SDK. Record human workflows into compiled AI workflows, deploy (offline) automation at scale. It's designed to interact with native GUI applications on Windows using a Playwright-like API, like parsing a website. By leveraging OS-level accessibility APIs, Terminator is significantly faster and more reliable for AI agents than vision-based approaches, and can interact with background applications.
 
