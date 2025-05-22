@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt;
-use workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use std::path::PathBuf;
 use tokio::signal::ctrl_c;
 use tracing::{info, debug, Level};

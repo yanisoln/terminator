@@ -73,7 +73,6 @@ impl WindowsRecorder {
                 }
             };
             
-
             let callback_stop_indicator = stop_indicator_clone.clone();
             if let Err(error) = rdev::listen(move |event| {
                 if callback_stop_indicator.load(Ordering::SeqCst) {
