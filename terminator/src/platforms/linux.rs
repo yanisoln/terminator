@@ -286,4 +286,16 @@ impl UIElementImpl for LinuxUIElement {
             "Linux implementation is not yet available".to_string(),
         ))
     }
+
+    fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn window(&self) -> Result<Option<UIElement>, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
 }

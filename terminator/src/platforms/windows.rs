@@ -29,7 +29,7 @@ const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
 // List of common browser process names (without .exe)
 const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
-    "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc"
+    "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc", "explorer"
 ];
 
 // Helper function to get process name by PID using PowerShell
@@ -2233,6 +2233,79 @@ impl UIElementImpl for WindowsUIElement {
             SendInput(&[up_input], std::mem::size_of::<INPUT>() as i32);
         }
         Ok(())
+    }
+
+    fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        // Get the process ID of the current element
+        let pid = self.element.0.get_process_id().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+        })?;
+
+        // Create a WindowsEngine instance to use its methods.
+        // This follows the pattern in `create_locator` but might be inefficient if called frequently.
+        let engine = WindowsEngine::new(false, false).map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create WindowsEngine: {}", e))
+        })?;
+
+        // Get the application element by PID
+        match engine.get_application_by_pid(pid as i32) { // Cast pid to i32
+            Ok(app_element) => Ok(Some(app_element)),
+            Err(AutomationError::ElementNotFound(_)) => {
+                // If the specific application element is not found by PID, return None.
+                debug!("Application element not found for PID {}", pid);
+                Ok(None)
+            }
+            Err(e) => Err(e), // Propagate other errors
+        }
+    }
+
+    fn window(&self) -> Result<Option<UIElement>, AutomationError> {
+        let mut current_element_arc = Arc::clone(&self.element.0); // Start with the current element's Arc<uiautomation::UIElement>
+        const MAX_DEPTH: usize = 20; // Safety break for parent traversal
+
+        for i in 0..MAX_DEPTH {
+            // Check current element's control type
+            match current_element_arc.get_control_type() {
+                Ok(control_type) => {
+                    if control_type == ControlType::Window {
+                        // Found the window
+                        let window_ui_element = WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
+                        };
+                        return Ok(Some(UIElement::new(Box::new(window_ui_element))));
+                    }
+                }
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get control type for element during window search (iteration {}): {}",
+                        i, e
+                    )));
+                }
+            }
+
+            // Try to get the parent
+            match current_element_arc.get_cached_parent() {
+                Ok(parent_uia_element) => {
+                    // Check if parent is same as current (e.g. desktop root's parent is itself)
+                    // This requires getting runtime IDs, which can also fail.
+                    let current_runtime_id = current_element_arc.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for current element: {}", e)))?;
+                    let parent_runtime_id = parent_uia_element.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for parent element: {}", e)))?;
+
+                    if parent_runtime_id == current_runtime_id {
+                        debug!("Parent element has same runtime ID as current, stopping window search.");
+                        break; // Reached the top or a cycle.
+                    }
+                    current_element_arc = Arc::new(parent_uia_element); // Move to the parent
+                }
+                Err(e) => {
+                    // No cached parent found or error occurred.
+                    debug!("No cached parent found or error during window search (iteration {}): {}. Stopping traversal.", i, e);
+                    break;
+                }
+            }
+        }
+        // If loop finishes, no element with ControlType::Window was found.
+        Ok(None)
     }
 }
 

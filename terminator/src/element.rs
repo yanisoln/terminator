@@ -70,6 +70,10 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     fn mouse_click_and_hold(&self, x: f64, y: f64) -> Result<(), AutomationError>;
     fn mouse_move(&self, x: f64, y: f64) -> Result<(), AutomationError>;
     fn mouse_release(&self) -> Result<(), AutomationError>;
+
+    // New methods to get containing application and window
+    fn application(&self) -> Result<Option<UIElement>, AutomationError>;
+    fn window(&self) -> Result<Option<UIElement>, AutomationError>;
 }
 
 impl UIElement {
@@ -297,6 +301,16 @@ impl UIElement {
     /// Release mouse button
     pub fn mouse_release(&self) -> Result<(), AutomationError> {
         self.inner.mouse_release()
+    }
+
+    /// Get the containing application element
+    pub fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        self.inner.application()
+    }
+
+    /// Get the containing window element (e.g., tab, dialog)
+    pub fn window(&self) -> Result<Option<UIElement>, AutomationError> {
+        self.inner.window()
     }
 }
 

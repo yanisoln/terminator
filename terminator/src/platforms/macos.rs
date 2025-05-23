@@ -654,6 +654,55 @@ impl MacOSUIElement {
 
         format!("ax_{:x}", hasher.finish())
     }
+
+    fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        let mut current_ax_element = self.element.0.clone();
+        loop {
+            match current_ax_element.role() {
+                Ok(role) => {
+                    if role.to_string() == "AXApplication" {
+                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
+                            element: ThreadSafeAXUIElement::new(current_ax_element),
+                            use_background_apps: self.use_background_apps,
+                            activate_app: self.activate_app,
+                        }))));
+                    }
+                }
+                Err(e) => return Err(AutomationError::PlatformError(format!("Failed to get role: {}", e)))
+            }
+
+            match current_ax_element.parent() {
+                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
+                Err(_) => return Ok(None) // No more parents or error getting parent
+            }
+        }
+    }
+
+    fn window(&self) -> Result<Option<UIElement>, AutomationError> {
+        let mut current_ax_element = self.element.0.clone();
+        loop {
+            match current_ax_element.role() {
+                Ok(role_cfstring) => {
+                    let role = role_cfstring.to_string();
+                    // AXWindow is the main window, AXSheet or AXDrawer can be dialogs/sidebars (acting as windows)
+                    // AXWebArea can sometimes be the main content area of a browser tab.
+                    if role == "AXWindow" || role == "AXSheet" || role == "AXDrawer" || role == "AXWebArea" {
+                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
+                            element: ThreadSafeAXUIElement::new(current_ax_element),
+                            use_background_apps: self.use_background_apps,
+                            activate_app: self.activate_app,
+                        }))));
+                    }
+                }
+                Err(e) => return Err(AutomationError::PlatformError(format!("Failed to get role: {}", e)))
+            }
+
+            match current_ax_element.parent() {
+                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
+                Err(_) => return Ok(None) // No more parents or error getting parent
+            }
+        }
+    }
 }
 
 impl UIElementImpl for MacOSUIElement {
