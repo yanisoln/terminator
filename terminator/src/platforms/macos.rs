@@ -2006,6 +2006,9 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
                 "Path selector not yet supported for macOS".to_string(),
             )),
+            Selector::UINativeId(_) => Err(AutomationError::UnsupportedOperation(
+                "UINativeId selector not yet supported for macOS".to_string(),
+            )),
             Selector::Attributes(_) => Err(AutomationError::UnsupportedOperation(
                 "Attributes selector not yet supported for macOS".to_string(),
             )),
@@ -2219,6 +2222,9 @@ impl AccessibilityEngine for MacOSEngine {
             }
             Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
                 "Path selector not yet supported for macOS".to_string(),
+            )),
+            Selector::UINativeId(_) => Err(AutomationError::UnsupportedOperation(
+                "UINativeId selector not yet supported for macOS".to_string(),
             )),
             Selector::Attributes(_) => Err(AutomationError::UnsupportedOperation(
                 "Attributes selector not yet supported for macOS".to_string(),
