@@ -1392,6 +1392,75 @@ $latestProcess.ProcessId"#,
             ))
         })
     }
+
+    async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
+        info!("Attempting to get the current focused window.");
+        let focused_element_raw = self
+            .automation
+            .0
+            .get_focused_element()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get focused element: {}", e)))?;
+
+        let mut current_element_arc = Arc::new(focused_element_raw);
+
+        for _ in 0..20 { // Max depth to prevent infinite loops
+            match current_element_arc.get_control_type() {
+                Ok(control_type) => {
+                    if control_type == ControlType::Window {
+                        let window_ui_element = WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
+                        };
+                        return Ok(UIElement::new(Box::new(window_ui_element)));
+                    }
+                }
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get control type during window search: {}",
+                        e
+                    )));
+                }
+            }
+
+            match current_element_arc.get_cached_parent() {
+                Ok(parent_uia_element) => {
+                    // Check if parent is same as current (e.g. desktop root's parent is itself)
+                    let current_runtime_id = current_element_arc.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for current element: {}", e)))?;
+                    let parent_runtime_id = parent_uia_element.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for parent element: {}", e)))?;
+
+                    if parent_runtime_id == current_runtime_id {
+                        debug!("Parent element has same runtime ID as current, stopping window search.");
+                        break; // Reached the top or a cycle.
+                    }
+                    current_element_arc = Arc::new(parent_uia_element); // Move to the parent
+                }
+                Err(_e) => {
+                    // No parent found, or error occurred.
+                    // This could mean the focused element itself is the top-level window, or it's detached.
+                    // We break here and if the loop didn't find a window, we'll return an error below.
+                    break;
+                }
+            }
+        }
+
+        Err(AutomationError::ElementNotFound(
+            "Could not find a parent window for the focused element.".to_string(),
+        ))
+    }
+
+    async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
+        info!("Attempting to get the current focused application.");
+        let focused_element_raw = self
+            .automation
+            .0
+            .get_focused_element()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get focused element: {}", e)))?;
+
+        let pid = focused_element_raw
+            .get_process_id()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get PID for focused element: {}", e)))?;
+
+        self.get_application_by_pid(pid as i32)
+    }
 }
 
 // thread-safety

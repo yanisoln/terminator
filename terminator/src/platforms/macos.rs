@@ -2859,4 +2859,24 @@ impl AccessibilityEngine for MacOSEngine {
             ))
         }
     }
+
+    async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
+        let focused_element_wrapper = self.get_focused_element()?;
+        // Downcast to MacOSUIElement to access the window() method
+        if let Some(macos_focused_element) = focused_element_wrapper.as_any().downcast_ref::<MacOSUIElement>() {
+            macos_focused_element.window()?.ok_or_else(|| AutomationError::ElementNotFound("Could not find a parent window for the focused element.".to_string()))
+        } else {
+            Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
+        }
+    }
+
+    async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
+        let focused_element_wrapper = self.get_focused_element()?;
+        // Downcast to MacOSUIElement to access the application() method
+        if let Some(macos_focused_element) = focused_element_wrapper.as_any().downcast_ref::<MacOSUIElement>() {
+            macos_focused_element.application()?.ok_or_else(|| AutomationError::ElementNotFound("Could not find a parent application for the focused element.".to_string()))
+        } else {
+            Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
+        }
+    }
 }

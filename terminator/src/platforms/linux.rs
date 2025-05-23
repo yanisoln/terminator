@@ -132,6 +132,18 @@ impl AccessibilityEngine for LinuxEngine {
             "get_current_browser_window not yet implemented for Linux".to_string(),
         ))
     }
+
+    async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "get_current_window not yet implemented for Linux".to_string(),
+        ))
+    }
+
+    async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "get_current_application not yet implemented for Linux".to_string(),
+        ))
+    }
 }
 
 // Placeholder LinuxUIElement that implements UIElementImpl
