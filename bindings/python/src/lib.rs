@@ -40,4 +40,4 @@ fn terminator(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-define_stub_info_gatherer!(stub_info); 
+define_stub_info_gatherer!(stub_info);
