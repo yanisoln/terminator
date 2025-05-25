@@ -23,129 +23,485 @@ export interface CommandOutput {
   stdout: string
   stderr: string
 }
-export interface Screenshot {
+/** Result of a screenshot operation */
+export interface ScreenshotResult {
   width: number
   height: number
   imageData: Array<number>
 }
-export interface RunCommandOptions {
-  windowsCommand?: string
-  unixCommand?: string
+export interface UIElementAttributes {
+  role: string
+  name?: string
+  label?: string
+  value?: string
+  description?: string
+  properties: Record<string, string | undefined | null>
+  isKeyboardFocusable?: boolean
 }
-/** Main entry point for desktop automation */
+/** Main entry point for desktop automation. */
 export declare class Desktop {
-  /** Create a new Desktop automation instance with default settings */
+  /**
+   * Create a new Desktop automation instance with default settings.
+   *
+   * @returns {Desktop} A new Desktop automation instance.
+   */
   constructor()
-  /** Create a new Desktop automation instance with background apps enabled */
+  /**
+   * Create a new Desktop automation instance with background apps enabled.
+   *
+   * @returns {Desktop} A new Desktop automation instance with background apps enabled.
+   */
   static withBackgroundApps(): Desktop
-  /** Create a new Desktop automation instance with app activation enabled */
+  /**
+   * Create a new Desktop automation instance with app activation enabled.
+   *
+   * @returns {Desktop} A new Desktop automation instance with app activation enabled.
+   */
   static withAppActivation(): Desktop
-  /** Create a new Desktop automation instance with both background apps and app activation enabled */
+  /**
+   * Create a new Desktop automation instance with both background apps and app activation enabled.
+   *
+   * @returns {Desktop} A new Desktop automation instance with all features enabled.
+   */
   static withAllFeatures(): Desktop
-  /** Get the root UI element */
+  /**
+   * Get the root UI element of the desktop.
+   *
+   * @returns {Element} The root UI element.
+   */
   root(): Element
-  /** List all running applications */
+  /**
+   * Get a list of all running applications.
+   *
+   * @returns {Array<Element>} List of application UI elements.
+   */
   applications(): Array<Element>
-  /** Get a running application by name */
+  /**
+   * Get a running application by name.
+   *
+   * @param {string} name - The name of the application to find.
+   * @returns {Element} The application UI element.
+   */
   application(name: string): Element
-  /** Open an application by name */
+  /**
+   * Open an application by name.
+   *
+   * @param {string} name - The name of the application to open.
+   */
   openApplication(name: string): void
-  /** Activate an application by name */
+  /**
+   * Activate an application by name.
+   *
+   * @param {string} name - The name of the application to activate.
+   */
   activateApplication(name: string): void
-  /** Capture a screenshot of the primary monitor */
-  captureScreen(): Promise<Screenshot>
-  /** Run a shell command */
-  runCommand(options: RunCommandOptions): Promise<CommandOutput>
-  /** Capture a screenshot of a specific monitor */
-  captureMonitorByName(name: string): Promise<Screenshot>
-  /** Perform OCR on an image file */
+  /**
+   * Capture a screenshot of the primary monitor.
+   *
+   * @returns {Promise<ScreenshotResult>} The screenshot data.
+   */
+  captureScreen(): Promise<ScreenshotResult>
+  /**
+   * Run a shell command.
+   *
+   * @param {string} [windowsCommand] - Command to run on Windows.
+   * @param {string} [unixCommand] - Command to run on Unix.
+   * @returns {Promise<CommandOutput>} The command output.
+   */
+  runCommand(windowsCommand?: string | undefined | null, unixCommand?: string | undefined | null): Promise<CommandOutput>
+  /**
+   * Capture a screenshot of a specific monitor.
+   *
+   * @param {string} name - The name of the monitor to capture.
+   * @returns {Promise<ScreenshotResult>} The screenshot data.
+   */
+  captureMonitorByName(name: string): Promise<ScreenshotResult>
+  /**
+   * Perform OCR on an image file.
+   *
+   * @param {string} imagePath - Path to the image file.
+   * @returns {Promise<string>} The extracted text.
+   */
   ocrImagePath(imagePath: string): Promise<string>
-  /** Perform OCR on a screenshot */
-  ocrScreenshot(screenshot: Screenshot): Promise<string>
-  /** Find a window by criteria */
+  /**
+   * Perform OCR on a screenshot.
+   *
+   * @param {ScreenshotResult} screenshot - The screenshot to process.
+   * @returns {Promise<string>} The extracted text.
+   */
+  ocrScreenshot(screenshot: ScreenshotResult): Promise<string>
+  /**
+   * Find a window by criteria.
+   *
+   * @param {string} [titleContains] - Text that should be in the window title.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Element>} The found window element.
+   */
   findWindowByCriteria(titleContains?: string | undefined | null, timeoutMs?: number | undefined | null): Promise<Element>
-  /** Get the currently focused browser window */
+  /**
+   * Get the currently focused browser window.
+   *
+   * @returns {Promise<Element>} The current browser window element.
+   */
   getCurrentBrowserWindow(): Promise<Element>
-  /** Create a locator for advanced queries */
+  /**
+   * Create a locator for finding UI elements.
+   *
+   * @param {string} selector - The selector string to find elements.
+   * @returns {Locator} A locator for finding elements.
+   */
   locator(selector: string): Locator
-  /** Get the currently focused window */
+  /**
+   * Get the currently focused window.
+   *
+   * @returns {Promise<Element>} The current window element.
+   */
   getCurrentWindow(): Promise<Element>
-  /** Get the currently focused application */
+  /**
+   * Get the currently focused application.
+   *
+   * @returns {Promise<Element>} The current application element.
+   */
   getCurrentApplication(): Promise<Element>
+  /**
+   * Get the currently focused element.
+   *
+   * @returns {Element} The focused element.
+   */
+  focusedElement(): Element
+  /**
+   * Open a URL in a browser.
+   *
+   * @param {string} url - The URL to open.
+   * @param {string} [browser] - The browser to use.
+   */
+  openUrl(url: string, browser?: string | undefined | null): void
+  /**
+   * Open a file with its default application.
+   *
+   * @param {string} filePath - Path to the file to open.
+   */
+  openFile(filePath: string): void
+  /**
+   * Activate a browser window by title.
+   *
+   * @param {string} title - The window title to match.
+   */
+  activateBrowserWindowByTitle(title: string): void
 }
-/** A UI element in the accessibility tree */
+/** A UI element in the accessibility tree. */
 export declare class Element {
-  /** Create a new Element from a selector string */
-  static fromSelector(desktop: Desktop, selector: string): Promise<Element>
-  /** Create a new Element from a selector string with timeout */
-  static fromSelectorWithTimeout(desktop: Desktop, selector: string, timeoutMs: number): Promise<Element>
-  /** The accessibility role */
-  get role(): string
-  /** The accessibility name */
-  get name(): string | null
-  /** Get children of this element */
+  /**
+   * Get the element's ID.
+   *
+   * @returns {string | null} The element's ID, if available.
+   */
+  id(): string | null
+  /**
+   * Get the element's role.
+   *
+   * @returns {string} The element's role (e.g., "button", "textfield").
+   */
+  role(): string
+  /**
+   * Get all attributes of the element.
+   *
+   * @returns {UIElementAttributes} The element's attributes.
+   */
+  attributes(): UIElementAttributes
+  /**
+   * Get the element's name.
+   *
+   * @returns {string | null} The element's name, if available.
+   */
+  name(): string | null
+  /**
+   * Get children of this element.
+   *
+   * @returns {Array<Element>} List of child elements.
+   */
   children(): Array<Element>
-  /** Get the parent element */
+  /**
+   * Get the parent element.
+   *
+   * @returns {Element | null} The parent element, if available.
+   */
   parent(): Element | null
-  /** The bounding rectangle */
-  get bounds(): Bounds
-  /** Click the element (returns click result) */
+  /**
+   * Get element bounds.
+   *
+   * @returns {Bounds} The element's bounds (x, y, width, height).
+   */
+  bounds(): Bounds
+  /**
+   * Click on this element.
+   *
+   * @returns {ClickResult} Result of the click operation.
+   */
   click(): ClickResult
-  /** Is the element visible? */
-  get isVisible(): boolean
-  /** Is the element enabled? */
-  get isEnabled(): boolean
-  /** Focus the element */
+  /**
+   * Double click on this element.
+   *
+   * @returns {ClickResult} Result of the click operation.
+   */
+  doubleClick(): ClickResult
+  /** Right click on this element. */
+  rightClick(): void
+  /** Hover over this element. */
+  hover(): void
+  /**
+   * Check if element is visible.
+   *
+   * @returns {boolean} True if the element is visible.
+   */
+  isVisible(): boolean
+  /**
+   * Check if element is enabled.
+   *
+   * @returns {boolean} True if the element is enabled.
+   */
+  isEnabled(): boolean
+  /** Focus this element. */
   focus(): void
-  /** Get the text content */
+  /**
+   * Get text content of this element.
+   *
+   * @param {number} [maxDepth] - Maximum depth to search for text.
+   * @returns {string} The element's text content.
+   */
   text(maxDepth?: number | undefined | null): string
-  /** Type text into the element */
+  /**
+   * Type text into this element.
+   *
+   * @param {string} text - The text to type.
+   * @param {boolean} [useClipboard] - Whether to use clipboard for pasting.
+   */
   typeText(text: string, useClipboard?: boolean | undefined | null): void
-  /** Press a key on the element */
+  /**
+   * Press a key while this element is focused.
+   *
+   * @param {string} key - The key to press.
+   */
   pressKey(key: string): void
-  /** Set the value of the element */
+  /**
+   * Set value of this element.
+   *
+   * @param {string} value - The value to set.
+   */
   setValue(value: string): void
-  /** Perform a custom action */
+  /**
+   * Perform a named action on this element.
+   *
+   * @param {string} action - The action to perform.
+   */
   performAction(action: string): void
-  /** Scroll the element */
+  /**
+   * Scroll the element in a given direction.
+   *
+   * @param {string} direction - The direction to scroll.
+   * @param {number} amount - The amount to scroll.
+   */
   scroll(direction: string, amount: number): void
-  /** Activate the window containing this element */
+  /** Activate the window containing this element. */
   activateWindow(): void
-  /** Is the element focused? */
-  get isFocused(): boolean
-  /** Is the element keyboard focusable? */
-  get isKeyboardFocusable(): boolean
-  /** Mouse drag from/to coordinates */
+  /**
+   * Check if element is focused.
+   *
+   * @returns {boolean} True if the element is focused.
+   */
+  isFocused(): boolean
+  /**
+   * Check if element is keyboard focusable.
+   *
+   * @returns {boolean} True if the element can receive keyboard focus.
+   */
+  isKeyboardFocusable(): boolean
+  /**
+   * Drag mouse from start to end coordinates.
+   *
+   * @param {number} startX - Starting X coordinate.
+   * @param {number} startY - Starting Y coordinate.
+   * @param {number} endX - Ending X coordinate.
+   * @param {number} endY - Ending Y coordinate.
+   */
   mouseDrag(startX: number, startY: number, endX: number, endY: number): void
-  /** Mouse click and hold */
+  /**
+   * Press and hold mouse at coordinates.
+   *
+   * @param {number} x - X coordinate.
+   * @param {number} y - Y coordinate.
+   */
   mouseClickAndHold(x: number, y: number): void
-  /** Mouse move */
+  /**
+   * Move mouse to coordinates.
+   *
+   * @param {number} x - X coordinate.
+   * @param {number} y - Y coordinate.
+   */
   mouseMove(x: number, y: number): void
-  /** Mouse release */
+  /** Release mouse button. */
   mouseRelease(): void
-  /** Create a locator from this element */
+  /**
+   * Create a locator from this element.
+   *
+   * @param {string} selector - The selector string.
+   * @returns {Locator} A new locator for finding elements.
+   */
   locator(selector: string): Locator
-  /** Get the containing application element */
+  /**
+   * Get the containing application element.
+   *
+   * @returns {Element | null} The containing application element, if available.
+   */
   application(): Element | null
-  /** Get the containing window element (e.g., tab, dialog) */
+  /**
+   * Get the containing window element.
+   *
+   * @returns {Element | null} The containing window element, if available.
+   */
   window(): Element | null
 }
-/** Locator for advanced queries (chainable) */
+/** Locator for finding UI elements by selector. */
 export declare class Locator {
-  /** Create a new Locator with a selector */
-  static withSelector(desktop: Desktop, selector: string): Locator
-  /** Create a new Locator with a selector and timeout */
-  static withSelectorAndTimeout(desktop: Desktop, selector: string, timeoutMs: number): Locator
-  /** Get the first matching element (async) */
+  /**
+   * Get the first matching element.
+   *
+   * @returns {Promise<Element>} The first matching element.
+   */
   first(): Promise<Element>
-  /** Get all matching elements (async) */
+  /**
+   * Get all matching elements.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @param {number} [depth] - Maximum depth to search.
+   * @returns {Promise<Array<Element>>} List of matching elements.
+   */
   all(timeoutMs?: number | undefined | null, depth?: number | undefined | null): Promise<Array<Element>>
-  /** Wait for the first matching element (async) */
+  /**
+   * Wait for the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Element>} The first matching element.
+   */
   wait(timeoutMs?: number | undefined | null): Promise<Element>
-  /** Set a default timeout for this locator (returns a new locator) */
+  /**
+   * Set a default timeout for this locator.
+   *
+   * @param {number} timeoutMs - Timeout in milliseconds.
+   * @returns {Locator} A new locator with the specified timeout.
+   */
   timeout(timeoutMs: number): Locator
-  /** Chain another selector */
+  /**
+   * Set the root element for this locator.
+   *
+   * @param {Element} element - The root element.
+   * @returns {Locator} A new locator with the specified root element.
+   */
+  within(element: Element): Locator
+  /**
+   * Chain another selector.
+   *
+   * @param {string} selector - The selector string.
+   * @returns {Locator} A new locator with the chained selector.
+   */
   locator(selector: string): Locator
+  /**
+   * Click on the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<ClickResult>} Result of the click operation.
+   */
+  click(timeoutMs?: number | undefined | null): Promise<ClickResult>
+  /**
+   * Type text into the first matching element.
+   *
+   * @param {string} text - The text to type.
+   * @param {boolean} [useClipboard] - Whether to use clipboard for pasting.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  typeText(text: string, useClipboard?: boolean | undefined | null, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * Press a key on the first matching element.
+   *
+   * @param {string} key - The key to press.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  pressKey(key: string, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * Get text from the first matching element.
+   *
+   * @param {number} [maxDepth] - Maximum depth to search for text.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<string>} The element's text content.
+   */
+  text(maxDepth?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<string>
+  /**
+   * Get attributes from the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<UIElementAttributes>} The element's attributes.
+   */
+  attributes(timeoutMs?: number | undefined | null): Promise<UIElementAttributes>
+  /**
+   * Get bounds from the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Bounds>} The element's bounds.
+   */
+  bounds(timeoutMs?: number | undefined | null): Promise<Bounds>
+  /**
+   * Check if the element is visible.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<boolean>} True if the element is visible.
+   */
+  isVisible(timeoutMs?: number | undefined | null): Promise<boolean>
+  /**
+   * Wait for the element to be enabled.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Element>} The enabled element.
+   */
+  expectEnabled(timeoutMs?: number | undefined | null): Promise<Element>
+  /**
+   * Wait for the element to be visible.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Element>} The visible element.
+   */
+  expectVisible(timeoutMs?: number | undefined | null): Promise<Element>
+  /**
+   * Wait for the element's text to equal the expected text.
+   *
+   * @param {string} expectedText - The expected text.
+   * @param {number} [maxDepth] - Maximum depth to search for text.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Element>} The element with matching text.
+   */
+  expectTextEquals(expectedText: string, maxDepth?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<Element>
+  /**
+   * Double click on the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<ClickResult>} Result of the click operation.
+   */
+  doubleClick(timeoutMs?: number | undefined | null): Promise<ClickResult>
+  /**
+   * Right click on the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  rightClick(timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * Hover over the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  hover(timeoutMs?: number | undefined | null): Promise<void>
 }
 /** Thrown when an element is not found. */
 export declare class ElementNotFoundError {

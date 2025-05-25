@@ -121,6 +121,27 @@ impl Locator {
         element.click()
     }
 
+    /// Double click on the first matching element, waiting up to the specified timeout.
+    /// If no timeout is provided, uses the locator's default timeout.
+    pub async fn double_click(&self, timeout: Option<Duration>) -> Result<ClickResult, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.double_click()
+    }
+
+    /// Right click on the first matching element, waiting up to the specified timeout.
+    /// If no timeout is provided, uses the locator's default timeout.
+    pub async fn right_click(&self, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.right_click()
+    }
+
+    /// Hover over the first matching element, waiting up to the specified timeout.
+    /// If no timeout is provided, uses the locator's default timeout.
+    pub async fn hover(&self, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.hover()
+    }
+
     /// Type text into the first matching element, waiting up to the specified timeout.
     /// If no timeout is provided, uses the locator's default timeout.
     pub async fn type_text(&self, text: &str, use_clipboard: bool, timeout: Option<Duration>) -> Result<(), AutomationError> {

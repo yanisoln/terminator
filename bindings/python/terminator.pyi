@@ -4,12 +4,21 @@
 import builtins
 import typing
 
+class Bounds:
+    r"""
+    Bounds for element coordinates
+    """
+    x: builtins.float
+    y: builtins.float
+    width: builtins.float
+    height: builtins.float
+
 class ClickResult:
     r"""
     Result of a click operation.
     """
     method: builtins.str
-    coordinates: typing.Optional[tuple[builtins.float, builtins.float]]
+    coordinates: typing.Optional[Coordinates]
     details: builtins.str
 
 class CommandOutput:
@@ -20,75 +29,241 @@ class CommandOutput:
     stdout: builtins.str
     stderr: builtins.str
 
+class Coordinates:
+    r"""
+    Coordinates for mouse operations
+    """
+    x: builtins.float
+    y: builtins.float
+
 class Desktop:
     r"""
     Main entry point for desktop automation.
     """
     def __new__(cls,): ...
+    @staticmethod
+    def with_background_apps() -> Desktop:
+        r"""
+        Create a new Desktop automation instance with background apps enabled.
+        
+        Returns:
+            Desktop: A new Desktop automation instance with background apps enabled.
+        """
+        ...
+
+    @staticmethod
+    def with_app_activation() -> Desktop:
+        r"""
+        Create a new Desktop automation instance with app activation enabled.
+        
+        Returns:
+            Desktop: A new Desktop automation instance with app activation enabled.
+        """
+        ...
+
+    @staticmethod
+    def with_all_features() -> Desktop:
+        r"""
+        Create a new Desktop automation instance with both background apps and app activation enabled.
+        
+        Returns:
+            Desktop: A new Desktop automation instance with all features enabled.
+        """
+        ...
+
     def root(self) -> UIElement:
         r"""
-        Returns the root UI element.
+        Get the root UI element of the desktop.
+        
+        Returns:
+            UIElement: The root UI element.
         """
         ...
 
     def applications(self) -> builtins.list[UIElement]:
         r"""
-        Returns a list of top-level application UI elements.
+        Get a list of all running applications.
+        
+        Returns:
+            List[UIElement]: List of application UI elements.
         """
         ...
 
     def application(self, name:builtins.str) -> UIElement:
         r"""
-        Returns the UI element for the given application name.
+        Get a running application by name.
+        
+        Args:
+            name (str): The name of the application to find.
+        
+        Returns:
+            UIElement: The application UI element.
         """
         ...
 
     def open_application(self, name:builtins.str) -> None:
         r"""
-        Opens an application by name.
+        Open an application by name.
+        
+        Args:
+            name (str): The name of the application to open.
         """
         ...
 
     def activate_application(self, name:builtins.str) -> None:
         r"""
-        Activates an application by name.
+        Activate an application by name.
+        
+        Args:
+            name (str): The name of the application to activate.
         """
         ...
 
     def locator(self, selector:builtins.str) -> Locator:
         r"""
-        Returns a Locator for the given selector string.
+        Create a locator for finding UI elements.
+        
+        Args:
+            selector (str): The selector string to find elements.
+        
+        Returns:
+            Locator: A locator for finding elements.
         """
         ...
 
     def capture_screen(self) -> typing.Any:
         r"""
-        Async: Capture a screenshot of the primary monitor.
+        Capture a screenshot of the primary monitor.
+        
+        Returns:
+            ScreenshotResult: The screenshot data.
         """
         ...
 
     def run_command(self, windows_command:typing.Optional[builtins.str], unix_command:typing.Optional[builtins.str]) -> typing.Any:
+        r"""
+        Run a shell command.
+        
+        Args:
+            windows_command (Optional[str]): Command to run on Windows.
+            unix_command (Optional[str]): Command to run on Unix.
+        
+        Returns:
+            CommandOutput: The command output.
+        """
         ...
 
     def capture_monitor_by_name(self, name:builtins.str) -> typing.Any:
+        r"""
+        Capture a screenshot of a specific monitor.
+        
+        Args:
+            name (str): The name of the monitor to capture.
+        
+        Returns:
+            ScreenshotResult: The screenshot data.
+        """
         ...
 
     def ocr_image_path(self, image_path:builtins.str) -> typing.Any:
+        r"""
+        Perform OCR on an image file.
+        
+        Args:
+            image_path (str): Path to the image file.
+        
+        Returns:
+            str: The extracted text.
+        """
         ...
 
     def ocr_screenshot(self, screenshot:ScreenshotResult) -> typing.Any:
+        r"""
+        Perform OCR on a screenshot.
+        
+        Args:
+            screenshot (ScreenshotResult): The screenshot to process.
+        
+        Returns:
+            str: The extracted text.
+        """
         ...
 
     def find_window_by_criteria(self, title_contains:typing.Optional[builtins.str], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Find a window by criteria.
+        
+        Args:
+            title_contains (Optional[str]): Text that should be in the window title.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElement: The found window element.
+        """
         ...
 
     def get_current_browser_window(self) -> typing.Any:
+        r"""
+        Get the currently focused browser window.
+        
+        Returns:
+            UIElement: The current browser window element.
+        """
         ...
 
     def get_current_window(self) -> typing.Any:
+        r"""
+        Get the currently focused window.
+        
+        Returns:
+            UIElement: The current window element.
+        """
         ...
 
     def get_current_application(self) -> typing.Any:
+        r"""
+        Get the currently focused application.
+        
+        Returns:
+            UIElement: The current application element.
+        """
+        ...
+
+    def open_url(self, url:builtins.str, browser:typing.Optional[builtins.str]) -> None:
+        r"""
+        Open a URL in a browser.
+        
+        Args:
+            url (str): The URL to open.
+            browser (Optional[str]): The browser to use.
+        """
+        ...
+
+    def open_file(self, file_path:builtins.str) -> None:
+        r"""
+        Open a file with its default application.
+        
+        Args:
+            file_path (str): Path to the file to open.
+        """
+        ...
+
+    def activate_browser_window_by_title(self, title:builtins.str) -> None:
+        r"""
+        Activate a browser window by title.
+        
+        Args:
+            title (str): The window title to match.
+        """
+        ...
+
+    def focused_element(self) -> UIElement:
+        r"""
+        Get the currently focused element.
+        
+        Returns:
+            UIElement: The focused element.
+        """
         ...
 
 
@@ -97,20 +272,244 @@ class Locator:
     Locator for finding UI elements by selector.
     """
     def first(self) -> typing.Any:
+        r"""
+        Get the first matching element.
+        
+        Returns:
+            UIElement: The first matching element.
+        """
         ...
 
     def all(self, timeout_ms:typing.Optional[builtins.int], depth:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Get all matching elements.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+            depth (Optional[int]): Maximum depth to search.
+        
+        Returns:
+            List[UIElement]: List of matching elements.
+        """
         ...
 
     def wait(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Wait for the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElement: The first matching element.
+        """
         ...
 
     def timeout(self, timeout_ms:builtins.int) -> Locator:
+        r"""
+        Set a default timeout for this locator.
+        
+        Args:
+            timeout_ms (int): Timeout in milliseconds.
+        
+        Returns:
+            Locator: A new locator with the specified timeout.
+        """
         ...
 
     def locator(self, selector:builtins.str) -> Locator:
+        r"""
+        Chain another selector.
+        
+        Args:
+            selector (str): The selector string.
+        
+        Returns:
+            Locator: A new locator with the chained selector.
+        """
         ...
 
+    def click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Click on the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            ClickResult: Result of the click operation.
+        """
+        ...
+
+    def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Type text into the first matching element.
+        
+        Args:
+            text (str): The text to type.
+            use_clipboard (Optional[bool]): Whether to use clipboard for pasting.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def press_key(self, key:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Press a key on the first matching element.
+        
+        Args:
+            key (str): The key to press.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def text(self, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Get text from the first matching element.
+        
+        Args:
+            max_depth (Optional[int]): Maximum depth to search for text.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            str: The element's text content.
+        """
+        ...
+
+    def attributes(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Get attributes from the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElementAttributes: The element's attributes.
+        """
+        ...
+
+    def bounds(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Get bounds from the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Bounds: The element's bounds.
+        """
+        ...
+
+    def is_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Check if the element is visible.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            bool: True if the element is visible.
+        """
+        ...
+
+    def expect_enabled(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Wait for the element to be enabled.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElement: The enabled element.
+        """
+        ...
+
+    def expect_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Wait for the element to be visible.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElement: The visible element.
+        """
+        ...
+
+    def expect_text_equals(self, expected_text:builtins.str, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Wait for the element's text to equal the expected text.
+        
+        Args:
+            expected_text (str): The expected text.
+            max_depth (Optional[int]): Maximum depth to search for text.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            UIElement: The element with matching text.
+        """
+        ...
+
+    def within(self, element:UIElement) -> Locator:
+        r"""
+        Set the root element for this locator.
+        
+        Args:
+            element (UIElement): The root element.
+        
+        Returns:
+            Locator: A new locator with the specified root element.
+        """
+        ...
+
+    def double_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Double click on the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            ClickResult: Result of the click operation.
+        """
+        ...
+
+    def right_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Right click on the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def hover(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        Hover over the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+
+class RunCommandOptions:
+    r"""
+    Run command options
+    """
+    windows_command: typing.Optional[builtins.str]
+    unix_command: typing.Optional[builtins.str]
 
 class ScreenshotResult:
     r"""
@@ -124,81 +523,325 @@ class UIElement:
     r"""
     Represents a UI element in the desktop UI tree.
     """
-    role: builtins.str
-    name: typing.Optional[builtins.str]
-    bounds: tuple[builtins.float, builtins.float, builtins.float, builtins.float]
+    def role(self) -> builtins.str:
+        r"""
+        Get the element's role (e.g., "button", "textfield").
+        
+        Returns:
+            str: The element's role.
+        """
+        ...
+
+    def name(self) -> typing.Optional[builtins.str]:
+        r"""
+        Get the element's name.
+        
+        Returns:
+            Optional[str]: The element's name, if available.
+        """
+        ...
+
+    def id(self) -> typing.Optional[builtins.str]:
+        r"""
+        Get the element's ID.
+        
+        Returns:
+            Optional[str]: The element's ID, if available.
+        """
+        ...
+
+    def attributes(self) -> UIElementAttributes:
+        r"""
+        Get all attributes of the element.
+        
+        Returns:
+            UIElementAttributes: The element's attributes.
+        """
+        ...
+
     def children(self) -> builtins.list[UIElement]:
+        r"""
+        Get child elements.
+        
+        Returns:
+            List[UIElement]: List of child elements.
+        """
         ...
 
     def parent(self) -> typing.Optional[UIElement]:
+        r"""
+        Get parent element.
+        
+        Returns:
+            Optional[UIElement]: The parent element, if available.
+        """
         ...
 
-    def click(self) -> None:
+    def bounds(self) -> Bounds:
+        r"""
+        Get element bounds (x, y, width, height).
+        
+        Returns:
+            Bounds: The element's bounds.
+        """
+        ...
+
+    def click(self) -> ClickResult:
+        r"""
+        Click on this element.
+        
+        Returns:
+            ClickResult: Result of the click operation.
+        """
+        ...
+
+    def double_click(self) -> ClickResult:
+        r"""
+        Double click on this element.
+        
+        Returns:
+            ClickResult: Result of the click operation.
+        """
+        ...
+
+    def right_click(self) -> None:
+        r"""
+        Right click on this element.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def hover(self) -> None:
+        r"""
+        Hover over this element.
+        
+        Returns:
+            None
+        """
         ...
 
     def is_visible(self) -> builtins.bool:
+        r"""
+        Check if element is visible.
+        
+        Returns:
+            bool: True if the element is visible.
+        """
         ...
 
     def is_enabled(self) -> builtins.bool:
+        r"""
+        Check if element is enabled.
+        
+        Returns:
+            bool: True if the element is enabled.
+        """
         ...
 
     def focus(self) -> None:
+        r"""
+        Focus this element.
+        
+        Returns:
+            None
+        """
         ...
 
     def text(self, max_depth:typing.Optional[builtins.int]) -> builtins.str:
+        r"""
+        Get text content of this element.
+        
+        Args:
+            max_depth (Optional[int]): Maximum depth to search for text.
+        
+        Returns:
+            str: The element's text content.
+        """
         ...
 
     def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool]) -> None:
+        r"""
+        Type text into this element.
+        
+        Args:
+            text (str): The text to type.
+            use_clipboard (Optional[bool]): Whether to use clipboard for pasting.
+        
+        Returns:
+            None
+        """
         ...
 
     def press_key(self, key:builtins.str) -> None:
+        r"""
+        Press a key while this element is focused.
+        
+        Args:
+            key (str): The key to press.
+        
+        Returns:
+            None
+        """
         ...
 
     def set_value(self, value:builtins.str) -> None:
+        r"""
+        Set value of this element.
+        
+        Args:
+            value (str): The value to set.
+        
+        Returns:
+            None
+        """
         ...
 
     def perform_action(self, action:builtins.str) -> None:
+        r"""
+        Perform a named action on this element.
+        
+        Args:
+            action (str): The action to perform.
+        
+        Returns:
+            None
+        """
         ...
 
     def scroll(self, direction:builtins.str, amount:builtins.float) -> None:
+        r"""
+        Scroll the element in a given direction.
+        
+        Args:
+            direction (str): The direction to scroll.
+            amount (float): The amount to scroll.
+        
+        Returns:
+            None
+        """
         ...
 
     def activate_window(self) -> None:
+        r"""
+        Activate the window containing this element.
+        
+        Returns:
+            None
+        """
         ...
 
     def is_focused(self) -> builtins.bool:
+        r"""
+        Check if element is focused.
+        
+        Returns:
+            bool: True if the element is focused.
+        """
         ...
 
     def is_keyboard_focusable(self) -> builtins.bool:
+        r"""
+        Check if element is keyboard focusable.
+        
+        Returns:
+            bool: True if the element can receive keyboard focus.
+        """
         ...
 
     def mouse_drag(self, start_x:builtins.float, start_y:builtins.float, end_x:builtins.float, end_y:builtins.float) -> None:
+        r"""
+        Drag mouse from start to end coordinates.
+        
+        Args:
+            start_x (float): Starting X coordinate.
+            start_y (float): Starting Y coordinate.
+            end_x (float): Ending X coordinate.
+            end_y (float): Ending Y coordinate.
+        
+        Returns:
+            None
+        """
         ...
 
     def mouse_click_and_hold(self, x:builtins.float, y:builtins.float) -> None:
+        r"""
+        Press and hold mouse at coordinates.
+        
+        Args:
+            x (float): X coordinate.
+            y (float): Y coordinate.
+        
+        Returns:
+            None
+        """
         ...
 
     def mouse_move(self, x:builtins.float, y:builtins.float) -> None:
+        r"""
+        Move mouse to coordinates.
+        
+        Args:
+            x (float): X coordinate.
+            y (float): Y coordinate.
+        
+        Returns:
+            None
+        """
         ...
 
     def mouse_release(self) -> None:
-        ...
-
-    def locator(self, selector:builtins.str) -> typing.Any:
+        r"""
+        Release mouse button.
+        
+        Returns:
+            None
+        """
         ...
 
     def application(self) -> typing.Optional[UIElement]:
         r"""
-        Get the containing application element
+        Get the containing application element.
+        
+        Returns:
+            Optional[UIElement]: The containing application element, if available.
         """
         ...
 
     def window(self) -> typing.Optional[UIElement]:
         r"""
-        Get the containing window element (e.g., tab, dialog)
+        Get the containing window element.
+        
+        Returns:
+            Optional[UIElement]: The containing window element, if available.
         """
         ...
 
+    def locator(self, selector:builtins.str) -> Locator:
+        r"""
+        Create a locator from this element.
+        
+        Args:
+            selector (str): The selector string.
+        
+        Returns:
+            Locator: A new locator for finding elements.
+        """
+        ...
+
+
+class UIElementAttributes:
+    r"""
+    UI Element attributes
+    """
+    role: builtins.str
+    name: typing.Optional[builtins.str]
+    label: typing.Optional[builtins.str]
+    value: typing.Optional[builtins.str]
+    description: typing.Optional[builtins.str]
+    properties: builtins.dict[builtins.str, typing.Optional[builtins.str]]
+    is_keyboard_focusable: typing.Optional[builtins.bool]
 
 class ElementNotFoundError(RuntimeError): ...
 
