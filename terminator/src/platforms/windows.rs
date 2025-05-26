@@ -1463,36 +1463,56 @@ $latestProcess.ProcessId"#,
     }
 
     fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
-        info!("Attempting to get window tree by title: {}", title);
+        info!("Attempting to get FULL window tree by title: {}", title);
         let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
             error!("Failed to get root element: {}", e);
             AutomationError::PlatformError(format!("Failed to get root element: {}", e))
         })?;
 
-        // Create a matcher for the window by its exact title
-        let matcher = self
+        // Use a more efficient approach: first find windows by control type, then filter by name
+        let window_matcher = self
             .automation
             .0
             .create_matcher()
             .from_ref(&root_ele_os)
-            // case insensitive etc.
             .control_type(ControlType::Window)
-            .filter_fn(Box::new({
-                let title_clone = title.to_string().to_lowercase();
-                move |element: &uiautomation::UIElement| {
-                    let name = element.get_name().unwrap_or_default().to_lowercase();
-                    // debug!("name: {}", name);
-                    Ok(name.contains(&title_clone))
-                }
-            }))
-            .depth(3) // Search a few levels deep from the root
-            .timeout(DEFAULT_FIND_TIMEOUT.as_millis() as u64); // Use a default timeout
+            .depth(3) // Limit search depth for performance
+            .timeout(3000); // Reduce timeout to 3 seconds
 
-        let window_element_raw = matcher.find_first().map_err(|e| {
-            error!("Failed to find window with title '{}': {}", title, e);
+        let windows = window_matcher.find_all().map_err(|e| {
+            error!("Failed to find windows: {}", e);
+            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+        })?;
+
+        info!("Found {} windows to search through", windows.len());
+
+        // Filter windows by title after retrieval (more efficient than filter_fn)
+        let title_lower = title.to_lowercase();
+        let mut matching_window = None;
+        let mut window_names = Vec::new(); // For debugging
+        
+        for window in windows {
+            match window.get_name() {
+                Ok(window_name) => {
+                    window_names.push(window_name.clone());
+                    if window_name.to_lowercase().contains(&title_lower) {
+                        info!("Found matching window: '{}' for title: '{}'", window_name, title);
+                        matching_window = Some(window);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to get name for window: {}", e);
+                }
+            }
+        }
+
+        let window_element_raw = matching_window.ok_or_else(|| {
+            error!("No window found with title containing: '{}'", title);
+            debug!("Available window names: {:?}", window_names);
             AutomationError::ElementNotFound(format!(
-                "Window with title '{}' not found: {}",
-                title, e
+                "Window with title containing '{}' not found. Available windows: {:?}",
+                title, window_names
             ))
         })?;
 
@@ -1507,43 +1527,71 @@ $latestProcess.ProcessId"#,
             element: ThreadSafeWinUIElement(Arc::new(window_element_raw)),
         }));
 
-        // Recursively build the UINode tree
-        build_ui_node_tree(&window_element_wrapper)
+        // Build the FULL UI tree with optimized performance
+        info!("Building FULL UI tree with performance optimizations");
+        build_full_ui_node_tree_optimized(&window_element_wrapper)
     }
 }
 
-// Helper function to recursively build the UINode tree
-fn build_ui_node_tree(element: &UIElement) -> Result<crate::UINode, AutomationError> {
+
+// Optimized function to build the FULL UI tree with performance improvements
+fn build_full_ui_node_tree_optimized(element: &UIElement) -> Result<crate::UINode, AutomationError> {
+    use std::time::Instant;
+    
+    let start_time = Instant::now();
     let attributes = element.attributes();
     let mut children_nodes = Vec::new();
 
     // Get children of the current element
     match element.children() {
         Ok(children_elements) => {
-            for child_element in children_elements {
-                // Recursively call build_ui_node_tree for each child
-                match build_ui_node_tree(&child_element) {
-                    Ok(child_node) => children_nodes.push(child_node),
-                    Err(e) => {
-                        // Log the error but continue processing other children
-                        // This makes the tree building more resilient to errors in individual subtrees
-                        error!(
-                            "Failed to build UINode for child (ID: {:?}): {}. Skipping this child.",
-                            child_element.id(),
-                            e
-                        );
+            // info!("Processing {} children for element ID: {:?}", children_elements.len(), element.id());
+            
+            // Process children in batches to prevent memory spikes and allow yielding
+            const BATCH_SIZE: usize = 50;
+            for (batch_idx, batch) in children_elements.chunks(BATCH_SIZE).enumerate() {
+                // debug!("Processing batch {} of {} children", batch_idx + 1, (children_elements.len() + BATCH_SIZE - 1) / BATCH_SIZE);
+                
+                for child_element in batch {
+                    // Safety valve: if we're taking too long, log and continue
+                    if start_time.elapsed().as_secs() > 30 {
+                        error!("Tree building taking too long (>30s) for element, continuing with partial tree");
+                        break;
                     }
+                    
+                    // Recursively build child nodes
+                    match build_full_ui_node_tree_optimized(child_element) {
+                        Ok(child_node) => children_nodes.push(child_node),
+                        Err(e) => {
+                            // Log the error but continue processing other children
+                            debug!(
+                                "Failed to build UINode for child (ID: {:?}): {}. Skipping this child.",
+                                child_element.id(),
+                                e
+                            );
+                        }
+                    }
+                }
+                
+                // Small yield every 10 batches to prevent UI freezing during large tree processing
+                if batch_idx % 10 == 0 && batch_idx > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
                 }
             }
         }
         Err(e) => {
             // If getting children fails, log it and continue with an empty children list for this node
-            error!(
+            debug!(
                 "Failed to get children for element (ID: {:?}): {}. Proceeding with no children for this node.",
                 element.id(),
                 e
             );
         }
+    }
+
+    let elapsed = start_time.elapsed();
+    if elapsed.as_millis() > 100 {
+        debug!("Tree building for element took {}ms", elapsed.as_millis());
     }
 
     Ok(crate::UINode {
