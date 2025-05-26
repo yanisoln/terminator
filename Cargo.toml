@@ -4,7 +4,6 @@ members = [
     "terminator",
     "terminator-workflow-recorder", 
     "examples/terminator-rust-examples/button",   
-    "examples/terminator-rust-examples/popup", 
     "examples/terminator-rust-examples/server", 
     "examples/terminator-rust-examples/win_automation", 
 ]

@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use serde::Serialize;
 use tracing::{info, instrument, warn};
 
 mod element;
@@ -36,7 +37,7 @@ pub struct CommandOutput {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
     pub children: Vec<UINode>,
