@@ -5,7 +5,6 @@ build-backend = "maturin"
 [project]
 name = "terminator"
 requires-python = ">=3.11"
-readme = "../../README.md"
 authors = [
   { name="mediar-ai", email="louis@mediar.ai" },
 ]
