@@ -543,6 +543,222 @@ class Locator:
         """
         ...
 
+    def id(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the id of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Optional[str]: The element's id, or None if not present.
+        """
+        ...
+
+    def role(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the role of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            str: The element's role.
+        """
+        ...
+
+    def children(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the children of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            List[UIElement]: The element's children.
+        """
+        ...
+
+    def parent(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the parent of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Optional[UIElement]: The element's parent, or None if not present.
+        """
+        ...
+
+    def set_value(self, value:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Set value of the first matching element.
+        
+        Args:
+            value (str): The value to set.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def is_focused(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Check if the first matching element is focused.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            bool: True if the element is focused.
+        """
+        ...
+
+    def perform_action(self, action:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Perform a named action on the first matching element.
+        
+        Args:
+            action (str): The action name.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def scroll(self, direction:builtins.str, amount:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Scroll the first matching element in a given direction.
+        
+        Args:
+            direction (str): The scroll direction (e.g., "up", "down").
+            amount (float): The amount to scroll.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def activate_window(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Activate the window containing the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def name(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the name of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Optional[str]: The element's name, or None if not present.
+        """
+        ...
+
+    def is_keyboard_focusable(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Check if the first matching element is keyboard focusable.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            bool: True if the element is keyboard focusable.
+        """
+        ...
+
+    def mouse_drag(self, start_x:builtins.float, start_y:builtins.float, end_x:builtins.float, end_y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Drag mouse from start to end coordinates on the first matching element.
+        
+        Args:
+            start_x (float): Starting x coordinate.
+            start_y (float): Starting y coordinate.
+            end_x (float): Ending x coordinate.
+            end_y (float): Ending y coordinate.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def mouse_click_and_hold(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Press and hold mouse at (x, y) on the first matching element.
+        
+        Args:
+            x (float): X coordinate.
+            y (float): Y coordinate.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def mouse_move(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Move mouse to (x, y) on the first matching element.
+        
+        Args:
+            x (float): X coordinate.
+            y (float): Y coordinate.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def mouse_release(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Release mouse button on the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
+        ...
+
+    def application(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the containing application element of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Optional[UIElement]: The application element, or None if not present.
+        """
+        ...
+
+    def window(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Get the containing window element of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            Optional[UIElement]: The window element, or None if not present.
+        """
+        ...
+
 
 class ScreenshotResult:
     r"""

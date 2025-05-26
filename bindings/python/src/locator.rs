@@ -354,4 +354,286 @@ impl Locator {
             })
         })
     }
+
+    #[pyo3(name = "id", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the id of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     Optional[str]: The element's id, or None if not present.
+    pub fn id<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Option<String>>(py, async move {
+            locator.id(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
+        })
+    }
+
+    #[pyo3(name = "role", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the role of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     str: The element's role.
+    pub fn role<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, String>(py, async move {
+            locator.role(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
+        })
+    }
+
+    #[pyo3(name = "children", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the children of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     List[UIElement]: The element's children.
+    pub fn children<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Vec<UIElement>>(py, async move {
+            let children = locator.children(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(children.into_iter().map(|e| UIElement { inner: e }).collect())
+        })
+    }
+
+    #[pyo3(name = "parent", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the parent of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     Optional[UIElement]: The element's parent, or None if not present.
+    pub fn parent<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+            let parent = locator.parent(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(parent.map(|e| UIElement { inner: e }))
+        })
+    }
+
+    #[pyo3(name = "set_value", text_signature = "($self, value, timeout_ms)")]
+    /// (async) Set value of the first matching element.
+    ///
+    /// Args:
+    ///     value (str): The value to set.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn set_value<'py>(&self, py: Python<'py>, value: &str, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        let value = value.to_string();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.set_value(&value, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "is_focused", text_signature = "($self, timeout_ms)")]
+    /// (async) Check if the first matching element is focused.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     bool: True if the element is focused.
+    pub fn is_focused<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, bool>(py, async move {
+            locator.is_focused(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
+        })
+    }
+
+    #[pyo3(name = "perform_action", text_signature = "($self, action, timeout_ms)")]
+    /// (async) Perform a named action on the first matching element.
+    ///
+    /// Args:
+    ///     action (str): The action name.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn perform_action<'py>(&self, py: Python<'py>, action: &str, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        let action = action.to_string();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.perform_action(&action, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "scroll", text_signature = "($self, direction, amount, timeout_ms)")]
+    /// (async) Scroll the first matching element in a given direction.
+    ///
+    /// Args:
+    ///     direction (str): The scroll direction (e.g., "up", "down").
+    ///     amount (float): The amount to scroll.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn scroll<'py>(&self, py: Python<'py>, direction: &str, amount: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        let direction = direction.to_string();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.scroll(&direction, amount, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "activate_window", text_signature = "($self, timeout_ms)")]
+    /// (async) Activate the window containing the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn activate_window<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.activate_window(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "name", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the name of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     Optional[str]: The element's name, or None if not present.
+    pub fn name<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Option<String>>(py, async move {
+            locator.name(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
+        })
+    }
+
+    #[pyo3(name = "is_keyboard_focusable", text_signature = "($self, timeout_ms)")]
+    /// (async) Check if the first matching element is keyboard focusable.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     bool: True if the element is keyboard focusable.
+    pub fn is_keyboard_focusable<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, bool>(py, async move {
+            locator.is_keyboard_focusable(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
+        })
+    }
+
+    #[pyo3(name = "mouse_drag", text_signature = "($self, start_x, start_y, end_x, end_y, timeout_ms)")]
+    /// (async) Drag mouse from start to end coordinates on the first matching element.
+    ///
+    /// Args:
+    ///     start_x (float): Starting x coordinate.
+    ///     start_y (float): Starting y coordinate.
+    ///     end_x (float): Ending x coordinate.
+    ///     end_y (float): Ending y coordinate.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn mouse_drag<'py>(&self, py: Python<'py>, start_x: f64, start_y: f64, end_x: f64, end_y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.mouse_drag(start_x, start_y, end_x, end_y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "mouse_click_and_hold", text_signature = "($self, x, y, timeout_ms)")]
+    /// (async) Press and hold mouse at (x, y) on the first matching element.
+    ///
+    /// Args:
+    ///     x (float): X coordinate.
+    ///     y (float): Y coordinate.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn mouse_click_and_hold<'py>(&self, py: Python<'py>, x: f64, y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.mouse_click_and_hold(x, y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "mouse_move", text_signature = "($self, x, y, timeout_ms)")]
+    /// (async) Move mouse to (x, y) on the first matching element.
+    ///
+    /// Args:
+    ///     x (float): X coordinate.
+    ///     y (float): Y coordinate.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn mouse_move<'py>(&self, py: Python<'py>, x: f64, y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.mouse_move(x, y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "mouse_release", text_signature = "($self, timeout_ms)")]
+    /// (async) Release mouse button on the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     None
+    pub fn mouse_release<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+            locator.mouse_release(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "application", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the containing application element of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     Optional[UIElement]: The application element, or None if not present.
+    pub fn application<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+            let app = locator.application(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(app.map(|e| UIElement { inner: e }))
+        })
+    }
+
+    #[pyo3(name = "window", text_signature = "($self, timeout_ms)")]
+    /// (async) Get the containing window element of the first matching element.
+    ///
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    ///
+    /// Returns:
+    ///     Optional[UIElement]: The window element, or None if not present.
+    pub fn window<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+            let win = locator.window(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(win.map(|e| UIElement { inner: e }))
+        })
+    }
 } 

@@ -305,4 +305,106 @@ impl Locator {
         }
     }
 
+    /// Get the id of the first matching element
+    pub async fn id(&self, timeout: Option<Duration>) -> Result<Option<String>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        Ok(element.id())
+    }
+
+    /// Get the role of the first matching element
+    pub async fn role(&self, timeout: Option<Duration>) -> Result<String, AutomationError> {
+        let element = self.wait(timeout).await?;
+        Ok(element.role())
+    }
+
+    /// Get the children of the first matching element
+    pub async fn children(&self, timeout: Option<Duration>) -> Result<Vec<UIElement>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.children()
+    }
+
+    /// Get the parent of the first matching element
+    pub async fn parent(&self, timeout: Option<Duration>) -> Result<Option<UIElement>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.parent()
+    }
+
+    /// Set value of the first matching element
+    pub async fn set_value(&self, value: &str, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.set_value(value)
+    }
+
+    /// Check if the first matching element is focused
+    pub async fn is_focused(&self, timeout: Option<Duration>) -> Result<bool, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.is_focused()
+    }
+
+    /// Perform a named action on the first matching element
+    pub async fn perform_action(&self, action: &str, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.perform_action(action)
+    }
+
+    /// Scroll the first matching element in a given direction
+    pub async fn scroll(&self, direction: &str, amount: f64, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.scroll(direction, amount)
+    }
+
+    /// Activate the window containing the first matching element
+    pub async fn activate_window(&self, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.activate_window()
+    }
+
+    /// Get the name of the first matching element
+    pub async fn name(&self, timeout: Option<Duration>) -> Result<Option<String>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        Ok(element.name())
+    }
+
+    /// Check if the first matching element is keyboard focusable
+    pub async fn is_keyboard_focusable(&self, timeout: Option<Duration>) -> Result<bool, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.is_keyboard_focusable()
+    }
+
+    /// Drag mouse from start to end coordinates on the first matching element
+    pub async fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.mouse_drag(start_x, start_y, end_x, end_y)
+    }
+
+    /// Press and hold mouse at (x, y) on the first matching element
+    pub async fn mouse_click_and_hold(&self, x: f64, y: f64, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.mouse_click_and_hold(x, y)
+    }
+
+    /// Move mouse to (x, y) on the first matching element
+    pub async fn mouse_move(&self, x: f64, y: f64, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.mouse_move(x, y)
+    }
+
+    /// Release mouse button on the first matching element
+    pub async fn mouse_release(&self, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.mouse_release()
+    }
+
+    /// Get the containing application element of the first matching element
+    pub async fn application(&self, timeout: Option<Duration>) -> Result<Option<UIElement>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.application()
+    }
+
+    /// Get the containing window element of the first matching element
+    pub async fn window(&self, timeout: Option<Duration>) -> Result<Option<UIElement>, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.window()
+    }
+
 }

@@ -274,4 +274,203 @@ impl Locator {
             })
             .map_err(map_error)
     }
+
+    /// (async) Get the id of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<?string>} The element's id, or null if not present.
+    #[napi]
+    pub async fn id(&self, timeout_ms: Option<f64>) -> napi::Result<Option<String>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.id(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Get the role of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<string>} The element's role.
+    #[napi]
+    pub async fn role(&self, timeout_ms: Option<f64>) -> napi::Result<String> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.role(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Get the children of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<Array<Element>>} The element's children.
+    #[napi]
+    pub async fn children(&self, timeout_ms: Option<f64>) -> napi::Result<Vec<Element>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.children(timeout).await.map(|els| els.into_iter().map(Element::from).collect()).map_err(map_error)
+    }
+
+    /// (async) Get the parent of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<?Element>} The element's parent, or null if not present.
+    #[napi]
+    pub async fn parent(&self, timeout_ms: Option<f64>) -> napi::Result<Option<Element>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.parent(timeout).await.map(|opt| opt.map(Element::from)).map_err(map_error)
+    }
+
+    /// (async) Set value of the first matching element.
+    ///
+    /// @param {string} value - The value to set.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn set_value(&self, value: String, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.set_value(&value, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Check if the first matching element is focused.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<boolean>} True if the element is focused.
+    #[napi]
+    pub async fn is_focused(&self, timeout_ms: Option<f64>) -> napi::Result<bool> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.is_focused(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Perform a named action on the first matching element.
+    ///
+    /// @param {string} action - The action name.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn perform_action(&self, action: String, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.perform_action(&action, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Scroll the first matching element in a given direction.
+    ///
+    /// @param {string} direction - The scroll direction (e.g., "up", "down").
+    /// @param {number} amount - The amount to scroll.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn scroll(&self, direction: String, amount: f64, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.scroll(&direction, amount, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Activate the window containing the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn activate_window(&self, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.activate_window(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Get the name of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<?string>} The element's name, or null if not present.
+    #[napi]
+    pub async fn name(&self, timeout_ms: Option<f64>) -> napi::Result<Option<String>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.name(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Check if the first matching element is keyboard focusable.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<boolean>} True if the element is keyboard focusable.
+    #[napi]
+    pub async fn is_keyboard_focusable(&self, timeout_ms: Option<f64>) -> napi::Result<bool> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.is_keyboard_focusable(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Drag mouse from start to end coordinates on the first matching element.
+    ///
+    /// @param {number} startX - Starting x coordinate.
+    /// @param {number} startY - Starting y coordinate.
+    /// @param {number} endX - Ending x coordinate.
+    /// @param {number} endY - Ending y coordinate.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.mouse_drag(start_x, start_y, end_x, end_y, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Press and hold mouse at (x, y) on the first matching element.
+    ///
+    /// @param {number} x - X coordinate.
+    /// @param {number} y - Y coordinate.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn mouse_click_and_hold(&self, x: f64, y: f64, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.mouse_click_and_hold(x, y, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Move mouse to (x, y) on the first matching element.
+    ///
+    /// @param {number} x - X coordinate.
+    /// @param {number} y - Y coordinate.
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn mouse_move(&self, x: f64, y: f64, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.mouse_move(x, y, timeout).await.map_err(map_error)
+    }
+
+    /// (async) Release mouse button on the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn mouse_release(&self, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.mouse_release(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Get the containing application element of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<?Element>} The application element, or null if not present.
+    #[napi]
+    pub async fn application(&self, timeout_ms: Option<f64>) -> napi::Result<Option<Element>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.application(timeout).await.map(|opt| opt.map(Element::from)).map_err(map_error)
+    }
+
+    /// (async) Get the containing window element of the first matching element.
+    ///
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<?Element>} The window element, or null if not present.
+    #[napi]
+    pub async fn window(&self, timeout_ms: Option<f64>) -> napi::Result<Option<Element>> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.window(timeout).await.map(|opt| opt.map(Element::from)).map_err(map_error)
+    }
 } 

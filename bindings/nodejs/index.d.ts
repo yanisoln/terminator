@@ -515,6 +515,137 @@ export declare class Locator {
    * @returns {Promise<ExploreResponse>} Details about the element and its children.
    */
   explore(timeoutMs?: number | undefined | null): Promise<ExploreResponse>
+  /**
+   * (async) Get the id of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<?string>} The element's id, or null if not present.
+   */
+  id(timeoutMs?: number | undefined | null): Promise<string | null>
+  /**
+   * (async) Get the role of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<string>} The element's role.
+   */
+  role(timeoutMs?: number | undefined | null): Promise<string>
+  /**
+   * (async) Get the children of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<Array<Element>>} The element's children.
+   */
+  children(timeoutMs?: number | undefined | null): Promise<Array<Element>>
+  /**
+   * (async) Get the parent of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<?Element>} The element's parent, or null if not present.
+   */
+  parent(timeoutMs?: number | undefined | null): Promise<Element | null>
+  /**
+   * (async) Set value of the first matching element.
+   *
+   * @param {string} value - The value to set.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  setValue(value: string, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Check if the first matching element is focused.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<boolean>} True if the element is focused.
+   */
+  isFocused(timeoutMs?: number | undefined | null): Promise<boolean>
+  /**
+   * (async) Perform a named action on the first matching element.
+   *
+   * @param {string} action - The action name.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  performAction(action: string, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Scroll the first matching element in a given direction.
+   *
+   * @param {string} direction - The scroll direction (e.g., "up", "down").
+   * @param {number} amount - The amount to scroll.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  scroll(direction: string, amount: number, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Activate the window containing the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  activateWindow(timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Get the name of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<?string>} The element's name, or null if not present.
+   */
+  name(timeoutMs?: number | undefined | null): Promise<string | null>
+  /**
+   * (async) Check if the first matching element is keyboard focusable.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<boolean>} True if the element is keyboard focusable.
+   */
+  isKeyboardFocusable(timeoutMs?: number | undefined | null): Promise<boolean>
+  /**
+   * (async) Drag mouse from start to end coordinates on the first matching element.
+   *
+   * @param {number} startX - Starting x coordinate.
+   * @param {number} startY - Starting y coordinate.
+   * @param {number} endX - Ending x coordinate.
+   * @param {number} endY - Ending y coordinate.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  mouseDrag(startX: number, startY: number, endX: number, endY: number, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Press and hold mouse at (x, y) on the first matching element.
+   *
+   * @param {number} x - X coordinate.
+   * @param {number} y - Y coordinate.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  mouseClickAndHold(x: number, y: number, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Move mouse to (x, y) on the first matching element.
+   *
+   * @param {number} x - X coordinate.
+   * @param {number} y - Y coordinate.
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  mouseMove(x: number, y: number, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Release mouse button on the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  mouseRelease(timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Get the containing application element of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<?Element>} The application element, or null if not present.
+   */
+  application(timeoutMs?: number | undefined | null): Promise<Element | null>
+  /**
+   * (async) Get the containing window element of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<?Element>} The window element, or null if not present.
+   */
+  window(timeoutMs?: number | undefined | null): Promise<Element | null>
 }
 /** Thrown when an element is not found. */
 export declare class ElementNotFoundError {
