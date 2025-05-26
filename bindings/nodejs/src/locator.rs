@@ -7,6 +7,7 @@ use crate::{
     ClickResult,
     UIElementAttributes,
     map_error,
+    types::{ExploreResponse, ExploredElementDetail},
 };
 
 /// Locator for finding UI elements by selector.
@@ -23,7 +24,7 @@ impl From<TerminatorLocator> for Locator {
 
 #[napi]
 impl Locator {
-    /// Get the first matching element.
+    /// (async) Get the first matching element.
     /// 
     /// @returns {Promise<Element>} The first matching element.
     #[napi]
@@ -31,7 +32,7 @@ impl Locator {
         self.inner.first(None).await.map(Element::from).map_err(map_error)
     }
 
-    /// Get all matching elements.
+    /// (async) Get all matching elements.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @param {number} [depth] - Maximum depth to search.
@@ -44,7 +45,7 @@ impl Locator {
         self.inner.all(timeout, depth).await.map(|els| els.into_iter().map(Element::from).collect()).map_err(map_error)
     }
 
-    /// Wait for the first matching element.
+    /// (async) Wait for the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<Element>} The first matching element.
@@ -86,7 +87,7 @@ impl Locator {
         Ok(Locator::from(loc))
     }
 
-    /// Click on the first matching element.
+    /// (async) Click on the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<ClickResult>} Result of the click operation.
@@ -97,7 +98,7 @@ impl Locator {
         self.inner.click(timeout).await.map(ClickResult::from).map_err(map_error)
     }
 
-    /// Type text into the first matching element.
+    /// (async) Type text into the first matching element.
     /// 
     /// @param {string} text - The text to type.
     /// @param {boolean} [useClipboard] - Whether to use clipboard for pasting.
@@ -110,7 +111,7 @@ impl Locator {
         self.inner.type_text(&text, use_clipboard.unwrap_or(false), timeout).await.map_err(map_error)
     }
 
-    /// Press a key on the first matching element.
+    /// (async) Press a key on the first matching element.
     /// 
     /// @param {string} key - The key to press.
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -122,7 +123,7 @@ impl Locator {
         self.inner.press_key(&key, timeout).await.map_err(map_error)
     }
 
-    /// Get text from the first matching element.
+    /// (async) Get text from the first matching element.
     /// 
     /// @param {number} [maxDepth] - Maximum depth to search for text.
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -134,7 +135,7 @@ impl Locator {
         self.inner.text(max_depth.unwrap_or(1) as usize, timeout).await.map_err(map_error)
     }
 
-    /// Get attributes from the first matching element.
+    /// (async) Get attributes from the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<UIElementAttributes>} The element's attributes.
@@ -157,7 +158,7 @@ impl Locator {
         }).map_err(map_error)
     }
 
-    /// Get bounds from the first matching element.
+    /// (async) Get bounds from the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<Bounds>} The element's bounds.
@@ -168,7 +169,7 @@ impl Locator {
         self.inner.bounds(timeout).await.map(Bounds::from).map_err(map_error)
     }
 
-    /// Check if the element is visible.
+    /// (async) Check if the element is visible.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<boolean>} True if the element is visible.
@@ -179,7 +180,7 @@ impl Locator {
         self.inner.is_visible(timeout).await.map_err(map_error)
     }
 
-    /// Wait for the element to be enabled.
+    /// (async) Wait for the element to be enabled.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<Element>} The enabled element.
@@ -190,7 +191,7 @@ impl Locator {
         self.inner.expect_enabled(timeout).await.map(Element::from).map_err(map_error)
     }
 
-    /// Wait for the element to be visible.
+    /// (async) Wait for the element to be visible.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<Element>} The visible element.
@@ -201,7 +202,7 @@ impl Locator {
         self.inner.expect_visible(timeout).await.map(Element::from).map_err(map_error)
     }
 
-    /// Wait for the element's text to equal the expected text.
+    /// (async) Wait for the element's text to equal the expected text.
     /// 
     /// @param {string} expectedText - The expected text.
     /// @param {number} [maxDepth] - Maximum depth to search for text.
@@ -214,7 +215,7 @@ impl Locator {
         self.inner.expect_text_equals(&expected_text, max_depth.unwrap_or(1) as usize, timeout).await.map(Element::from).map_err(map_error)
     }
 
-    /// Double click on the first matching element.
+    /// (async) Double click on the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<ClickResult>} Result of the click operation.
@@ -225,7 +226,7 @@ impl Locator {
         self.inner.double_click(timeout).await.map(ClickResult::from).map_err(map_error)
     }
 
-    /// Right click on the first matching element.
+    /// (async) Right click on the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<void>}
@@ -236,7 +237,7 @@ impl Locator {
         self.inner.right_click(timeout).await.map_err(map_error)
     }
 
-    /// Hover over the first matching element.
+    /// (async) Hover over the first matching element.
     /// 
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
     /// @returns {Promise<void>}
@@ -245,5 +246,32 @@ impl Locator {
         use std::time::Duration;
         let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
         self.inner.hover(timeout).await.map_err(map_error)
+    }
+
+    /// (async) Explore the first matching element and its direct children.
+    /// 
+    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @returns {Promise<ExploreResponse>} Details about the element and its children.
+    #[napi]
+    pub async fn explore(&self, timeout_ms: Option<f64>) -> napi::Result<ExploreResponse> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.explore(timeout).await
+            .map(|response| ExploreResponse {
+                parent: Element::from(response.parent),
+                children: response.children.into_iter().map(|child| ExploredElementDetail {
+                    role: child.role,
+                    name: child.name,
+                    id: child.id,
+                    bounds: child.bounds.map(Bounds::from),
+                    value: child.value,
+                    description: child.description,
+                    text: child.text,
+                    parent_id: child.parent_id,
+                    children_ids: child.children_ids,
+                    suggested_selector: child.suggested_selector,
+                }).collect(),
+            })
+            .map_err(map_error)
     }
 } 

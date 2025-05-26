@@ -12,6 +12,12 @@ class Bounds:
     y: builtins.float
     width: builtins.float
     height: builtins.float
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class ClickResult:
     r"""
@@ -20,6 +26,12 @@ class ClickResult:
     method: builtins.str
     coordinates: typing.Optional[Coordinates]
     details: builtins.str
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class CommandOutput:
     r"""
@@ -28,6 +40,12 @@ class CommandOutput:
     exit_status: typing.Optional[builtins.int]
     stdout: builtins.str
     stderr: builtins.str
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class Coordinates:
     r"""
@@ -35,6 +53,12 @@ class Coordinates:
     """
     x: builtins.float
     y: builtins.float
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class Desktop:
     r"""
@@ -133,7 +157,7 @@ class Desktop:
 
     def capture_screen(self) -> typing.Any:
         r"""
-        Capture a screenshot of the primary monitor.
+        (async) Capture a screenshot of the primary monitor.
         
         Returns:
             ScreenshotResult: The screenshot data.
@@ -142,7 +166,7 @@ class Desktop:
 
     def run_command(self, windows_command:typing.Optional[builtins.str], unix_command:typing.Optional[builtins.str]) -> typing.Any:
         r"""
-        Run a shell command.
+        (async) Run a shell command.
         
         Args:
             windows_command (Optional[str]): Command to run on Windows.
@@ -155,7 +179,7 @@ class Desktop:
 
     def capture_monitor_by_name(self, name:builtins.str) -> typing.Any:
         r"""
-        Capture a screenshot of a specific monitor.
+        (async) Capture a screenshot of a specific monitor.
         
         Args:
             name (str): The name of the monitor to capture.
@@ -167,7 +191,7 @@ class Desktop:
 
     def ocr_image_path(self, image_path:builtins.str) -> typing.Any:
         r"""
-        Perform OCR on an image file.
+        (async) Perform OCR on an image file.
         
         Args:
             image_path (str): Path to the image file.
@@ -179,7 +203,7 @@ class Desktop:
 
     def ocr_screenshot(self, screenshot:ScreenshotResult) -> typing.Any:
         r"""
-        Perform OCR on a screenshot.
+        (async) Perform OCR on a screenshot.
         
         Args:
             screenshot (ScreenshotResult): The screenshot to process.
@@ -191,7 +215,7 @@ class Desktop:
 
     def find_window_by_criteria(self, title_contains:typing.Optional[builtins.str], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Find a window by criteria.
+        (async) Find a window by criteria.
         
         Args:
             title_contains (Optional[str]): Text that should be in the window title.
@@ -204,7 +228,7 @@ class Desktop:
 
     def get_current_browser_window(self) -> typing.Any:
         r"""
-        Get the currently focused browser window.
+        (async) Get the currently focused browser window.
         
         Returns:
             UIElement: The current browser window element.
@@ -213,7 +237,7 @@ class Desktop:
 
     def get_current_window(self) -> typing.Any:
         r"""
-        Get the currently focused window.
+        (async) Get the currently focused window.
         
         Returns:
             UIElement: The current window element.
@@ -222,7 +246,7 @@ class Desktop:
 
     def get_current_application(self) -> typing.Any:
         r"""
-        Get the currently focused application.
+        (async) Get the currently focused application.
         
         Returns:
             UIElement: The current application element.
@@ -267,13 +291,47 @@ class Desktop:
         ...
 
 
+class ExploreResponse:
+    r"""
+    Response from exploring an element
+    """
+    parent: UIElement
+    children: builtins.list[ExploredElementDetail]
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
+
+class ExploredElementDetail:
+    r"""
+    Details about an explored element
+    """
+    role: builtins.str
+    name: typing.Optional[builtins.str]
+    id: typing.Optional[builtins.str]
+    bounds: typing.Optional[Bounds]
+    value: typing.Optional[builtins.str]
+    description: typing.Optional[builtins.str]
+    text: typing.Optional[builtins.str]
+    parent_id: typing.Optional[builtins.str]
+    children_ids: builtins.list[builtins.str]
+    suggested_selector: builtins.str
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
+
 class Locator:
     r"""
     Locator for finding UI elements by selector.
     """
     def first(self) -> typing.Any:
         r"""
-        Get the first matching element.
+        (async) Get the first matching element.
         
         Returns:
             UIElement: The first matching element.
@@ -282,7 +340,7 @@ class Locator:
 
     def all(self, timeout_ms:typing.Optional[builtins.int], depth:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Get all matching elements.
+        (async) Get all matching elements.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -295,7 +353,7 @@ class Locator:
 
     def wait(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Wait for the first matching element.
+        (async) Wait for the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -331,7 +389,7 @@ class Locator:
 
     def click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Click on the first matching element.
+        (async) Click on the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -343,7 +401,7 @@ class Locator:
 
     def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Type text into the first matching element.
+        (async) Type text into the first matching element.
         
         Args:
             text (str): The text to type.
@@ -357,7 +415,7 @@ class Locator:
 
     def press_key(self, key:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Press a key on the first matching element.
+        (async) Press a key on the first matching element.
         
         Args:
             key (str): The key to press.
@@ -370,7 +428,7 @@ class Locator:
 
     def text(self, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Get text from the first matching element.
+        (async) Get text from the first matching element.
         
         Args:
             max_depth (Optional[int]): Maximum depth to search for text.
@@ -383,7 +441,7 @@ class Locator:
 
     def attributes(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Get attributes from the first matching element.
+        (async) Get attributes from the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -395,7 +453,7 @@ class Locator:
 
     def bounds(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Get bounds from the first matching element.
+        (async) Get bounds from the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -407,7 +465,7 @@ class Locator:
 
     def is_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Check if the element is visible.
+        (async) Check if the element is visible.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -419,7 +477,7 @@ class Locator:
 
     def expect_enabled(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Wait for the element to be enabled.
+        (async) Wait for the element to be enabled.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -431,7 +489,7 @@ class Locator:
 
     def expect_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Wait for the element to be visible.
+        (async) Wait for the element to be visible.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -443,7 +501,7 @@ class Locator:
 
     def expect_text_equals(self, expected_text:builtins.str, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Wait for the element's text to equal the expected text.
+        (async) Wait for the element's text to equal the expected text.
         
         Args:
             expected_text (str): The expected text.
@@ -469,7 +527,7 @@ class Locator:
 
     def double_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Double click on the first matching element.
+        (async) Double click on the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -481,7 +539,7 @@ class Locator:
 
     def right_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Right click on the first matching element.
+        (async) Right click on the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -493,7 +551,7 @@ class Locator:
 
     def hover(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
         r"""
-        Hover over the first matching element.
+        (async) Hover over the first matching element.
         
         Args:
             timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -503,13 +561,18 @@ class Locator:
         """
         ...
 
+    def explore(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+        r"""
+        (async) Explore the first matching element and its direct children.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            ExploreResponse: Details about the element and its children.
+        """
+        ...
 
-class RunCommandOptions:
-    r"""
-    Run command options
-    """
-    windows_command: typing.Optional[builtins.str]
-    unix_command: typing.Optional[builtins.str]
 
 class ScreenshotResult:
     r"""
@@ -518,6 +581,12 @@ class ScreenshotResult:
     width: builtins.int
     height: builtins.int
     image_data: builtins.list[builtins.int]
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class UIElement:
     r"""
@@ -830,6 +899,15 @@ class UIElement:
         """
         ...
 
+    def explore(self) -> ExploreResponse:
+        r"""
+        Explore this element and its direct children.
+        
+        Returns:
+            ExploreResponse: Details about the element and its children.
+        """
+        ...
+
 
 class UIElementAttributes:
     r"""
@@ -842,6 +920,12 @@ class UIElementAttributes:
     description: typing.Optional[builtins.str]
     properties: builtins.dict[builtins.str, typing.Optional[builtins.str]]
     is_keyboard_focusable: typing.Optional[builtins.bool]
+    def __repr__(self) -> builtins.str:
+        ...
+
+    def __str__(self) -> builtins.str:
+        ...
+
 
 class ElementNotFoundError(RuntimeError): ...
 

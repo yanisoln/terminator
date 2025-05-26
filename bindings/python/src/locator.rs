@@ -17,7 +17,7 @@ pub struct Locator {
 #[pymethods]
 impl Locator {
     #[pyo3(name = "first", text_signature = "($self)")]
-    /// Get the first matching element.
+    /// (async) Get the first matching element.
     /// 
     /// Returns:
     ///     UIElement: The first matching element.
@@ -30,7 +30,7 @@ impl Locator {
     }
 
     #[pyo3(name = "all", text_signature = "($self, timeout_ms, depth)")]
-    /// Get all matching elements.
+    /// (async) Get all matching elements.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -47,7 +47,7 @@ impl Locator {
     }
 
     #[pyo3(name = "wait", text_signature = "($self, timeout_ms)")]
-    /// Wait for the first matching element.
+    /// (async) Wait for the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -88,7 +88,7 @@ impl Locator {
     }
 
     #[pyo3(name = "click", text_signature = "($self, timeout_ms)")]
-    /// Click on the first matching element.
+    /// (async) Click on the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -104,7 +104,7 @@ impl Locator {
     }
 
     #[pyo3(name = "type_text", text_signature = "($self, text, use_clipboard, timeout_ms)")]
-    /// Type text into the first matching element.
+    /// (async) Type text into the first matching element.
     /// 
     /// Args:
     ///     text (str): The text to type.
@@ -123,7 +123,7 @@ impl Locator {
     }
 
     #[pyo3(name = "press_key", text_signature = "($self, key, timeout_ms)")]
-    /// Press a key on the first matching element.
+    /// (async) Press a key on the first matching element.
     /// 
     /// Args:
     ///     key (str): The key to press.
@@ -141,7 +141,7 @@ impl Locator {
     }
 
     #[pyo3(name = "text", text_signature = "($self, max_depth, timeout_ms)")]
-    /// Get text from the first matching element.
+    /// (async) Get text from the first matching element.
     /// 
     /// Args:
     ///     max_depth (Optional[int]): Maximum depth to search for text.
@@ -158,7 +158,7 @@ impl Locator {
     }
 
     #[pyo3(name = "attributes", text_signature = "($self, timeout_ms)")]
-    /// Get attributes from the first matching element.
+    /// (async) Get attributes from the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -184,7 +184,7 @@ impl Locator {
     }
 
     #[pyo3(name = "bounds", text_signature = "($self, timeout_ms)")]
-    /// Get bounds from the first matching element.
+    /// (async) Get bounds from the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -200,7 +200,7 @@ impl Locator {
     }
 
     #[pyo3(name = "is_visible", text_signature = "($self, timeout_ms)")]
-    /// Check if the element is visible.
+    /// (async) Check if the element is visible.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -216,7 +216,7 @@ impl Locator {
     }
 
     #[pyo3(name = "expect_enabled", text_signature = "($self, timeout_ms)")]
-    /// Wait for the element to be enabled.
+    /// (async) Wait for the element to be enabled.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -232,7 +232,7 @@ impl Locator {
     }
 
     #[pyo3(name = "expect_visible", text_signature = "($self, timeout_ms)")]
-    /// Wait for the element to be visible.
+    /// (async) Wait for the element to be visible.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -248,7 +248,7 @@ impl Locator {
     }
 
     #[pyo3(name = "expect_text_equals", text_signature = "($self, expected_text, max_depth, timeout_ms)")]
-    /// Wait for the element's text to equal the expected text.
+    /// (async) Wait for the element's text to equal the expected text.
     /// 
     /// Args:
     ///     expected_text (str): The expected text.
@@ -279,7 +279,7 @@ impl Locator {
     }
 
     #[pyo3(name = "double_click", text_signature = "($self, timeout_ms)")]
-    /// Double click on the first matching element.
+    /// (async) Double click on the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -295,7 +295,7 @@ impl Locator {
     }
 
     #[pyo3(name = "right_click", text_signature = "($self, timeout_ms)")]
-    /// Right click on the first matching element.
+    /// (async) Right click on the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -311,7 +311,7 @@ impl Locator {
     }
 
     #[pyo3(name = "hover", text_signature = "($self, timeout_ms)")]
-    /// Hover over the first matching element.
+    /// (async) Hover over the first matching element.
     /// 
     /// Args:
     ///     timeout_ms (Optional[int]): Timeout in milliseconds.
@@ -323,6 +323,35 @@ impl Locator {
         pyo3_tokio::future_into_py::<_, ()>(py, async move {
             locator.hover(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
+        })
+    }
+
+    /// (async) Explore the first matching element and its direct children.
+    /// 
+    /// Args:
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    /// 
+    /// Returns:
+    ///     ExploreResponse: Details about the element and its children.
+    pub fn explore<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py::<_, crate::types::ExploreResponse>(py, async move {
+            let response = locator.explore(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(crate::types::ExploreResponse {
+                parent: UIElement { inner: response.parent },
+                children: response.children.into_iter().map(|child| crate::types::ExploredElementDetail {
+                    role: child.role,
+                    name: child.name,
+                    id: child.id,
+                    bounds: child.bounds.map(|(x, y, width, height)| Bounds { x, y, width, height }),
+                    value: child.value,
+                    description: child.description,
+                    text: child.text,
+                    parent_id: child.parent_id,
+                    children_ids: child.children_ids,
+                    suggested_selector: child.suggested_selector,
+                }).collect(),
+            })
         })
     }
 } 

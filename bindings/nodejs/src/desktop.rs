@@ -113,7 +113,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Capture a screenshot of the primary monitor.
+    /// (async) Capture a screenshot of the primary monitor.
     /// 
     /// @returns {Promise<ScreenshotResult>} The screenshot data.
     #[napi]
@@ -127,7 +127,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Run a shell command.
+    /// (async) Run a shell command.
     /// 
     /// @param {string} [windowsCommand] - Command to run on Windows.
     /// @param {string} [unixCommand] - Command to run on Unix.
@@ -143,7 +143,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Capture a screenshot of a specific monitor.
+    /// (async) Capture a screenshot of a specific monitor.
     /// 
     /// @param {string} name - The name of the monitor to capture.
     /// @returns {Promise<ScreenshotResult>} The screenshot data.
@@ -158,7 +158,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Perform OCR on an image file.
+    /// (async) Perform OCR on an image file.
     /// 
     /// @param {string} imagePath - Path to the image file.
     /// @returns {Promise<string>} The extracted text.
@@ -168,7 +168,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Perform OCR on a screenshot.
+    /// (async) Perform OCR on a screenshot.
     /// 
     /// @param {ScreenshotResult} screenshot - The screenshot to process.
     /// @returns {Promise<string>} The extracted text.
@@ -183,7 +183,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Find a window by criteria.
+    /// (async) Find a window by criteria.
     /// 
     /// @param {string} [titleContains] - Text that should be in the window title.
     /// @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -197,7 +197,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Get the currently focused browser window.
+    /// (async) Get the currently focused browser window.
     /// 
     /// @returns {Promise<Element>} The current browser window element.
     #[napi]
@@ -218,7 +218,7 @@ impl Desktop {
         Ok(Locator::from(loc))
     }
 
-    /// Get the currently focused window.
+    /// (async) Get the currently focused window.
     /// 
     /// @returns {Promise<Element>} The current window element.
     #[napi]
@@ -228,7 +228,7 @@ impl Desktop {
             .map_err(map_error)
     }
 
-    /// Get the currently focused application.
+    /// (async) Get the currently focused application.
     /// 
     /// @returns {Promise<Element>} The current application element.
     #[napi]

@@ -8,6 +8,28 @@ use tracing::{info, instrument, warn};
 
 use super::{ClickResult, Locator};
 
+/// Response structure for exploration result
+#[derive(Debug)]
+pub struct ExploredElementDetail {
+    pub role: String,
+    pub name: Option<String>, // Use 'name' consistently for the primary label/text
+    pub id: Option<String>,
+    pub bounds: Option<(f64, f64, f64, f64)>, // Include bounds for spatial context
+    pub value: Option<String>,
+    pub description: Option<String>,
+    pub text: Option<String>,
+    pub parent_id: Option<String>,
+    pub children_ids: Vec<String>,
+    pub suggested_selector: String,
+}
+
+/// Response structure for exploration result
+#[derive(Debug)]
+pub struct ExploreResponse {
+    pub parent: UIElement, // The parent element explored
+    pub children: Vec<ExploredElementDetail>, // List of direct children details
+}
+
 /// Represents a UI element in a desktop application
 #[derive(Debug)]
 pub struct UIElement {
@@ -312,6 +334,37 @@ impl UIElement {
     /// Get the containing window element (e.g., tab, dialog)
     pub fn window(&self) -> Result<Option<UIElement>, AutomationError> {
         self.inner.window()
+    }
+
+    /// Explore this element and its direct children
+    pub fn explore(&self) -> Result<ExploreResponse, AutomationError> {
+        let mut children = Vec::new();
+        for child in self.children()? {
+            let child_id = child.id().unwrap_or_default();
+            let child_bounds = child.bounds().ok();
+            let child_attrs = child.attributes();
+            let child_text = child.text(1).ok();
+
+            let suggested_selector = format!("#{}", child_id);
+
+            children.push(ExploredElementDetail {
+                role: child_attrs.role,
+                name: child_attrs.name,
+                id: Some(child_id),
+                bounds: child_bounds,
+                value: child_attrs.value,
+                description: child_attrs.description,
+                text: child_text,
+                parent_id: self.id(),
+                children_ids: Vec::new(),
+                suggested_selector,
+            });
+        }
+
+        Ok(ExploreResponse {
+            parent: self.clone(),
+            children,
+        })
     }
 }
 

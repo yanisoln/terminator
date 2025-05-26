@@ -27,7 +27,8 @@ fn terminator(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<UIElementAttributes>()?;
     m.add_class::<Coordinates>()?;
     m.add_class::<Bounds>()?;
-    m.add_class::<RunCommandOptions>()?;
+    m.add_class::<ExploreResponse>()?;
+    m.add_class::<ExploredElementDetail>()?;
 
     m.add("ElementNotFoundError", _py.get_type_bound::<ElementNotFoundError>())?;
     m.add("TimeoutError", _py.get_type_bound::<TimeoutError>())?;

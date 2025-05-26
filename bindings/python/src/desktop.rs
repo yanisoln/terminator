@@ -167,7 +167,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "capture_screen", text_signature = "($self)")]
-    /// Capture a screenshot of the primary monitor.
+    /// (async) Capture a screenshot of the primary monitor.
     /// 
     /// Returns:
     ///     ScreenshotResult: The screenshot data.
@@ -183,7 +183,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "run_command", text_signature = "($self, windows_command, unix_command)")]
-    /// Run a shell command.
+    /// (async) Run a shell command.
     /// 
     /// Args:
     ///     windows_command (Optional[str]): Command to run on Windows.
@@ -203,7 +203,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "capture_monitor_by_name", text_signature = "($self, name)")]
-    /// Capture a screenshot of a specific monitor.
+    /// (async) Capture a screenshot of a specific monitor.
     /// 
     /// Args:
     ///     name (str): The name of the monitor to capture.
@@ -223,7 +223,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "ocr_image_path", text_signature = "($self, image_path)")]
-    /// Perform OCR on an image file.
+    /// (async) Perform OCR on an image file.
     /// 
     /// Args:
     ///     image_path (str): Path to the image file.
@@ -242,7 +242,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "ocr_screenshot", text_signature = "($self, screenshot)")]
-    /// Perform OCR on a screenshot.
+    /// (async) Perform OCR on a screenshot.
     /// 
     /// Args:
     ///     screenshot (ScreenshotResult): The screenshot to process.
@@ -265,7 +265,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "find_window_by_criteria", text_signature = "($self, title_contains, timeout_ms)")]
-    /// Find a window by criteria.
+    /// (async) Find a window by criteria.
     /// 
     /// Args:
     ///     title_contains (Optional[str]): Text that should be in the window title.
@@ -286,7 +286,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "get_current_browser_window", text_signature = "($self)")]
-    /// Get the currently focused browser window.
+    /// (async) Get the currently focused browser window.
     /// 
     /// Returns:
     ///     UIElement: The current browser window element.
@@ -302,7 +302,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "get_current_window", text_signature = "($self)")]
-    /// Get the currently focused window.
+    /// (async) Get the currently focused window.
     /// 
     /// Returns:
     ///     UIElement: The current window element.
@@ -318,7 +318,7 @@ impl Desktop {
     }
 
     #[pyo3(name = "get_current_application", text_signature = "($self)")]
-    /// Get the currently focused application.
+    /// (async) Get the currently focused application.
     /// 
     /// Returns:
     ///     UIElement: The current application element.

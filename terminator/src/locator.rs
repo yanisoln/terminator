@@ -1,5 +1,8 @@
 use crate::platforms::AccessibilityEngine;
-use crate::{AutomationError, Selector, UIElement, UIElementAttributes};
+use crate::element::{ExploreResponse, UIElement};
+use crate::errors::AutomationError;
+use crate::selector::Selector;
+use crate::UIElementAttributes;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -109,6 +112,12 @@ impl Locator {
             timeout: self.timeout, // Inherit timeout
             root: self.root.clone(), // Inherit root
         }
+    }
+    
+    /// Explore the first matching element and its direct children
+    pub async fn explore(&self, timeout: Option<Duration>) -> Result<ExploreResponse, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.explore()
     }
 
     // --- Convenience methods for common actions ---
@@ -295,4 +304,5 @@ impl Locator {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
+
 }

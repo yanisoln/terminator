@@ -3,6 +3,7 @@ use pyo3_stub_gen::derive::*;
 use ::terminator_core::element::UIElement as TerminatorUIElement;
 use crate::exceptions::automation_error_to_pyerr;
 use crate::types::{UIElementAttributes, Bounds, ClickResult};
+use serde::ser::{Serialize, Serializer, SerializeStruct};
 
 /// Represents a UI element in the desktop UI tree.
 #[gen_stub_pyclass]
@@ -10,6 +11,20 @@ use crate::types::{UIElementAttributes, Bounds, ClickResult};
 #[derive(Clone)]
 pub struct UIElement {
     pub inner: TerminatorUIElement,
+}
+
+impl Serialize for UIElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("UIElement", 3)?;
+        state.serialize_field("role", &self.inner.role())?;
+        state.serialize_field("name", &self.inner.name())?;
+        state.serialize_field("id", &self.inner.id())?;
+        // Optionally add more fields, e.g. attributes, bounds, etc.
+        state.end()
+    }
 }
 
 #[gen_stub_pymethods]
@@ -326,5 +341,29 @@ impl UIElement {
     pub fn locator(&self, selector: &str) -> PyResult<crate::locator::Locator> {
         let locator = self.inner.locator(selector).map_err(|e| automation_error_to_pyerr(e))?;
         Ok(crate::locator::Locator { inner: locator })
+    }
+
+    /// Explore this element and its direct children.
+    /// 
+    /// Returns:
+    ///     ExploreResponse: Details about the element and its children.
+    pub fn explore(&self) -> PyResult<crate::types::ExploreResponse> {
+        self.inner.explore()
+            .map(|response| crate::types::ExploreResponse {
+                parent: UIElement { inner: response.parent },
+                children: response.children.into_iter().map(|child| crate::types::ExploredElementDetail {
+                    role: child.role,
+                    name: child.name,
+                    id: child.id,
+                    bounds: child.bounds.map(|(x, y, width, height)| Bounds { x, y, width, height }),
+                    value: child.value,
+                    description: child.description,
+                    text: child.text,
+                    parent_id: child.parent_id,
+                    children_ids: child.children_ids,
+                    suggested_selector: child.suggested_selector,
+                }).collect(),
+            })
+            .map_err(|e| automation_error_to_pyerr(e))
     }
 } 

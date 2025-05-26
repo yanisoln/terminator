@@ -23,7 +23,6 @@ export interface CommandOutput {
   stdout: string
   stderr: string
 }
-/** Result of a screenshot operation */
 export interface ScreenshotResult {
   width: number
   height: number
@@ -37,6 +36,22 @@ export interface UIElementAttributes {
   description?: string
   properties: Record<string, string | undefined | null>
   isKeyboardFocusable?: boolean
+}
+export interface ExploredElementDetail {
+  role: string
+  name?: string
+  id?: string
+  bounds?: Bounds
+  value?: string
+  description?: string
+  text?: string
+  parentId?: string
+  childrenIds: Array<string>
+  suggestedSelector: string
+}
+export interface ExploreResponse {
+  parent: Element
+  children: Array<ExploredElementDetail>
 }
 /** Main entry point for desktop automation. */
 export declare class Desktop {
@@ -96,13 +111,13 @@ export declare class Desktop {
    */
   activateApplication(name: string): void
   /**
-   * Capture a screenshot of the primary monitor.
+   * (async) Capture a screenshot of the primary monitor.
    *
    * @returns {Promise<ScreenshotResult>} The screenshot data.
    */
   captureScreen(): Promise<ScreenshotResult>
   /**
-   * Run a shell command.
+   * (async) Run a shell command.
    *
    * @param {string} [windowsCommand] - Command to run on Windows.
    * @param {string} [unixCommand] - Command to run on Unix.
@@ -110,28 +125,28 @@ export declare class Desktop {
    */
   runCommand(windowsCommand?: string | undefined | null, unixCommand?: string | undefined | null): Promise<CommandOutput>
   /**
-   * Capture a screenshot of a specific monitor.
+   * (async) Capture a screenshot of a specific monitor.
    *
    * @param {string} name - The name of the monitor to capture.
    * @returns {Promise<ScreenshotResult>} The screenshot data.
    */
   captureMonitorByName(name: string): Promise<ScreenshotResult>
   /**
-   * Perform OCR on an image file.
+   * (async) Perform OCR on an image file.
    *
    * @param {string} imagePath - Path to the image file.
    * @returns {Promise<string>} The extracted text.
    */
   ocrImagePath(imagePath: string): Promise<string>
   /**
-   * Perform OCR on a screenshot.
+   * (async) Perform OCR on a screenshot.
    *
    * @param {ScreenshotResult} screenshot - The screenshot to process.
    * @returns {Promise<string>} The extracted text.
    */
   ocrScreenshot(screenshot: ScreenshotResult): Promise<string>
   /**
-   * Find a window by criteria.
+   * (async) Find a window by criteria.
    *
    * @param {string} [titleContains] - Text that should be in the window title.
    * @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -139,7 +154,7 @@ export declare class Desktop {
    */
   findWindowByCriteria(titleContains?: string | undefined | null, timeoutMs?: number | undefined | null): Promise<Element>
   /**
-   * Get the currently focused browser window.
+   * (async) Get the currently focused browser window.
    *
    * @returns {Promise<Element>} The current browser window element.
    */
@@ -152,13 +167,13 @@ export declare class Desktop {
    */
   locator(selector: string): Locator
   /**
-   * Get the currently focused window.
+   * (async) Get the currently focused window.
    *
    * @returns {Promise<Element>} The current window element.
    */
   getCurrentWindow(): Promise<Element>
   /**
-   * Get the currently focused application.
+   * (async) Get the currently focused application.
    *
    * @returns {Promise<Element>} The current application element.
    */
@@ -360,17 +375,23 @@ export declare class Element {
    * @returns {Element | null} The containing window element, if available.
    */
   window(): Element | null
+  /**
+   * Explore this element and its direct children.
+   *
+   * @returns {ExploreResponse} Details about the element and its children.
+   */
+  explore(): ExploreResponse
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
   /**
-   * Get the first matching element.
+   * (async) Get the first matching element.
    *
    * @returns {Promise<Element>} The first matching element.
    */
   first(): Promise<Element>
   /**
-   * Get all matching elements.
+   * (async) Get all matching elements.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @param {number} [depth] - Maximum depth to search.
@@ -378,7 +399,7 @@ export declare class Locator {
    */
   all(timeoutMs?: number | undefined | null, depth?: number | undefined | null): Promise<Array<Element>>
   /**
-   * Wait for the first matching element.
+   * (async) Wait for the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<Element>} The first matching element.
@@ -406,14 +427,14 @@ export declare class Locator {
    */
   locator(selector: string): Locator
   /**
-   * Click on the first matching element.
+   * (async) Click on the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<ClickResult>} Result of the click operation.
    */
   click(timeoutMs?: number | undefined | null): Promise<ClickResult>
   /**
-   * Type text into the first matching element.
+   * (async) Type text into the first matching element.
    *
    * @param {string} text - The text to type.
    * @param {boolean} [useClipboard] - Whether to use clipboard for pasting.
@@ -422,7 +443,7 @@ export declare class Locator {
    */
   typeText(text: string, useClipboard?: boolean | undefined | null, timeoutMs?: number | undefined | null): Promise<void>
   /**
-   * Press a key on the first matching element.
+   * (async) Press a key on the first matching element.
    *
    * @param {string} key - The key to press.
    * @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -430,7 +451,7 @@ export declare class Locator {
    */
   pressKey(key: string, timeoutMs?: number | undefined | null): Promise<void>
   /**
-   * Get text from the first matching element.
+   * (async) Get text from the first matching element.
    *
    * @param {number} [maxDepth] - Maximum depth to search for text.
    * @param {number} [timeoutMs] - Timeout in milliseconds.
@@ -438,42 +459,42 @@ export declare class Locator {
    */
   text(maxDepth?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<string>
   /**
-   * Get attributes from the first matching element.
+   * (async) Get attributes from the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<UIElementAttributes>} The element's attributes.
    */
   attributes(timeoutMs?: number | undefined | null): Promise<UIElementAttributes>
   /**
-   * Get bounds from the first matching element.
+   * (async) Get bounds from the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<Bounds>} The element's bounds.
    */
   bounds(timeoutMs?: number | undefined | null): Promise<Bounds>
   /**
-   * Check if the element is visible.
+   * (async) Check if the element is visible.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<boolean>} True if the element is visible.
    */
   isVisible(timeoutMs?: number | undefined | null): Promise<boolean>
   /**
-   * Wait for the element to be enabled.
+   * (async) Wait for the element to be enabled.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<Element>} The enabled element.
    */
   expectEnabled(timeoutMs?: number | undefined | null): Promise<Element>
   /**
-   * Wait for the element to be visible.
+   * (async) Wait for the element to be visible.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<Element>} The visible element.
    */
   expectVisible(timeoutMs?: number | undefined | null): Promise<Element>
   /**
-   * Wait for the element's text to equal the expected text.
+   * (async) Wait for the element's text to equal the expected text.
    *
    * @param {string} expectedText - The expected text.
    * @param {number} [maxDepth] - Maximum depth to search for text.
@@ -482,26 +503,33 @@ export declare class Locator {
    */
   expectTextEquals(expectedText: string, maxDepth?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<Element>
   /**
-   * Double click on the first matching element.
+   * (async) Double click on the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<ClickResult>} Result of the click operation.
    */
   doubleClick(timeoutMs?: number | undefined | null): Promise<ClickResult>
   /**
-   * Right click on the first matching element.
+   * (async) Right click on the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<void>}
    */
   rightClick(timeoutMs?: number | undefined | null): Promise<void>
   /**
-   * Hover over the first matching element.
+   * (async) Hover over the first matching element.
    *
    * @param {number} [timeoutMs] - Timeout in milliseconds.
    * @returns {Promise<void>}
    */
   hover(timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Explore the first matching element and its direct children.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<ExploreResponse>} Details about the element and its children.
+   */
+  explore(timeoutMs?: number | undefined | null): Promise<ExploreResponse>
 }
 /** Thrown when an element is not found. */
 export declare class ElementNotFoundError {
