@@ -19,81 +19,29 @@ pub struct Desktop {
 #[pymethods]
 impl Desktop {
     #[new]
-    #[pyo3(text_signature = "()")]
-    /// Create a new Desktop automation instance with default settings.
-    /// 
+    #[pyo3(text_signature = "(use_background_apps=False, activate_app=False, log_level=None)")]
+    /// Create a new Desktop automation instance with configurable options.
+    ///
+    /// Args:
+    ///     use_background_apps (bool, optional): Enable background apps support. Defaults to False.
+    ///     activate_app (bool, optional): Enable app activation support. Defaults to False.
+    ///     log_level (str, optional): Logging level (e.g., 'info', 'debug', 'warn', 'error'). Defaults to 'info'.
+    ///
     /// Returns:
     ///     Desktop: A new Desktop automation instance.
-    pub fn new() -> PyResult<Self> {
+    pub fn new(use_background_apps: Option<bool>, activate_app: Option<bool>, log_level: Option<String>) -> PyResult<Self> {
         static INIT: Once = Once::new();
+        let log_level = log_level.unwrap_or_else(|| "info".to_string());
         INIT.call_once(|| {
             let _ = tracing_subscriber::fmt()
-                .with_env_filter("info")
+                .with_env_filter(log_level)
                 .try_init();
         });
+        let use_background_apps = use_background_apps.unwrap_or(false);
+        let activate_app = activate_app.unwrap_or(false);
         let desktop = tokio::runtime::Runtime::new()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(false, false))
-            .map_err(|e| automation_error_to_pyerr(e))?;
-        Ok(Desktop { inner: desktop })
-    }
-
-    #[staticmethod]
-    #[pyo3(text_signature = "()")]
-    /// Create a new Desktop automation instance with background apps enabled.
-    /// 
-    /// Returns:
-    ///     Desktop: A new Desktop automation instance with background apps enabled.
-    pub fn with_background_apps() -> PyResult<Self> {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter("info")
-                .try_init();
-        });
-        let desktop = tokio::runtime::Runtime::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(true, false))
-            .map_err(|e| automation_error_to_pyerr(e))?;
-        Ok(Desktop { inner: desktop })
-    }
-
-    #[staticmethod]
-    #[pyo3(text_signature = "()")]
-    /// Create a new Desktop automation instance with app activation enabled.
-    /// 
-    /// Returns:
-    ///     Desktop: A new Desktop automation instance with app activation enabled.
-    pub fn with_app_activation() -> PyResult<Self> {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter("info")
-                .try_init();
-        });
-        let desktop = tokio::runtime::Runtime::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(false, true))
-            .map_err(|e| automation_error_to_pyerr(e))?;
-        Ok(Desktop { inner: desktop })
-    }
-
-    #[staticmethod]
-    #[pyo3(text_signature = "()")]
-    /// Create a new Desktop automation instance with both background apps and app activation enabled.
-    /// 
-    /// Returns:
-    ///     Desktop: A new Desktop automation instance with all features enabled.
-    pub fn with_all_features() -> PyResult<Self> {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter("info")
-                .try_init();
-        });
-        let desktop = tokio::runtime::Runtime::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(true, true))
+            .block_on(TerminatorDesktop::new(use_background_apps, activate_app))
             .map_err(|e| automation_error_to_pyerr(e))?;
         Ok(Desktop { inner: desktop })
     }

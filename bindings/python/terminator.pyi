@@ -64,37 +64,7 @@ class Desktop:
     r"""
     Main entry point for desktop automation.
     """
-    def __new__(cls,): ...
-    @staticmethod
-    def with_background_apps() -> Desktop:
-        r"""
-        Create a new Desktop automation instance with background apps enabled.
-        
-        Returns:
-            Desktop: A new Desktop automation instance with background apps enabled.
-        """
-        ...
-
-    @staticmethod
-    def with_app_activation() -> Desktop:
-        r"""
-        Create a new Desktop automation instance with app activation enabled.
-        
-        Returns:
-            Desktop: A new Desktop automation instance with app activation enabled.
-        """
-        ...
-
-    @staticmethod
-    def with_all_features() -> Desktop:
-        r"""
-        Create a new Desktop automation instance with both background apps and app activation enabled.
-        
-        Returns:
-            Desktop: A new Desktop automation instance with all features enabled.
-        """
-        ...
-
+    def __new__(cls,use_background_apps:typing.Optional[builtins.bool], activate_app:typing.Optional[builtins.bool], log_level:typing.Optional[builtins.str]): ...
     def root(self) -> UIElement:
         r"""
         Get the root UI element of the desktop.

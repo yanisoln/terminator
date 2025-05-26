@@ -5,7 +5,7 @@ import asyncio
 import terminator
 
 async def main():
-    desktop = terminator.Desktop.with_all_features()
+    desktop = terminator.Desktop()
     root = desktop.root()
     print('Root element:', root.role(), root.name())
 

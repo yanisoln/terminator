@@ -18,44 +18,21 @@ pub struct Desktop {
 
 #[napi]
 impl Desktop {
-    /// Create a new Desktop automation instance with default settings.
+    /// Create a new Desktop automation instance with configurable options.
     /// 
+    /// @param {boolean} [useBackgroundApps=false] - Enable background apps support.
+    /// @param {boolean} [activateApp=false] - Enable app activation support.
+    /// @param {string} [logLevel] - Logging level (e.g., 'info', 'debug', 'warn', 'error').
     /// @returns {Desktop} A new Desktop automation instance.
     #[napi(constructor)]
-    pub fn new() -> Self {
-        Self::with_options(false, false)
-    }
-
-    /// Create a new Desktop automation instance with background apps enabled.
-    /// 
-    /// @returns {Desktop} A new Desktop automation instance with background apps enabled.
-    #[napi(factory)]
-    pub fn with_background_apps() -> Self {
-        Self::with_options(true, false)
-    }
-
-    /// Create a new Desktop automation instance with app activation enabled.
-    /// 
-    /// @returns {Desktop} A new Desktop automation instance with app activation enabled.
-    #[napi(factory)]
-    pub fn with_app_activation() -> Self {
-        Self::with_options(false, true)
-    }
-
-    /// Create a new Desktop automation instance with both background apps and app activation enabled.
-    /// 
-    /// @returns {Desktop} A new Desktop automation instance with all features enabled.
-    #[napi(factory)]
-    pub fn with_all_features() -> Self {
-        Self::with_options(true, true)
-    }
-
-    /// Internal helper to create a Desktop instance with specific options
-    fn with_options(use_background_apps: bool, activate_app: bool) -> Self {
+    pub fn new(use_background_apps: Option<bool>, activate_app: Option<bool>, log_level: Option<String>) -> Self {
+        let use_background_apps = use_background_apps.unwrap_or(false);
+        let activate_app = activate_app.unwrap_or(false);
+        let log_level = log_level.unwrap_or_else(|| "info".to_string());
         static INIT: Once = Once::new();
         INIT.call_once(|| {
             let _ = tracing_subscriber::fmt()
-                .with_env_filter("info")
+                .with_env_filter(log_level)
                 .try_init();
         });
         let rt = tokio::runtime::Runtime::new()

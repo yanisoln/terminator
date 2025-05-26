@@ -56,29 +56,14 @@ export interface ExploreResponse {
 /** Main entry point for desktop automation. */
 export declare class Desktop {
   /**
-   * Create a new Desktop automation instance with default settings.
+   * Create a new Desktop automation instance with configurable options.
    *
+   * @param {boolean} [useBackgroundApps=false] - Enable background apps support.
+   * @param {boolean} [activateApp=false] - Enable app activation support.
+   * @param {string} [logLevel] - Logging level (e.g., 'info', 'debug', 'warn', 'error').
    * @returns {Desktop} A new Desktop automation instance.
    */
-  constructor()
-  /**
-   * Create a new Desktop automation instance with background apps enabled.
-   *
-   * @returns {Desktop} A new Desktop automation instance with background apps enabled.
-   */
-  static withBackgroundApps(): Desktop
-  /**
-   * Create a new Desktop automation instance with app activation enabled.
-   *
-   * @returns {Desktop} A new Desktop automation instance with app activation enabled.
-   */
-  static withAppActivation(): Desktop
-  /**
-   * Create a new Desktop automation instance with both background apps and app activation enabled.
-   *
-   * @returns {Desktop} A new Desktop automation instance with all features enabled.
-   */
-  static withAllFeatures(): Desktop
+  constructor(useBackgroundApps?: boolean | undefined | null, activateApp?: boolean | undefined | null, logLevel?: string | undefined | null)
   /**
    * Get the root UI element of the desktop.
    *
