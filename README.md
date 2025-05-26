@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
-**Terminator** is the best computer use AI SDK. Record human workflows into compiled AI workflows, deploy (offline) automation at scale. It's designed to interact with native GUI applications on Windows using a Playwright-like API, like parsing a website. By leveraging OS-level accessibility APIs, Terminator is significantly faster and more reliable for AI agents than vision-based approaches, and can interact with background applications.
+**Terminator** is the best computer use AI SDK. Record human workflows, deploy at scale. It's designed to interact with native GUI applications on Windows using a Playwright-like API, like parsing a website. By leveraging OS-level accessibility APIs, Terminator is significantly faster and more reliable for AI agents than vision-based approaches, and can interact with background applications.
 
 > **⚠️ Experimental ⚠️:** Terminator is under active development. Expect bugs and breaking changes. Please report issues – we aim to fix them quickly!
 
