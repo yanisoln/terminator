@@ -1477,15 +1477,13 @@ $latestProcess.ProcessId"#,
             .from_ref(&root_ele_os)
             // case insensitive etc.
             .control_type(ControlType::Window)
-            .filter(Box::new(OrFilter {
-                left: Box::new(NameFilter {
-                    value: String::from(title),
-                    casesensitive: false,
-                    partial: true,
-                }),
-                right: Box::new(ClassNameFilter {
-                    classname: String::from(title),
-                }),
+            .filter_fn(Box::new({
+                let title_clone = title.to_string().to_lowercase();
+                move |element: &uiautomation::UIElement| {
+                    let name = element.get_name().unwrap_or_default().to_lowercase();
+                    // debug!("name: {}", name);
+                    Ok(name.contains(&title_clone))
+                }
             }))
             .depth(3) // Search a few levels deep from the root
             .timeout(DEFAULT_FIND_TIMEOUT.as_millis() as u64); // Use a default timeout

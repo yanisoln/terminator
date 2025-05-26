@@ -3,7 +3,7 @@ use crate::selector::Selector;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::Instant;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
 use super::{ClickResult, Locator};
@@ -15,7 +15,7 @@ pub struct UIElement {
 }
 
 /// Attributes associated with a UI element
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UIElementAttributes {
     pub role: String,
     pub name: Option<String>,

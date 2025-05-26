@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
 mod element;
@@ -37,7 +37,7 @@ pub struct CommandOutput {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
     pub children: Vec<UINode>,
@@ -433,9 +433,8 @@ impl Desktop {
         let duration = start.elapsed();
         info!(
             duration_ms = duration.as_millis(),
-            // Assuming UINode will have an ID or identifiable attribute for logging
-            // For now, we just log that the tree was retrieved.
-            "Window tree retrieved for title: {}", title
+            title = title,
+            "Window tree retrieved"
         );
 
         Ok(window_tree_root)
