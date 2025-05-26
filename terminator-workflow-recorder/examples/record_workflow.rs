@@ -121,6 +121,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             println!("⌨️  Keyboard {}: {}Key({})", event_count, modifiers, kb_event.key_code);
                         }
+                        
+                        if let Some(ref ui_element) = kb_event.ui_element {
+                            if let Some(ref app) = ui_element.application_name {
+                                println!("     └─ Target: {} in {}", 
+                                    ui_element.control_type.as_ref().unwrap_or(&"Unknown".to_string()),
+                                    app);
+                            }
+                            if let Some(ref name) = ui_element.name {
+                                if !name.is_empty() {
+                                    println!("     └─ Element: \"{}\"", name);
+                                }
+                            }
+                        }
                     }
                 }
                 terminator_workflow_recorder::WorkflowEvent::Clipboard(clip_event) => {

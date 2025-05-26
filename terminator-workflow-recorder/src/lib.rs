@@ -58,6 +58,7 @@ mod tests {
             win_pressed: false,
             character: Some('A'),
             scan_code: None,
+            ui_element: None,
         };
         
         assert_eq!(kb_event.key_code, 65);
@@ -65,6 +66,7 @@ mod tests {
         assert!(kb_event.ctrl_pressed);
         assert!(!kb_event.alt_pressed);
         assert_eq!(kb_event.character, Some('A'));
+        assert!(kb_event.ui_element.is_none());
     }
 
     #[test]

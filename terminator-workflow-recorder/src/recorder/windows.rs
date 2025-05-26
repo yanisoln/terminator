@@ -367,6 +367,20 @@ impl WindowsRecorder {
                             None
                         };
                         
+                        // Capture UI element for keyboard events if enabled
+                        let mut ui_element = None;
+                        if capture_ui_elements {
+                            // Try to get the focused element first
+                            ui_element = Self::get_focused_ui_element(&automation, Arc::clone(&process_info_cache_clone));
+                            
+                            // If no focused element, fall back to element at mouse position
+                            if ui_element.is_none() {
+                                if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
+                                    ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
+                                }
+                            }
+                        }
+                        
                         let keyboard_event = KeyboardEvent {
                             key_code,
                             is_key_down: true,
@@ -376,6 +390,7 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character,
                             scan_code: None, // TODO: Get actual scan code
+                            ui_element: ui_element.clone(),
                         };
                         
                         // Add to text buffer if it's a printable character
@@ -399,6 +414,20 @@ impl WindowsRecorder {
                             ModifierStates { ctrl: false, alt: false, shift: false, win: false }
                         };
                         
+                        // Capture UI element for keyboard events if enabled
+                        let mut ui_element = None;
+                        if capture_ui_elements {
+                            // Try to get the focused element first
+                            ui_element = Self::get_focused_ui_element(&automation, Arc::clone(&process_info_cache_clone));
+                            
+                            // If no focused element, fall back to element at mouse position
+                            if ui_element.is_none() {
+                                if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
+                                    ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
+                                }
+                            }
+                        }
+                        
                         let keyboard_event = KeyboardEvent {
                             key_code,
                             is_key_down: false,
@@ -408,6 +437,7 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character: None,
                             scan_code: None,
+                            ui_element,
                         };
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
                     }
@@ -801,6 +831,72 @@ impl WindowsRecorder {
         }
         
         None
+    }
+    
+    /// Get the currently focused UI element
+    fn get_focused_ui_element(
+        automation: &UIAutomation,
+        process_info_cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
+    ) -> Option<UiElement> {
+        debug!("Getting focused UI element");
+        
+        match automation.get_focused_element() {
+            Ok(element) => {
+                debug!("Found focused UI element, gathering properties...");
+                
+                let name = element.get_name().ok();
+                let automation_id = element.get_automation_id().ok();
+                let class_name = element.get_classname().ok();
+                let control_type = element.get_control_type().ok().map(|ct| ct.to_string());
+                let process_id = element.get_process_id().ok().map(|pid| pid as u32);
+                
+                let is_enabled = element.is_enabled().ok();
+                let has_keyboard_focus = Some(true); // This element has focus by definition
+                let value = element.get_property_value(UIProperty::Name).ok().map(|v| v.to_string());
+                
+                let bounding_rect = element.get_bounding_rectangle().ok().map(|rect| {
+                    crate::events::Rect {
+                        x: rect.get_left() as i32,
+                        y: rect.get_top() as i32,
+                        width: rect.get_width() as i32,
+                        height: rect.get_height() as i32,
+                    }
+                });
+                
+                let hierarchy_path = get_element_hierarchy_path(&element);
+                
+                let (window_title, application_name) = if let Some(pid) = process_id {
+                    debug!("Getting window info for focused element process {}", pid);
+                    get_window_info_for_process(pid, Arc::clone(&process_info_cache))
+                } else {
+                    (None, None)
+                };
+                
+                debug!(
+                    "Focused UI element properties: name={:?}, automation_id={:?}, class={:?}, type={:?}, process={:?}, app={:?}, window={:?}",
+                    name, automation_id, class_name, control_type, process_id, application_name, window_title
+                );
+                
+                Some(UiElement {
+                    name,
+                    automation_id,
+                    class_name,
+                    control_type,
+                    process_id,
+                    application_name,
+                    window_title,
+                    bounding_rect,
+                    is_enabled,
+                    has_keyboard_focus,
+                    hierarchy_path,
+                    value,
+                })
+            }
+            Err(e) => {
+                debug!("Failed to get focused UI element: {}", e);
+                None
+            }
+        }
     }
     
     /// Stop recording

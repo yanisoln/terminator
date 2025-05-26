@@ -106,6 +106,9 @@ pub struct KeyboardEvent {
     
     /// Raw scan code
     pub scan_code: Option<u32>,
+    
+    /// The UI element that has focus when the keyboard event occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents a mouse event
