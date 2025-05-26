@@ -1638,10 +1638,6 @@ impl UIElementImpl for WindowsUIElement {
                 cached_children
             }
             Err(cache_err) => {
-                info!(
-                    "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
-                    cache_err
-                );
                 // Fallback logic (similar to explore_element_children)
                 match uiautomation::UIAutomation::new() {
                     Ok(temp_automation) => {
