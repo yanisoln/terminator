@@ -35,6 +35,13 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
+/// Represents a node in the UI tree, containing its attributes and children.
+#[derive(Debug, Clone)]
+pub struct UINode {
+    pub attributes: UIElementAttributes,
+    pub children: Vec<UINode>,
+}
+
 /// Holds the screenshot data
 #[derive(Debug, Clone)]
 pub struct ScreenshotResult {
@@ -413,5 +420,23 @@ impl Desktop {
         );
 
         Ok(application)
+    }
+
+    #[instrument(skip(self, title))]
+    pub fn get_window_tree_by_title(&self, title: &str) -> Result<UINode, AutomationError> {
+        let start = Instant::now();
+        info!(title, "Getting window tree by title");
+
+        let window_tree_root = self.engine.get_window_tree_by_title(title)?;
+
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            // Assuming UINode will have an ID or identifiable attribute for logging
+            // For now, we just log that the tree was retrieved.
+            "Window tree retrieved for title: {}", title
+        );
+
+        Ok(window_tree_root)
     }
 }

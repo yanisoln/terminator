@@ -2879,4 +2879,10 @@ impl AccessibilityEngine for MacOSEngine {
             Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
         }
     }
+
+    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            format!("get_window_tree_by_title for '{}' not yet implemented for macOS", title)
+        ))
+    }
 }

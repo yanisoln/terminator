@@ -144,6 +144,12 @@ impl AccessibilityEngine for LinuxEngine {
             "get_current_application not yet implemented for Linux".to_string(),
         ))
     }
+
+    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            format!("get_window_tree_by_title for '{}' not yet implemented for Linux", title)
+        ))
+    }
 }
 
 // Placeholder LinuxUIElement that implements UIElementImpl

@@ -14,7 +14,7 @@ pub struct UIElement {
 }
 
 /// Attributes associated with a UI element
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UIElementAttributes {
     pub role: String,
     pub name: Option<String>,

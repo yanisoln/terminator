@@ -1461,6 +1461,97 @@ $latestProcess.ProcessId"#,
 
         self.get_application_by_pid(pid as i32)
     }
+
+    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
+        info!("Attempting to get window tree by title: {}", title);
+        let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
+            error!("Failed to get root element: {}", e);
+            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+        })?;
+
+        // Create a matcher for the window by its exact title
+        let matcher = self
+            .automation
+            .0
+            .create_matcher()
+            .from_ref(&root_ele_os)
+            // case insensitive etc.
+            .control_type(ControlType::Window)
+            .filter(Box::new(OrFilter {
+                left: Box::new(NameFilter {
+                    value: String::from(title),
+                    casesensitive: false,
+                    partial: true,
+                }),
+                right: Box::new(ClassNameFilter {
+                    classname: String::from(title),
+                }),
+            }))
+            .depth(3) // Search a few levels deep from the root
+            .timeout(DEFAULT_FIND_TIMEOUT.as_millis() as u64); // Use a default timeout
+
+        let window_element_raw = matcher.find_first().map_err(|e| {
+            error!("Failed to find window with title '{}': {}", title, e);
+            AutomationError::ElementNotFound(format!(
+                "Window with title '{}' not found: {}",
+                title, e
+            ))
+        })?;
+
+        info!(
+            "Found window with title '{}', ID: {:?}",
+            title,
+            window_element_raw.get_runtime_id().ok()
+        );
+
+        // Wrap the raw OS element into our UIElement
+        let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(window_element_raw)),
+        }));
+
+        // Recursively build the UINode tree
+        build_ui_node_tree(&window_element_wrapper)
+    }
+}
+
+// Helper function to recursively build the UINode tree
+fn build_ui_node_tree(element: &UIElement) -> Result<crate::UINode, AutomationError> {
+    let attributes = element.attributes();
+    let mut children_nodes = Vec::new();
+
+    // Get children of the current element
+    match element.children() {
+        Ok(children_elements) => {
+            for child_element in children_elements {
+                // Recursively call build_ui_node_tree for each child
+                match build_ui_node_tree(&child_element) {
+                    Ok(child_node) => children_nodes.push(child_node),
+                    Err(e) => {
+                        // Log the error but continue processing other children
+                        // This makes the tree building more resilient to errors in individual subtrees
+                        error!(
+                            "Failed to build UINode for child (ID: {:?}): {}. Skipping this child.",
+                            child_element.id(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            // If getting children fails, log it and continue with an empty children list for this node
+            error!(
+                "Failed to get children for element (ID: {:?}): {}. Proceeding with no children for this node.",
+                element.id(),
+                e
+            );
+        }
+    }
+
+    Ok(crate::UINode {
+        attributes,
+        children: children_nodes,
+    })
 }
 
 // thread-safety
