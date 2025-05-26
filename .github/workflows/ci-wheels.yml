@@ -123,21 +123,21 @@ jobs:
   #
   # TODO: Uncomment the above macOS jobs when macOS support is ready.
 
-#   sdist:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - name: Build sdist
-#         uses: PyO3/maturin-action@v1
-#         with:
-#           working-directory: bindings/python
-#           command: sdist
-#           args: --out dist
-#       - name: Upload sdist
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: wheels-sdist
-#           path: bindings/python/dist
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: bindings/python/dist
 
   release:
     name: Release
