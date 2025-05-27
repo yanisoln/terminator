@@ -473,4 +473,18 @@ impl Locator {
         let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
         self.inner.window(timeout).await.map(|opt| opt.map(Element::from)).map_err(map_error)
     }
+
+    /// (async) Highlights the first matching element with a colored border.
+    /// 
+    /// @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+    /// @param {number} [durationMs] - Optional duration in milliseconds.
+    /// @param {number} [timeoutMs] - Optional timeout in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn highlight(&self, color: Option<u32>, duration_ms: Option<f64>, timeout_ms: Option<f64>) -> napi::Result<()> {
+        use std::time::Duration;
+        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        let duration = duration_ms.map(|ms| Duration::from_millis(ms as u64));
+        self.inner.highlight(color, duration, timeout).await.map_err(map_error)
+    }
 } 

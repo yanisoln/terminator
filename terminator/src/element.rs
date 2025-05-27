@@ -97,6 +97,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     // New methods to get containing application and window
     fn application(&self) -> Result<Option<UIElement>, AutomationError>;
     fn window(&self) -> Result<Option<UIElement>, AutomationError>;
+
+    // New method to highlight the element
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError>;
 }
 
 impl UIElement {
@@ -334,6 +337,15 @@ impl UIElement {
     /// Get the containing window element (e.g., tab, dialog)
     pub fn window(&self) -> Result<Option<UIElement>, AutomationError> {
         self.inner.window()
+    }
+
+    /// Highlights the element with a colored border.
+    /// 
+    /// # Arguments
+    /// * `color` - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+    /// * `duration` - Optional duration for the highlight.
+    pub fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        self.inner.highlight(color, duration)
     }
 
     /// Explore this element and its direct children

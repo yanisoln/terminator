@@ -634,6 +634,18 @@ class Locator:
         Returns:
             Optional[UIElement]: The window element, or None if not present.
         """
+    def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
+        r"""
+        (async) Highlights the first matching element with a colored border.
+        
+        Args:
+            color (Optional[int]): BGR color code (32-bit integer). Default: 0x0000FF (red)
+            duration_ms (Optional[int]): Duration in milliseconds.
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            None
+        """
 
 class ScreenshotResult:
     r"""
@@ -902,6 +914,17 @@ class UIElement:
         
         Returns:
             ExploreResponse: Details about the element and its children.
+        """
+    def highlight(self, color:typing.Optional[builtins.int], duration_ms:typing.Optional[builtins.int]) -> None:
+        r"""
+        Highlights the element with a colored border.
+        
+        Args:
+            color (Optional[int]): BGR color code (32-bit integer). Default: 0x0000FF (red)
+            duration_ms (Optional[int]): Duration in milliseconds.
+        
+        Returns:
+            None
         """
 
 class UIElementAttributes:

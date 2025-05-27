@@ -366,6 +366,14 @@ export declare class Element {
    * @returns {ExploreResponse} Details about the element and its children.
    */
   explore(): ExploreResponse
+  /**
+   * Highlights the element with a colored border.
+   *
+   * @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+   * @param {number} [durationMs] - Optional duration in milliseconds.
+   * @returns {void}
+   */
+  highlight(color?: number | undefined | null, durationMs?: number | undefined | null): void
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -646,4 +654,13 @@ export declare class Locator {
    * @returns {Promise<?Element>} The window element, or null if not present.
    */
   window(timeoutMs?: number | undefined | null): Promise<Element | null>
+  /**
+   * (async) Highlights the first matching element with a colored border.
+   *
+   * @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+   * @param {number} [durationMs] - Optional duration in milliseconds.
+   * @param {number} [timeoutMs] - Optional timeout in milliseconds.
+   * @returns {Promise<void>}
+   */
+  highlight(color?: number | undefined | null, durationMs?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<void>
 }

@@ -366,4 +366,17 @@ impl UIElement {
             })
             .map_err(|e| automation_error_to_pyerr(e))
     }
+
+    /// Highlights the element with a colored border.
+    /// 
+    /// Args:
+    ///     color (Optional[int]): BGR color code (32-bit integer). Default: 0x0000FF (red)
+    ///     duration_ms (Optional[int]): Duration in milliseconds.
+    /// 
+    /// Returns:
+    ///     None
+    pub fn highlight(&self, color: Option<u32>, duration_ms: Option<u64>) -> PyResult<()> {
+        let duration = duration_ms.map(std::time::Duration::from_millis);
+        self.inner.highlight(color, duration).map_err(|e| automation_error_to_pyerr(e))
+    }
 } 

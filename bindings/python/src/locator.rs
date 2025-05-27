@@ -671,4 +671,24 @@ impl Locator {
             Ok(win.map(|e| UIElement { inner: e }))
         })
     }
+
+    #[pyo3(name = "highlight", signature = (color=None, duration_ms=None, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, color, duration_ms, timeout_ms)")]
+    /// (async) Highlights the first matching element with a colored border.
+    /// 
+    /// Args:
+    ///     color (Optional[int]): BGR color code (32-bit integer). Default: 0x0000FF (red)
+    ///     duration_ms (Optional[int]): Duration in milliseconds.
+    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
+    /// 
+    /// Returns:
+    ///     None
+    pub fn highlight<'py>(&self, py: Python<'py>, color: Option<u32>, duration_ms: Option<u64>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
+        let locator = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let duration = duration_ms.map(std::time::Duration::from_millis);
+            locator.highlight(color, duration, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(())
+        })
+    }
 } 

@@ -407,4 +407,15 @@ impl Locator {
         element.window()
     }
 
+    /// Highlights the first matching element with a colored border.
+    /// 
+    /// # Arguments
+    /// * `color` - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+    /// * `duration` - Optional duration for the highlight.
+    /// * `timeout` - Optional timeout for finding the element.
+    pub async fn highlight(&self, color: Option<u32>, duration: Option<Duration>, timeout: Option<Duration>) -> Result<(), AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.highlight(color, duration)
+    }
+
 }
