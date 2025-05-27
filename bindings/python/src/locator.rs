@@ -30,7 +30,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "all", text_signature = "($self, timeout_ms, depth)")]
+    #[pyo3(name = "all", signature = (timeout_ms=None, depth=None))]
+    #[pyo3(text_signature = "($self, timeout_ms, depth)")]
     /// (async) Get all matching elements.
     /// 
     /// Args:
@@ -47,7 +48,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "wait", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "wait", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Wait for the first matching element.
     /// 
     /// Args:
@@ -88,7 +90,8 @@ impl Locator {
         Ok(Locator { inner: locator })
     }
 
-    #[pyo3(name = "click", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "click", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Click on the first matching element.
     /// 
     /// Args:
@@ -104,7 +107,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "type_text", text_signature = "($self, text, use_clipboard, timeout_ms)")]
+    #[pyo3(name = "type_text", signature = (text, use_clipboard=None, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, text, use_clipboard, timeout_ms)")]
     /// (async) Type text into the first matching element.
     /// 
     /// Args:
@@ -123,7 +127,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "press_key", text_signature = "($self, key, timeout_ms)")]
+    #[pyo3(name = "press_key", signature = (key, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, key, timeout_ms)")]
     /// (async) Press a key on the first matching element.
     /// 
     /// Args:
@@ -141,7 +146,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "text", text_signature = "($self, max_depth, timeout_ms)")]
+    #[pyo3(name = "text", signature = (max_depth=None, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, max_depth, timeout_ms)")]
     /// (async) Get text from the first matching element.
     /// 
     /// Args:
@@ -158,7 +164,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "attributes", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "attributes", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get attributes from the first matching element.
     /// 
     /// Args:
@@ -184,7 +191,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "bounds", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "bounds", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get bounds from the first matching element.
     /// 
     /// Args:
@@ -200,7 +208,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "is_visible", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "is_visible", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Check if the element is visible.
     /// 
     /// Args:
@@ -216,7 +225,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "expect_enabled", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "expect_enabled", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Wait for the element to be enabled.
     /// 
     /// Args:
@@ -232,7 +242,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "expect_visible", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "expect_visible", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Wait for the element to be visible.
     /// 
     /// Args:
@@ -248,7 +259,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "expect_text_equals", text_signature = "($self, expected_text, max_depth, timeout_ms)")]
+    #[pyo3(name = "expect_text_equals", signature = (expected_text, max_depth=None, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, expected_text, max_depth, timeout_ms)")]
     /// (async) Wait for the element's text to equal the expected text.
     /// 
     /// Args:
@@ -279,7 +291,8 @@ impl Locator {
         Locator { inner: self.inner.clone().within(element.inner.clone()) }
     }
 
-    #[pyo3(name = "double_click", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "double_click", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Double click on the first matching element.
     /// 
     /// Args:
@@ -295,7 +308,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "right_click", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "right_click", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Right click on the first matching element.
     /// 
     /// Args:
@@ -311,7 +325,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "hover", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "hover", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Hover over the first matching element.
     /// 
     /// Args:
@@ -327,6 +342,8 @@ impl Locator {
         })
     }
 
+    #[pyo3(name = "explore", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Explore the first matching element and its direct children.
     /// 
     /// Args:
@@ -356,7 +373,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "id", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "id", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the id of the first matching element.
     ///
     /// Args:
@@ -371,7 +389,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "role", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "role", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the role of the first matching element.
     ///
     /// Args:
@@ -386,7 +405,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "children", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "children", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the children of the first matching element.
     ///
     /// Args:
@@ -402,7 +422,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "parent", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "parent", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the parent of the first matching element.
     ///
     /// Args:
@@ -418,7 +439,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "set_value", text_signature = "($self, value, timeout_ms)")]
+    #[pyo3(name = "set_value", signature = (value, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, value, timeout_ms)")]
     /// (async) Set value of the first matching element.
     ///
     /// Args:
@@ -436,7 +458,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "is_focused", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "is_focused", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Check if the first matching element is focused.
     ///
     /// Args:
@@ -451,7 +474,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "perform_action", text_signature = "($self, action, timeout_ms)")]
+    #[pyo3(name = "perform_action", signature = (action, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, action, timeout_ms)")]
     /// (async) Perform a named action on the first matching element.
     ///
     /// Args:
@@ -469,7 +493,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "scroll", text_signature = "($self, direction, amount, timeout_ms)")]
+    #[pyo3(name = "scroll", signature = (direction, amount, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, direction, amount, timeout_ms)")]
     /// (async) Scroll the first matching element in a given direction.
     ///
     /// Args:
@@ -488,7 +513,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "activate_window", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "activate_window", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Activate the window containing the first matching element.
     ///
     /// Args:
@@ -504,7 +530,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "name", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "name", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the name of the first matching element.
     ///
     /// Args:
@@ -519,7 +546,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "is_keyboard_focusable", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "is_keyboard_focusable", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Check if the first matching element is keyboard focusable.
     ///
     /// Args:
@@ -534,7 +562,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "mouse_drag", text_signature = "($self, start_x, start_y, end_x, end_y, timeout_ms)")]
+    #[pyo3(name = "mouse_drag", signature = (start_x, start_y, end_x, end_y, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, start_x, start_y, end_x, end_y, timeout_ms)")]
     /// (async) Drag mouse from start to end coordinates on the first matching element.
     ///
     /// Args:
@@ -554,7 +583,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "mouse_click_and_hold", text_signature = "($self, x, y, timeout_ms)")]
+    #[pyo3(name = "mouse_click_and_hold", signature = (x, y, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, x, y, timeout_ms)")]
     /// (async) Press and hold mouse at (x, y) on the first matching element.
     ///
     /// Args:
@@ -572,7 +602,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "mouse_move", text_signature = "($self, x, y, timeout_ms)")]
+    #[pyo3(name = "mouse_move", signature = (x, y, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, x, y, timeout_ms)")]
     /// (async) Move mouse to (x, y) on the first matching element.
     ///
     /// Args:
@@ -590,7 +621,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "mouse_release", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "mouse_release", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Release mouse button on the first matching element.
     ///
     /// Args:
@@ -606,7 +638,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "application", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "application", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the containing application element of the first matching element.
     ///
     /// Args:
@@ -622,7 +655,8 @@ impl Locator {
         })
     }
 
-    #[pyo3(name = "window", text_signature = "($self, timeout_ms)")]
+    #[pyo3(name = "window", signature = (timeout_ms=None))]
+    #[pyo3(text_signature = "($self, timeout_ms)")]
     /// (async) Get the containing window element of the first matching element.
     ///
     /// Args:

@@ -42,7 +42,7 @@ async def main():
     try:
         desktop.application('NonExistentApp')
     except terminator.PlatformError as e:
-        print('Guess Expected error0:', str(e))
+        print('Platform error:', str(e))
     except Exception as e:
         print('Expected error:', str(e))
 

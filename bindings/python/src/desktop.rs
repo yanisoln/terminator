@@ -20,6 +20,7 @@ pub struct Desktop {
 #[pymethods]
 impl Desktop {
     #[new]
+    #[pyo3(signature = (use_background_apps=None, activate_app=None, log_level=None))]
     #[pyo3(text_signature = "(use_background_apps=False, activate_app=False, log_level=None)")]
     /// Create a new Desktop automation instance with configurable options.
     ///
@@ -30,7 +31,11 @@ impl Desktop {
     ///
     /// Returns:
     ///     Desktop: A new Desktop automation instance.
-    pub fn new(use_background_apps: Option<bool>, activate_app: Option<bool>, log_level: Option<String>) -> PyResult<Self> {
+    pub fn new(
+        use_background_apps: Option<bool>,
+        activate_app: Option<bool>,
+        log_level: Option<String>
+    ) -> PyResult<Self> {
         static INIT: Once = Once::new();
         let log_level = log_level.unwrap_or_else(|| "info".to_string());
         INIT.call_once(|| {
@@ -129,7 +134,8 @@ impl Desktop {
         })
     }
 
-    #[pyo3(name = "run_command", text_signature = "($self, windows_command, unix_command)")]
+    #[pyo3(name = "run_command", signature = (windows_command=None, unix_command=None))]
+    #[pyo3(text_signature = "($self, windows_command, unix_command)")]
     /// (async) Run a shell command.
     /// 
     /// Args:
@@ -203,7 +209,8 @@ impl Desktop {
         })
     }
 
-    #[pyo3(name = "find_window_by_criteria", text_signature = "($self, title_contains, timeout_ms)")]
+    #[pyo3(name = "find_window_by_criteria", signature = (title_contains=None, timeout_ms=None))]
+    #[pyo3(text_signature = "($self, title_contains, timeout_ms)")]
     /// (async) Find a window by criteria.
     /// 
     /// Args:
@@ -264,7 +271,8 @@ impl Desktop {
         })
     }
 
-    #[pyo3(name = "open_url", text_signature = "($self, url, browser)")]
+    #[pyo3(name = "open_url", signature = (url, browser=None))]
+    #[pyo3(text_signature = "($self, url, browser)")]
     /// Open a URL in a browser.
     /// 
     /// Args:

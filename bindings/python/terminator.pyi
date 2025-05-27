@@ -48,7 +48,7 @@ class Desktop:
     r"""
     Main entry point for desktop automation.
     """
-    def __new__(cls, use_background_apps:typing.Optional[builtins.bool], activate_app:typing.Optional[builtins.bool], log_level:typing.Optional[builtins.str]) -> Desktop:
+    def __new__(cls, use_background_apps:typing.Optional[builtins.bool]=None, activate_app:typing.Optional[builtins.bool]=None, log_level:typing.Optional[builtins.str]=None) -> Desktop:
         r"""
         Create a new Desktop automation instance with configurable options.
         
@@ -115,7 +115,7 @@ class Desktop:
         Returns:
             ScreenshotResult: The screenshot data.
         """
-    def run_command(self, windows_command:typing.Optional[builtins.str], unix_command:typing.Optional[builtins.str]) -> typing.Any:
+    def run_command(self, windows_command:typing.Optional[builtins.str]=None, unix_command:typing.Optional[builtins.str]=None) -> typing.Any:
         r"""
         (async) Run a shell command.
         
@@ -156,7 +156,7 @@ class Desktop:
         Returns:
             str: The extracted text.
         """
-    def find_window_by_criteria(self, title_contains:typing.Optional[builtins.str], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def find_window_by_criteria(self, title_contains:typing.Optional[builtins.str]=None, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Find a window by criteria.
         
@@ -188,7 +188,7 @@ class Desktop:
         Returns:
             UIElement: The current application element.
         """
-    def open_url(self, url:builtins.str, browser:typing.Optional[builtins.str]) -> None:
+    def open_url(self, url:builtins.str, browser:typing.Optional[builtins.str]=None) -> None:
         r"""
         Open a URL in a browser.
         
@@ -255,7 +255,7 @@ class Locator:
         Returns:
             UIElement: The first matching element.
         """
-    def all(self, timeout_ms:typing.Optional[builtins.int], depth:typing.Optional[builtins.int]) -> typing.Any:
+    def all(self, timeout_ms:typing.Optional[builtins.int]=None, depth:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get all matching elements.
         
@@ -266,7 +266,7 @@ class Locator:
         Returns:
             List[UIElement]: List of matching elements.
         """
-    def wait(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def wait(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Wait for the first matching element.
         
@@ -296,7 +296,7 @@ class Locator:
         Returns:
             Locator: A new locator with the chained selector.
         """
-    def click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def click(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Click on the first matching element.
         
@@ -306,7 +306,7 @@ class Locator:
         Returns:
             ClickResult: Result of the click operation.
         """
-    def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool]=None, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Type text into the first matching element.
         
@@ -318,7 +318,7 @@ class Locator:
         Returns:
             None
         """
-    def press_key(self, key:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def press_key(self, key:builtins.str, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Press a key on the first matching element.
         
@@ -329,7 +329,7 @@ class Locator:
         Returns:
             None
         """
-    def text(self, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def text(self, max_depth:typing.Optional[builtins.int]=None, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get text from the first matching element.
         
@@ -340,7 +340,7 @@ class Locator:
         Returns:
             str: The element's text content.
         """
-    def attributes(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def attributes(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get attributes from the first matching element.
         
@@ -350,7 +350,7 @@ class Locator:
         Returns:
             UIElementAttributes: The element's attributes.
         """
-    def bounds(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def bounds(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get bounds from the first matching element.
         
@@ -360,7 +360,7 @@ class Locator:
         Returns:
             Bounds: The element's bounds.
         """
-    def is_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def is_visible(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Check if the element is visible.
         
@@ -370,7 +370,7 @@ class Locator:
         Returns:
             bool: True if the element is visible.
         """
-    def expect_enabled(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def expect_enabled(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Wait for the element to be enabled.
         
@@ -380,7 +380,7 @@ class Locator:
         Returns:
             UIElement: The enabled element.
         """
-    def expect_visible(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def expect_visible(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Wait for the element to be visible.
         
@@ -390,7 +390,7 @@ class Locator:
         Returns:
             UIElement: The visible element.
         """
-    def expect_text_equals(self, expected_text:builtins.str, max_depth:typing.Optional[builtins.int], timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def expect_text_equals(self, expected_text:builtins.str, max_depth:typing.Optional[builtins.int]=None, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Wait for the element's text to equal the expected text.
         
@@ -412,7 +412,7 @@ class Locator:
         Returns:
             Locator: A new locator with the specified root element.
         """
-    def double_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def double_click(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Double click on the first matching element.
         
@@ -422,7 +422,7 @@ class Locator:
         Returns:
             ClickResult: Result of the click operation.
         """
-    def right_click(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def right_click(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Right click on the first matching element.
         
@@ -432,7 +432,7 @@ class Locator:
         Returns:
             None
         """
-    def hover(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def hover(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Hover over the first matching element.
         
@@ -442,7 +442,7 @@ class Locator:
         Returns:
             None
         """
-    def explore(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def explore(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Explore the first matching element and its direct children.
         
@@ -452,7 +452,7 @@ class Locator:
         Returns:
             ExploreResponse: Details about the element and its children.
         """
-    def id(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def id(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the id of the first matching element.
         
@@ -462,7 +462,7 @@ class Locator:
         Returns:
             Optional[str]: The element's id, or None if not present.
         """
-    def role(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def role(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the role of the first matching element.
         
@@ -472,7 +472,7 @@ class Locator:
         Returns:
             str: The element's role.
         """
-    def children(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def children(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the children of the first matching element.
         
@@ -482,7 +482,7 @@ class Locator:
         Returns:
             List[UIElement]: The element's children.
         """
-    def parent(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def parent(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the parent of the first matching element.
         
@@ -492,7 +492,7 @@ class Locator:
         Returns:
             Optional[UIElement]: The element's parent, or None if not present.
         """
-    def set_value(self, value:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def set_value(self, value:builtins.str, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Set value of the first matching element.
         
@@ -503,7 +503,7 @@ class Locator:
         Returns:
             None
         """
-    def is_focused(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def is_focused(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Check if the first matching element is focused.
         
@@ -513,7 +513,7 @@ class Locator:
         Returns:
             bool: True if the element is focused.
         """
-    def perform_action(self, action:builtins.str, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def perform_action(self, action:builtins.str, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Perform a named action on the first matching element.
         
@@ -524,7 +524,7 @@ class Locator:
         Returns:
             None
         """
-    def scroll(self, direction:builtins.str, amount:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def scroll(self, direction:builtins.str, amount:builtins.float, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Scroll the first matching element in a given direction.
         
@@ -536,7 +536,7 @@ class Locator:
         Returns:
             None
         """
-    def activate_window(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def activate_window(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Activate the window containing the first matching element.
         
@@ -546,7 +546,7 @@ class Locator:
         Returns:
             None
         """
-    def name(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def name(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the name of the first matching element.
         
@@ -556,7 +556,7 @@ class Locator:
         Returns:
             Optional[str]: The element's name, or None if not present.
         """
-    def is_keyboard_focusable(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def is_keyboard_focusable(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Check if the first matching element is keyboard focusable.
         
@@ -566,7 +566,7 @@ class Locator:
         Returns:
             bool: True if the element is keyboard focusable.
         """
-    def mouse_drag(self, start_x:builtins.float, start_y:builtins.float, end_x:builtins.float, end_y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def mouse_drag(self, start_x:builtins.float, start_y:builtins.float, end_x:builtins.float, end_y:builtins.float, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Drag mouse from start to end coordinates on the first matching element.
         
@@ -580,7 +580,7 @@ class Locator:
         Returns:
             None
         """
-    def mouse_click_and_hold(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def mouse_click_and_hold(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Press and hold mouse at (x, y) on the first matching element.
         
@@ -592,7 +592,7 @@ class Locator:
         Returns:
             None
         """
-    def mouse_move(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def mouse_move(self, x:builtins.float, y:builtins.float, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Move mouse to (x, y) on the first matching element.
         
@@ -604,7 +604,7 @@ class Locator:
         Returns:
             None
         """
-    def mouse_release(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def mouse_release(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Release mouse button on the first matching element.
         
@@ -614,7 +614,7 @@ class Locator:
         Returns:
             None
         """
-    def application(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def application(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the containing application element of the first matching element.
         
@@ -624,7 +624,7 @@ class Locator:
         Returns:
             Optional[UIElement]: The application element, or None if not present.
         """
-    def window(self, timeout_ms:typing.Optional[builtins.int]) -> typing.Any:
+    def window(self, timeout_ms:typing.Optional[builtins.int]=None) -> typing.Any:
         r"""
         (async) Get the containing window element of the first matching element.
         
