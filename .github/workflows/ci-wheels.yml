@@ -161,7 +161,7 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'bindings/python/wheels-*/*'
+          subject-path: 'bindings/python/wheels-*/*.whl'
 
       - name: Publish to PyPI
         uses: PyO3/maturin-action@v1
@@ -170,4 +170,4 @@ jobs:
         with:
           working-directory: bindings/python
           command: upload
-          args: --non-interactive --skip-existing dist/* 
+          args: --non-interactive --skip-existing wheels-sdist/* wheels-windows-x64/*
