@@ -17,15 +17,5 @@ pub use types::{
     UIElementAttributes,
 };
 
-// Error types after
-pub use exceptions::{
-    ElementNotFoundError,
-    TimeoutError,
-    PermissionDeniedError,
-    PlatformError,
-    UnsupportedOperationError,
-    UnsupportedPlatformError,
-    InvalidArgumentError,
-    InternalError,
-    map_error,
-};
+// Error handling - see exceptions.rs for detailed architecture
+pub use exceptions::map_error;

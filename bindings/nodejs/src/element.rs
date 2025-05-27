@@ -28,7 +28,7 @@ impl FromNapiValue for Element {
     unsafe fn from_napi_value(env: napi::sys::napi_env, napi_val: napi::sys::napi_value) -> napi::Result<Self> {
         let mut result = std::ptr::null_mut();
         let status = napi::sys::napi_get_value_external(env, napi_val, &mut result);
-        if status != 0 {
+        if status != napi::sys::Status::napi_ok {
             return Err(napi::Error::new(napi::Status::InvalidArg, "Failed to get external value"));
         }
         Ok(std::ptr::read(result as *const Element))

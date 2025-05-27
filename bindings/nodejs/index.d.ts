@@ -647,35 +647,3 @@ export declare class Locator {
    */
   window(timeoutMs?: number | undefined | null): Promise<Element | null>
 }
-/** Thrown when an element is not found. */
-export declare class ElementNotFoundError {
-  field0: string
-}
-/** Thrown when an operation times out. */
-export declare class TimeoutError {
-  field0: string
-}
-/** Thrown when permission is denied. */
-export declare class PermissionDeniedError {
-  field0: string
-}
-/** Thrown for platform-specific errors. */
-export declare class PlatformError {
-  field0: string
-}
-/** Thrown for unsupported operations. */
-export declare class UnsupportedOperationError {
-  field0: string
-}
-/** Thrown for unsupported platforms. */
-export declare class UnsupportedPlatformError {
-  field0: string
-}
-/** Thrown for invalid arguments. */
-export declare class InvalidArgumentError {
-  field0: string
-}
-/** Thrown for internal errors. */
-export declare class InternalError {
-  field0: string
-}

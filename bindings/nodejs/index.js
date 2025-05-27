@@ -310,16 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { Desktop, Element, Locator, ElementNotFoundError, TimeoutError, PermissionDeniedError, PlatformError, UnsupportedOperationError, UnsupportedPlatformError, InvalidArgumentError, InternalError } = nativeBinding
+const { Desktop, Element, Locator } = nativeBinding
 
 module.exports.Desktop = Desktop
 module.exports.Element = Element
 module.exports.Locator = Locator
-module.exports.ElementNotFoundError = ElementNotFoundError
-module.exports.TimeoutError = TimeoutError
-module.exports.PermissionDeniedError = PermissionDeniedError
-module.exports.PlatformError = PlatformError
-module.exports.UnsupportedOperationError = UnsupportedOperationError
-module.exports.UnsupportedPlatformError = UnsupportedPlatformError
-module.exports.InvalidArgumentError = InvalidArgumentError
-module.exports.InternalError = InternalError

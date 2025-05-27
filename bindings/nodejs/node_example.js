@@ -1,4 +1,8 @@
-const { Desktop } = require('./index.js');
+const { 
+    Desktop,
+    ElementNotFoundError,
+    PlatformError 
+} = require('.');
 
 async function main() {
   const desktop = new Desktop();
@@ -16,7 +20,7 @@ async function main() {
     console.log('Found button:', button.role(), button.name());
     await button.click();
   } catch (e) {
-    if (e && e.code === 'ElementNotFoundError') {
+    if (e instanceof ElementNotFoundError) {
       console.log('No button found:', e.message);
     } else {
       console.log('No button found or click failed:', e);
@@ -43,10 +47,10 @@ async function main() {
   try {
     desktop.application('NonExistentApp');
   } catch (e) {
-    if (e && e.message && e.message.startsWith('ElementNotFoundError')) {
+    if (e instanceof PlatformError) {
       console.log('Expected error:', e.message);
     } else {
-      console.log('Expected error:', e);
+      console.log('Unexpected error:', e);
     }
   }
 

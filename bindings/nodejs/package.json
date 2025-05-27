@@ -2,8 +2,8 @@
   "name": "terminator",
   "version": "0.1.0",
   "description": "Node.js/TypeScript bindings for the Terminator Rust library (via napi-rs)",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "wrapper.js",
+  "types": "wrapper.d.ts",
   "napi": {
     "name": "terminator",
     "triples": {
