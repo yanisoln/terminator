@@ -1637,14 +1637,8 @@ impl UIElementImpl for WindowsUIElement {
         // there are alot of properties, including neccessary ones
         // ref: https://docs.rs/uiautomation/0.16.1/uiautomation/types/enum.UIProperty.html
         let property_list = vec![
-            UIProperty::Name,
             UIProperty::HelpText,
-            UIProperty::LabeledBy,
-            UIProperty::ValueValue,
-            UIProperty::ControlType,
             UIProperty::AutomationId,
-            UIProperty::FullDescription,
-            UIProperty::IsKeyboardFocusable, // Added for attributes
         ];
         for property in property_list {
             if let Ok(value) = self.element.0.get_property_value(property) {
