@@ -1,6 +1,9 @@
 {
   "name": "terminator-win32-x64-msvc",
-  "version": "0.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/terminator"
+  },
   "os": [
     "win32"
   ],
@@ -11,7 +14,6 @@
   "files": [
     "terminator.win32-x64-msvc.node"
   ],
-  "license": "MIT",
   "engines": {
     "node": ">= 10"
   }
