@@ -20,6 +20,10 @@ use windows::Win32::Foundation::POINT;
 use dashmap::DashMap;
 use arboard::Clipboard;
 use regex::Regex;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -1120,7 +1124,8 @@ fn get_window_info_for_process(
         let _ = tx.send((window_title, app_name));
     });
 
-    let timeout_duration = Duration::from_secs(6);
+    // Keep a reasonable timeout for the native API call (should be much faster than PowerShell)
+    let timeout_duration = Duration::from_secs(3);
 
     match rx.recv_timeout(timeout_duration) {
         Ok(result) => {
@@ -1166,98 +1171,364 @@ fn get_window_info_for_process(
     }
 }
 
-// Helper function to get process name by PID using PowerShell, with a timeout
+// Helper function to get process name by PID using native Windows API, with a timeout
 fn get_process_name_by_pid_recorder(pid: i32) -> std::result::Result<String, String> {
     let (tx, rx) = mpsc::channel();
     
     std::thread::spawn(move || {
-        // First try: Use WMI which is often more reliable than Get-Process
-        let wmi_command = format!(
-            "Get-WmiObject -Class Win32_Process -Filter \"ProcessId = {}\" | Select-Object -ExpandProperty Name",
-            pid
-        );
-        
-        let wmi_result = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &wmi_command])
-            .output();
-        
-        if let Ok(output) = wmi_result {
-            if output.status.success() {
-                let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !process_name.is_empty() && !process_name.contains("Error") {
-                    let _ = tx.send(Ok(process_name));
+        let _result = unsafe {
+            // Create a snapshot of all processes
+            let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+                Ok(handle) => handle,
+                Err(e) => {
+                    let _ = tx.send(Err(format!("Failed to create process snapshot: {}", e)));
                     return;
                 }
+            };
+            
+            if snapshot.is_invalid() {
+                let _ = tx.send(Err("Invalid snapshot handle".to_string()));
+                return;
             }
-        }
-        
-        // Second try: Use Get-Process with execution policy bypass
-        let get_process_command = format!(
-            "Get-Process -Id {} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName",
-            pid
-        );
-        
-        let result = match std::process::Command::new("powershell")
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &get_process_command])
-            .output()
-        {
-            Ok(output) => {
-                if output.status.success() {
-                    let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if process_name.is_empty() {
-                        // Third try: Use tasklist as final fallback
-                        let tasklist_result = std::process::Command::new("tasklist")
-                            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
-                            .output();
-                        
-                        match tasklist_result {
-                            Ok(tasklist_output) if tasklist_output.status.success() => {
-                                let tasklist_content = String::from_utf8_lossy(&tasklist_output.stdout);
-                                if let Some(line) = tasklist_content.lines().next() {
-                                    // Parse CSV format: "process.exe","PID","Session","Mem Usage"
-                                    if let Some(process_name) = line.split(',').next() {
-                                        let clean_name = process_name.trim_matches('"');
-                                        if !clean_name.is_empty() {
-                                            Ok(clean_name.to_string())
-                                        } else {
-                                            Err(format!("Process name not found for PID {} (all methods failed)", pid))
-                                        }
-                                    } else {
-                                        Err(format!("Failed to parse tasklist output for PID {}", pid))
-                                    }
-                                } else {
-                                    Err(format!("No tasklist output for PID {}", pid))
-                                }
-                            }
-                            Ok(_) => Err(format!("Tasklist command failed for PID {}", pid)),
-                            Err(e) => Err(format!("Failed to execute tasklist for PID {}: {}", pid, e)),
-                        }
-                    } else {
-                        Ok(process_name)
-                    }
-                } else {
-                    let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                    Err(format!(
-                        "PowerShell command failed to get process name for PID {}: {}",
-                        pid, err_msg
-                    ))
+            
+            // Ensure we close the handle when done
+            let _guard = HandleGuard(snapshot);
+            
+            let mut process_entry = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                ..Default::default()
+            };
+            
+            // Get the first process
+            if Process32FirstW(snapshot, &mut process_entry).is_err() {
+                let _ = tx.send(Err("Failed to get first process".to_string()));
+                return;
+            }
+            
+            // Iterate through processes to find the one with matching PID
+            loop {
+                if process_entry.th32ProcessID == pid as u32 {
+                    // Convert the process name from wide string to String
+                    let name_slice = &process_entry.szExeFile;
+                    let name_len = name_slice.iter().position(|&c| c == 0).unwrap_or(name_slice.len());
+                    let process_name = String::from_utf16_lossy(&name_slice[..name_len]);
+                    
+                    // Remove .exe extension if present
+                    let clean_name = process_name
+                        .strip_suffix(".exe")
+                        .or_else(|| process_name.strip_suffix(".EXE"))
+                        .unwrap_or(&process_name);
+                    
+                    let _ = tx.send(Ok(clean_name.to_string()));
+                    return;
+                }
+                
+                // Get the next process
+                if Process32NextW(snapshot, &mut process_entry).is_err() {
+                    break;
                 }
             }
-            Err(e) => Err(format!(
-                "Failed to execute PowerShell to get process name for PID {}: {}",
-                pid, e
-            )),
+            
+            let _ = tx.send(Err(format!("Process with PID {} not found", pid)));
         };
-        let _ = tx.send(result);
     });
 
-    // Increase timeout from 2 to 5 seconds for better compatibility across Windows versions
-    let timeout_duration = Duration::from_secs(5);
+    // Keep a reasonable timeout for the native API call (should be much faster than PowerShell)
+    let timeout_duration = Duration::from_secs(2);
 
     match rx.recv_timeout(timeout_duration) {
         Ok(result_from_thread) => result_from_thread,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!("Timeout getting process name for PID {} via PowerShell (increased to 5s)", pid)),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("Channel disconnected while getting process name for PID {} via PowerShell. Thread might have panicked.", pid)),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!("Timeout getting process name for PID {} via Windows API", pid)),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("Channel disconnected while getting process name for PID {} via Windows API. Thread might have panicked.", pid)),
+    }
+}
+
+// RAII guard to ensure handle is closed
+struct HandleGuard(HANDLE);
+
+impl Drop for HandleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn test_get_process_name_by_pid_recorder_current_process() {
+        // Test with the current process PID
+        let current_pid = process::id() as i32;
+        let result = get_process_name_by_pid_recorder(current_pid);
+        
+        assert!(result.is_ok(), "Should be able to get current process name");
+        let process_name = result.unwrap();
+        
+        // The process name should be a valid non-empty string
+        assert!(!process_name.is_empty(), "Process name should not be empty");
+        
+        // Should not contain .exe extension
+        assert!(!process_name.ends_with(".exe"), "Process name should not contain .exe extension");
+        assert!(!process_name.ends_with(".EXE"), "Process name should not contain .EXE extension");
+        
+        // Should be a reasonable process name (alphanumeric, hyphens, underscores)
+        assert!(process_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'), 
+               "Process name should contain only alphanumeric characters, hyphens, and underscores: {}", process_name);
+        
+        println!("Current process name: {}", process_name);
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_recorder_invalid_pid() {
+        // Test with an invalid PID (very high number unlikely to exist)
+        let invalid_pid = 999999;
+        let result = get_process_name_by_pid_recorder(invalid_pid);
+        
+        assert!(result.is_err(), "Should fail for invalid PID");
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Process with PID"), "Error should mention the PID");
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_recorder_timeout() {
+        // Test that the function respects timeout
+        let start_time = std::time::Instant::now();
+        
+        // Use an invalid PID to trigger the "not found" path
+        let invalid_pid = 999999;
+        let result = get_process_name_by_pid_recorder(invalid_pid);
+        
+        let elapsed = start_time.elapsed();
+        
+        // Should complete within reasonable time (much less than the 2-second timeout)
+        assert!(elapsed < Duration::from_millis(1000), 
+               "Function should complete quickly for invalid PID, took: {:?}", elapsed);
+        
+        assert!(result.is_err(), "Should fail for invalid PID");
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_recorder_system_process() {
+        // Test with a known system process (PID 4 is usually System on Windows)
+        let system_pid = 4;
+        let result = get_process_name_by_pid_recorder(system_pid);
+        
+        // This might succeed or fail depending on permissions, but shouldn't panic
+        match result {
+            Ok(name) => {
+                assert!(!name.is_empty(), "Process name should not be empty");
+                assert!(!name.ends_with(".exe"), "Process name should not contain .exe extension");
+                println!("System process name: {}", name);
+            }
+            Err(e) => {
+                println!("Expected: Could not access system process: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_guard_recorder() {
+        // Test that HandleGuard properly cleans up handles in recorder context
+        use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
+        
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
+            assert!(!snapshot.is_invalid(), "Snapshot should be valid");
+            
+            // Create and immediately drop the guard
+            {
+                let _guard = HandleGuard(snapshot);
+                // Guard should be alive here
+            }
+            // Guard should be dropped and handle closed here
+            
+            // Test passes if no panic occurs
+        }
+    }
+
+    #[test]
+    fn test_get_window_info_for_process_current() {
+        // Test getting window info for current process
+        let current_pid = process::id();
+        let cache = Arc::new(DashMap::new());
+        
+        let (window_title, app_name) = get_window_info_for_process(current_pid, cache.clone());
+        
+        // App name should be available (from our native API)
+        assert!(app_name.is_some(), "Should get app name for current process");
+        let app_name = app_name.unwrap();
+        assert!(!app_name.is_empty(), "App name should not be empty");
+        assert!(!app_name.ends_with(".exe"), "App name should not contain .exe extension");
+        
+        // Window title might or might not be available for test processes
+        println!("Current process - App: {:?}, Window: {:?}", app_name, window_title);
+        
+        // Test caching - second call should be faster and return same result
+        let start_time = std::time::Instant::now();
+        let (window_title2, app_name2) = get_window_info_for_process(current_pid, cache);
+        let elapsed = start_time.elapsed();
+        
+        assert!(elapsed < Duration::from_millis(100), "Cached call should be very fast");
+        assert_eq!(app_name, app_name2.unwrap(), "Cached result should match");
+        assert_eq!(window_title, window_title2, "Cached window title should match");
+    }
+
+    #[test]
+    fn test_get_window_info_for_process_invalid_pid() {
+        // Test with invalid PID
+        let invalid_pid = 999999;
+        let cache = Arc::new(DashMap::new());
+        
+        let (window_title, app_name) = get_window_info_for_process(invalid_pid, cache);
+        
+        // Should handle gracefully
+        assert!(window_title.is_none(), "Should not get window title for invalid PID");
+        assert!(app_name.is_none(), "Should not get app name for invalid PID");
+    }
+
+    #[test]
+    fn test_get_window_info_for_process_caching() {
+        // Test that caching works correctly
+        let current_pid = process::id();
+        let cache = Arc::new(DashMap::new());
+        
+        // First call - should populate cache
+        assert!(cache.is_empty(), "Cache should start empty");
+        
+        let (window_title1, app_name1) = get_window_info_for_process(current_pid, cache.clone());
+        
+        assert!(!cache.is_empty(), "Cache should be populated after first call");
+        assert!(cache.contains_key(&current_pid), "Cache should contain current PID");
+        
+        // Second call - should use cache
+        let start_time = std::time::Instant::now();
+        let (window_title2, app_name2) = get_window_info_for_process(current_pid, cache.clone());
+        let elapsed = start_time.elapsed();
+        
+        // Cached call should be very fast
+        assert!(elapsed < Duration::from_millis(50), "Cached call should be very fast");
+        
+        // Results should be identical
+        assert_eq!(window_title1, window_title2, "Cached window title should match");
+        assert_eq!(app_name1, app_name2, "Cached app name should match");
+    }
+
+    #[test]
+    fn test_multiple_concurrent_process_lookups() {
+        // Test that multiple concurrent lookups work correctly
+        let current_pid = process::id() as i32;
+        let (tx, rx) = mpsc::channel();
+        
+        // Spawn multiple threads doing lookups
+        for i in 0..5 {
+            let tx_clone = tx.clone();
+            std::thread::spawn(move || {
+                let result = get_process_name_by_pid_recorder(current_pid);
+                tx_clone.send((i, result)).unwrap();
+            });
+        }
+        
+        // Collect results
+        let mut results = Vec::new();
+        for _ in 0..5 {
+            let (thread_id, result) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            results.push((thread_id, result));
+        }
+        
+        // All should succeed and return the same name
+        let mut process_names = Vec::new();
+        for (thread_id, result) in results {
+            assert!(result.is_ok(), "Thread {} should succeed", thread_id);
+            process_names.push(result.unwrap());
+        }
+        
+        // All names should be identical
+        let first_name = &process_names[0];
+        for name in &process_names[1..] {
+            assert_eq!(first_name, name, "All concurrent lookups should return same name");
+        }
+        
+        println!("All {} threads returned: {}", process_names.len(), first_name);
+    }
+
+    #[test]
+    fn test_process_name_consistency_with_main_lib() {
+        // Test that the recorder's implementation is consistent
+        let current_pid = process::id() as i32;
+        
+        // Get name using recorder function multiple times to ensure consistency
+        let result1 = get_process_name_by_pid_recorder(current_pid);
+        let result2 = get_process_name_by_pid_recorder(current_pid);
+        
+        match (result1, result2) {
+            (Ok(name1), Ok(name2)) => {
+                assert_eq!(name1, name2, 
+                          "Multiple calls should return same process name");
+                println!("Both calls returned: {}", name1);
+            }
+            (Ok(name), Err(err)) => {
+                panic!("Inconsistent results: first succeeded ({}), second failed ({})", name, err);
+            }
+            (Err(err), Ok(name)) => {
+                panic!("Inconsistent results: first failed ({}), second succeeded ({})", err, name);
+            }
+            (Err(err1), Err(err2)) => {
+                println!("Both calls failed consistently - Err1: {}, Err2: {}", err1, err2);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod performance_tests {
+        use super::*;
+        use std::time::Instant;
+
+        #[test]
+        fn test_performance_vs_timeout() {
+            // Test that native API is much faster than the timeout
+            let current_pid = process::id() as i32;
+            let start_time = Instant::now();
+            
+            let result = get_process_name_by_pid_recorder(current_pid);
+            let elapsed = start_time.elapsed();
+            
+            assert!(result.is_ok(), "Should succeed for current process");
+            
+            // Should complete in much less than the 2-second timeout
+            assert!(elapsed < Duration::from_millis(500), 
+                   "Native API should be fast, took: {:?}", elapsed);
+            
+            println!("Process lookup took: {:?}", elapsed);
+        }
+
+        #[test]
+        fn test_batch_performance() {
+            // Test performance of multiple lookups
+            let current_pid = process::id() as i32;
+            let iterations = 10;
+            
+            let start_time = Instant::now();
+            
+            for _ in 0..iterations {
+                let result = get_process_name_by_pid_recorder(current_pid);
+                assert!(result.is_ok(), "Each lookup should succeed");
+            }
+            
+            let elapsed = start_time.elapsed();
+            let avg_time = elapsed / iterations;
+            
+            println!("{} lookups took {:?}, average: {:?}", iterations, elapsed, avg_time);
+            
+            // Each lookup should be very fast
+            assert!(avg_time < Duration::from_millis(100), 
+                   "Average lookup time should be fast: {:?}", avg_time);
+        }
     }
 } 
 

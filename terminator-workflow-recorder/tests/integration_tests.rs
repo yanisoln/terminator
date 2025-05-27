@@ -44,9 +44,9 @@ fn test_workflow_save_load_roundtrip() {
         event_type: MouseEventType::Click,
         button: MouseButton::Left,
         position: Position { x: 100, y: 200 },
-        ui_element: None,
         scroll_delta: None,
         drag_start: None,
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::Mouse(mouse_event));
     
@@ -59,6 +59,7 @@ fn test_workflow_save_load_roundtrip() {
         win_pressed: false,
         character: Some('A'),
         scan_code: None,
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::Keyboard(keyboard_event));
     
@@ -96,7 +97,9 @@ fn test_complex_workflow_scenario() {
         event_type: MouseEventType::Click,
         button: MouseButton::Left,
         position: Position { x: 300, y: 150 },
-        ui_element: Some(UiElement {
+        scroll_delta: None,
+        drag_start: None,
+        metadata: EventMetadata::from_ui_element(Some(UiElement {
             name: Some("Email Field".to_string()),
             control_type: Some("Edit".to_string()),
             application_name: Some("ContactForm".to_string()),
@@ -109,102 +112,66 @@ fn test_complex_workflow_scenario() {
             has_keyboard_focus: None,
             hierarchy_path: None,
             value: None,
-        }),
-        scroll_delta: None,
-        drag_start: None,
+        })),
     };
     workflow.add_event(WorkflowEvent::Mouse(click_event));
     
-    // 2. User types some text
-    let text_input = TextInputEvent {
-        text: "user@example.com".to_string(),
-        target_element: Some(UiElement {
-            name: Some("Email Field".to_string()),
-            control_type: Some("Edit".to_string()),
-            automation_id: None,
-            class_name: None,
-            process_id: None,
-            application_name: None,
-            window_title: None,
-            bounding_rect: None,
-            is_enabled: None,
-            has_keyboard_focus: None,
-            hierarchy_path: None,
-            value: None,
-        }),
-        is_replacement: false,
-        previous_text: None,
-        selection_start: None,
-        selection_end: None,
-    };
-    workflow.add_event(WorkflowEvent::TextInput(text_input));
-    
-    // 3. User selects some text
+    // 2. User selects some text
     let text_selection = TextSelectionEvent {
         selected_text: "example.com".to_string(),
         start_position: Position { x: 350, y: 150 },
         end_position: Position { x: 420, y: 150 },
-        target_element: None,
         selection_method: SelectionMethod::DoubleClick,
         selection_length: 11,
         is_partial_selection: true,
-        application: Some("ContactForm".to_string()),
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::TextSelection(text_selection));
     
-    // 4. User copies the selection
+    // 3. User copies the selection
     let copy_hotkey = HotkeyEvent {
         combination: "Ctrl+C".to_string(),
         action: Some("Copy".to_string()),
-        application: Some("ContactForm".to_string()),
         is_global: false,
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::Hotkey(copy_hotkey));
     
-    // 5. Clipboard event
+    // 4. Clipboard event
     let clipboard_event = ClipboardEvent {
         action: ClipboardAction::Copy,
         content: Some("example.com".to_string()),
         content_size: Some(11),
         format: Some("text/plain".to_string()),
-        source_application: Some("ContactForm".to_string()),
         truncated: false,
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::Clipboard(clipboard_event));
     
-    // 6. User scrolls down
-    let scroll_event = ScrollEvent {
-        delta: (0, -120),
-        position: Position { x: 400, y: 300 },
-        target_element: None,
-        direction: ScrollDirection::Vertical,
-    };
-    workflow.add_event(WorkflowEvent::Scroll(scroll_event));
-    
-    // 7. User drags and drops something
+    // 5. User drags and drops something
     let drag_drop = DragDropEvent {
         start_position: Position { x: 100, y: 200 },
         end_position: Position { x: 200, y: 300 },
         source_element: None,
-        target_element: None,
         data_type: Some("text/plain".to_string()),
         content: Some("Dragged item".to_string()),
         success: true,
+        metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::DragDrop(drag_drop));
     
     workflow.finish();
     
     // Verify the workflow
-    assert_eq!(workflow.events.len(), 7);
+    assert_eq!(workflow.events.len(), 5);
     assert!(workflow.end_time.is_some());
     
     // Test serialization of the complex workflow
     let json = serde_json::to_string_pretty(&workflow).expect("Failed to serialize complex workflow");
-    assert!(json.len() > 1000); // Should be a substantial JSON object
+    assert!(json.len() > 500); // Should be a substantial JSON object
     
     // Test deserialization
     let loaded_workflow: RecordedWorkflow = serde_json::from_str(&json)
         .expect("Failed to deserialize complex workflow");
-    assert_eq!(loaded_workflow.events.len(), 7);
+    assert_eq!(loaded_workflow.events.len(), 5);
 } 

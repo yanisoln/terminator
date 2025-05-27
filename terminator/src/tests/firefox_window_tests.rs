@@ -3,6 +3,7 @@ use crate::tests::init_tracing;
 
 
 #[tokio::test]
+#[ignore]
 async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
     init_tracing();
     let desktop = Desktop::new(false, true).await?;

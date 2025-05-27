@@ -23,6 +23,10 @@ use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 use arboard::Clipboard;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -32,74 +36,68 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
     "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc", "explorer"
 ];
 
-// Helper function to get process name by PID using PowerShell
+// Helper function to get process name by PID using native Windows API
 fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
-    // First try: Use WMI which is often more reliable than Get-Process
-    let wmi_command = format!(
-        "Get-WmiObject -Class Win32_Process -Filter \"ProcessId = {}\" | Select-Object -ExpandProperty Name",
-        pid
-    );
-    
-    let wmi_result = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &wmi_command])
-        .output();
-    
-    if let Ok(output) = wmi_result {
-        if output.status.success() {
-            let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !process_name.is_empty() && !process_name.contains("Error") {
-                return Ok(process_name);
-            }
+    unsafe {
+        // Create a snapshot of all processes
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create process snapshot: {}", e)))?;
+        
+        if snapshot.is_invalid() {
+            return Err(AutomationError::PlatformError("Invalid snapshot handle".to_string()));
         }
-    }
-    
-    // Second try: Use Get-Process with longer timeout and bypass execution policy
-    let get_process_command = format!(
-        "Get-Process -Id {} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName",
-        pid
-    );
-    
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &get_process_command])
-        .output()
-        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
-    if output.status.success() {
-        let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if process_name.is_empty() {
-            // Third try: Use tasklist as final fallback
-            let tasklist_output = std::process::Command::new("tasklist")
-                .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
-                .output();
-            
-            if let Ok(tasklist_result) = tasklist_output {
-                if tasklist_result.status.success() {
-                    let tasklist_content = String::from_utf8_lossy(&tasklist_result.stdout);
-                    if let Some(line) = tasklist_content.lines().next() {
-                        // Parse CSV format: "process.exe","PID","Session","Mem Usage"
-                        if let Some(process_name) = line.split(',').next() {
-                            let clean_name = process_name.trim_matches('"');
-                            if !clean_name.is_empty() {
-                                return Ok(clean_name.to_string());
-                            }
-                        }
-                    }
-                }
+        
+        // Ensure we close the handle when done
+        let _guard = HandleGuard(snapshot);
+        
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        
+        // Get the first process
+        if Process32FirstW(snapshot, &mut process_entry).is_err() {
+            return Err(AutomationError::PlatformError("Failed to get first process".to_string()));
+        }
+        
+        // Iterate through processes to find the one with matching PID
+        loop {
+            if process_entry.th32ProcessID == pid as u32 {
+                // Convert the process name from wide string to String
+                let name_slice = &process_entry.szExeFile;
+                let name_len = name_slice.iter().position(|&c| c == 0).unwrap_or(name_slice.len());
+                let process_name = String::from_utf16_lossy(&name_slice[..name_len]);
+                
+                // Remove .exe extension if present
+                let clean_name = process_name
+                    .strip_suffix(".exe")
+                    .or_else(|| process_name.strip_suffix(".EXE"))
+                    .unwrap_or(&process_name);
+                
+                return Ok(clean_name.to_string());
             }
             
-            Err(AutomationError::PlatformError(format!(
-                "Process name not found for PID {} (all methods failed)",
-                pid
-            )))
-        } else {
-            Ok(process_name)
+            // Get the next process
+            if Process32NextW(snapshot, &mut process_entry).is_err() {
+                break;
+            }
         }
-    } else {
-        let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        
         Err(AutomationError::PlatformError(format!(
-            "PowerShell command failed to get process name for PID {}: {}",
-            pid, err_msg
+            "Process with PID {} not found",
+            pid
         )))
+    }
+}
+
+// RAII guard to ensure handle is closed
+struct HandleGuard(HANDLE);
+
+impl Drop for HandleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
     }
 }
 
@@ -2596,46 +2594,60 @@ fn map_generic_role_to_win_roles(role: &str) -> ControlType {
 }
 
 fn get_pid_by_name(name: &str) -> Option<i32> {
-    // window title shouldn't be empty
-    let command = format!(
-        "Get-Process | Where-Object {{ $_.MainWindowTitle -ne '' -and $_.Name -like '*{}*' }} | ForEach-Object {{ $_.Id }}",
-        name
-    );
-
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &command])
-        .output();
-    
-    match output {
-        Ok(output) => {
-            if output.status.success() {
-                // return only parent pid
-                let pid_str = String::from_utf8_lossy(&output.stdout);
-                pid_str.lines().next()?.trim().parse().ok()
-            } else {
-                // Fallback: try with tasklist
-                let tasklist_command = format!("tasklist /FI \"IMAGENAME eq {}*\" /FO CSV /NH", name);
-                let tasklist_output = std::process::Command::new("cmd")
-                    .args(["/C", &tasklist_command])
-                    .output();
-                
-                if let Ok(tasklist_result) = tasklist_output {
-                    if tasklist_result.status.success() {
-                        let tasklist_content = String::from_utf8_lossy(&tasklist_result.stdout);
-                        if let Some(line) = tasklist_content.lines().next() {
-                            // Parse CSV format: "process.exe","PID","Session","Mem Usage"
-                            let parts: Vec<&str> = line.split(',').collect();
-                            if parts.len() >= 2 {
-                                let pid_str = parts[1].trim_matches('"');
-                                return pid_str.parse().ok();
-                            }
-                        }
-                    }
-                }
-                None
+    unsafe {
+        // Create a snapshot of all processes
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(handle) => handle,
+            Err(_) => return None,
+        };
+        
+        if snapshot.is_invalid() {
+            return None;
+        }
+        
+        // Ensure we close the handle when done
+        let _guard = HandleGuard(snapshot);
+        
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        
+        // Get the first process
+        if Process32FirstW(snapshot, &mut process_entry).is_err() {
+            return None;
+        }
+        
+        let search_name_lower = name.to_lowercase();
+        
+        // Iterate through processes to find one with matching name
+        loop {
+            // Convert the process name from wide string to String
+            let name_slice = &process_entry.szExeFile;
+            let name_len = name_slice.iter().position(|&c| c == 0).unwrap_or(name_slice.len());
+            let process_name = String::from_utf16_lossy(&name_slice[..name_len]);
+            
+            // Remove .exe extension if present for comparison
+            let clean_name = process_name
+                .strip_suffix(".exe")
+                .or_else(|| process_name.strip_suffix(".EXE"))
+                .unwrap_or(&process_name);
+            
+            // Check if this process name contains our search term
+            if clean_name.to_lowercase().contains(&search_name_lower) {
+                // For processes with windows, we should check if they have a main window
+                // This is a simple heuristic - in a more complete implementation,
+                // you might want to use EnumWindows to check for actual windows
+                return Some(process_entry.th32ProcessID as i32);
+            }
+            
+            // Get the next process
+            if Process32NextW(snapshot, &mut process_entry).is_err() {
+                break;
             }
         }
-        Err(_) => None,
+        
+        None
     }
 }
 
@@ -2703,4 +2715,220 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
     // );
     
     Ok(hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process;
+
+    #[test]
+    fn test_get_process_name_by_pid_current_process() {
+        // Test with the current process PID
+        let current_pid = process::id() as i32;
+        let result = get_process_name_by_pid(current_pid);
+        
+        assert!(result.is_ok(), "Should be able to get current process name");
+        let process_name = result.unwrap();
+        
+        // The process name should be a valid non-empty string
+        assert!(!process_name.is_empty(), "Process name should not be empty");
+        
+        // Should not contain .exe extension
+        assert!(!process_name.ends_with(".exe"), "Process name should not contain .exe extension");
+        assert!(!process_name.ends_with(".EXE"), "Process name should not contain .EXE extension");
+        
+        // Should be a reasonable process name (alphanumeric, hyphens, underscores)
+        assert!(process_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'), 
+               "Process name should contain only alphanumeric characters, hyphens, and underscores: {}", process_name);
+        
+        println!("Current process name: {}", process_name);
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_invalid_pid() {
+        // Test with an invalid PID (very high number unlikely to exist)
+        let invalid_pid = 999999;
+        let result = get_process_name_by_pid(invalid_pid);
+        
+        assert!(result.is_err(), "Should fail for invalid PID");
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Process with PID"), "Error should mention the PID");
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_system_process() {
+        // Test with a known system process (PID 4 is usually System on Windows)
+        let system_pid = 4;
+        let result = get_process_name_by_pid(system_pid);
+        
+        // This might succeed or fail depending on permissions, but shouldn't panic
+        match result {
+            Ok(name) => {
+                assert!(!name.is_empty(), "Process name should not be empty");
+                println!("System process name: {}", name);
+            }
+            Err(e) => {
+                println!("Expected: Could not access system process: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_pid_by_name_current_process() {
+        // First get the current process name
+        let current_pid = process::id() as i32;
+        let current_name_result = get_process_name_by_pid(current_pid);
+        
+        if let Ok(current_name) = current_name_result {
+            // Now try to find a PID by that name
+            let found_pid = get_pid_by_name(&current_name);
+            
+            // Should find at least one process with this name
+            assert!(found_pid.is_some(), "Should find a PID for current process name: {}", current_name);
+            
+            let found_pid = found_pid.unwrap();
+            assert!(found_pid > 0, "PID should be positive");
+            
+            // The found PID might not be exactly the same as current PID if there are multiple
+            // processes with the same name, but it should be valid
+            println!("Current PID: {}, Found PID for '{}': {}", current_pid, current_name, found_pid);
+        }
+    }
+
+    #[test]
+    fn test_get_pid_by_name_nonexistent_process() {
+        // Test with a process name that definitely doesn't exist
+        let nonexistent_name = "definitely_nonexistent_process_12345";
+        let result = get_pid_by_name(nonexistent_name);
+        
+        assert!(result.is_none(), "Should return None for nonexistent process");
+    }
+
+    #[test]
+    fn test_get_pid_by_name_partial_match() {
+        // Test partial matching - try to find any process containing "win"
+        // This should match Windows system processes like "winlogon", "wininit", etc.
+        let partial_name = "win";
+        let result = get_pid_by_name(partial_name);
+        
+        // This might or might not find something, but shouldn't panic
+        match result {
+            Some(pid) => {
+                assert!(pid > 0, "Found PID should be positive");
+                println!("Found process with 'win' in name: PID {}", pid);
+                
+                // Verify we can get the name back
+                if let Ok(name) = get_process_name_by_pid(pid) {
+                    assert!(name.to_lowercase().contains("win"), 
+                           "Found process name '{}' should contain 'win'", name);
+                }
+            }
+            None => {
+                println!("No process found containing 'win' - this is possible but unusual on Windows");
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_guard_cleanup() {
+        // Test that HandleGuard properly cleans up handles
+        use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
+        
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
+            assert!(!snapshot.is_invalid(), "Snapshot should be valid");
+            
+            // Create and immediately drop the guard
+            {
+                let _guard = HandleGuard(snapshot);
+                // Guard should be alive here
+            }
+            // Guard should be dropped and handle closed here
+            
+            // We can't easily test that the handle was actually closed without
+            // potentially causing issues, but the test verifies the code compiles
+            // and the guard can be created/dropped without panicking
+        }
+    }
+
+    #[test]
+    fn test_process_name_extension_stripping() {
+        // Test the extension stripping logic by checking current process
+        let current_pid = process::id() as i32;
+        let result = get_process_name_by_pid(current_pid);
+        
+        if let Ok(process_name) = result {
+            // Verify no .exe extension
+            assert!(!process_name.ends_with(".exe"), "Process name should not end with .exe");
+            assert!(!process_name.ends_with(".EXE"), "Process name should not end with .EXE");
+            
+            // Verify it's not empty after stripping
+            assert!(!process_name.is_empty(), "Process name should not be empty after extension stripping");
+        }
+    }
+
+    #[test]
+    fn test_multiple_process_enumeration() {
+        // Test that we can enumerate multiple processes without issues
+        let current_pid = process::id() as i32;
+        
+        // Try to get names for a range of PIDs around the current one
+        let mut successful_lookups = 0;
+        let mut failed_lookups = 0;
+        
+        for offset in -10..=10 {
+            let test_pid = current_pid + offset;
+            if test_pid > 0 {
+                match get_process_name_by_pid(test_pid) {
+                    Ok(name) => {
+                        successful_lookups += 1;
+                        assert!(!name.is_empty(), "Process name should not be empty");
+                        println!("PID {}: {}", test_pid, name);
+                    }
+                    Err(_) => {
+                        failed_lookups += 1;
+                    }
+                }
+            }
+        }
+        
+        // We should have at least found the current process
+        assert!(successful_lookups >= 1, "Should find at least the current process");
+        println!("Successful lookups: {}, Failed lookups: {}", successful_lookups, failed_lookups);
+    }
+
+    #[cfg(test)]
+    mod integration_tests {
+        use super::*;
+
+        #[test]
+        fn test_round_trip_pid_name_lookup() {
+            // Test the round trip: PID -> Name -> PID
+            let original_pid = process::id() as i32;
+            
+            // Get the process name
+            let process_name = match get_process_name_by_pid(original_pid) {
+                Ok(name) => name,
+                Err(_) => {
+                    println!("Could not get current process name, skipping round-trip test");
+                    return;
+                }
+            };
+            
+            // Find a PID by that name
+            let found_pid = get_pid_by_name(&process_name);
+            
+            assert!(found_pid.is_some(), "Should find a PID for process name: {}", process_name);
+            let found_pid = found_pid.unwrap();
+            
+            // Verify the found PID corresponds to the same process name
+            let verified_name = get_process_name_by_pid(found_pid).unwrap();
+            assert_eq!(process_name, verified_name, 
+                      "Round-trip should yield the same process name");
+            
+            println!("Round-trip successful: {} -> {} -> {}", 
+                    original_pid, process_name, found_pid);
+        }
+    }
 }
