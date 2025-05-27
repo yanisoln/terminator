@@ -1120,7 +1120,7 @@ fn get_window_info_for_process(
         let _ = tx.send((window_title, app_name));
     });
 
-    let timeout_duration = Duration::from_secs(3);
+    let timeout_duration = Duration::from_secs(6);
 
     match rx.recv_timeout(timeout_duration) {
         Ok(result) => {
@@ -1169,21 +1169,69 @@ fn get_window_info_for_process(
 // Helper function to get process name by PID using PowerShell, with a timeout
 fn get_process_name_by_pid_recorder(pid: i32) -> std::result::Result<String, String> {
     let (tx, rx) = mpsc::channel();
-    let command_str = format!(
-        "Get-Process -Id {} | Select-Object -ExpandProperty ProcessName",
-        pid
-    );
-
+    
     std::thread::spawn(move || {
+        // First try: Use WMI which is often more reliable than Get-Process
+        let wmi_command = format!(
+            "Get-WmiObject -Class Win32_Process -Filter \"ProcessId = {}\" | Select-Object -ExpandProperty Name",
+            pid
+        );
+        
+        let wmi_result = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &wmi_command])
+            .output();
+        
+        if let Ok(output) = wmi_result {
+            if output.status.success() {
+                let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !process_name.is_empty() && !process_name.contains("Error") {
+                    let _ = tx.send(Ok(process_name));
+                    return;
+                }
+            }
+        }
+        
+        // Second try: Use Get-Process with execution policy bypass
+        let get_process_command = format!(
+            "Get-Process -Id {} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName",
+            pid
+        );
+        
         let result = match std::process::Command::new("powershell")
-            .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command_str])
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &get_process_command])
             .output()
         {
             Ok(output) => {
                 if output.status.success() {
                     let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if process_name.is_empty() {
-                        Err(format!("Process name not found for PID {} (stdout was empty)", pid))
+                        // Third try: Use tasklist as final fallback
+                        let tasklist_result = std::process::Command::new("tasklist")
+                            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+                            .output();
+                        
+                        match tasklist_result {
+                            Ok(tasklist_output) if tasklist_output.status.success() => {
+                                let tasklist_content = String::from_utf8_lossy(&tasklist_output.stdout);
+                                if let Some(line) = tasklist_content.lines().next() {
+                                    // Parse CSV format: "process.exe","PID","Session","Mem Usage"
+                                    if let Some(process_name) = line.split(',').next() {
+                                        let clean_name = process_name.trim_matches('"');
+                                        if !clean_name.is_empty() {
+                                            Ok(clean_name.to_string())
+                                        } else {
+                                            Err(format!("Process name not found for PID {} (all methods failed)", pid))
+                                        }
+                                    } else {
+                                        Err(format!("Failed to parse tasklist output for PID {}", pid))
+                                    }
+                                } else {
+                                    Err(format!("No tasklist output for PID {}", pid))
+                                }
+                            }
+                            Ok(_) => Err(format!("Tasklist command failed for PID {}", pid)),
+                            Err(e) => Err(format!("Failed to execute tasklist for PID {}: {}", pid, e)),
+                        }
                     } else {
                         Ok(process_name)
                     }
@@ -1203,11 +1251,12 @@ fn get_process_name_by_pid_recorder(pid: i32) -> std::result::Result<String, Str
         let _ = tx.send(result);
     });
 
-    let timeout_duration = Duration::from_secs(2);
+    // Increase timeout from 2 to 5 seconds for better compatibility across Windows versions
+    let timeout_duration = Duration::from_secs(5);
 
     match rx.recv_timeout(timeout_duration) {
         Ok(result_from_thread) => result_from_thread,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!("Timeout getting process name for PID {} via PowerShell", pid)),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!("Timeout getting process name for PID {} via PowerShell (increased to 5s)", pid)),
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("Channel disconnected while getting process name for PID {} via PowerShell. Thread might have panicked.", pid)),
     }
 } 

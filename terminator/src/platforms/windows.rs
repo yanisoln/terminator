@@ -34,20 +34,61 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
 
 // Helper function to get process name by PID using PowerShell
 fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
-    let command = format!(
-        "Get-Process -Id {} | Select-Object -ExpandProperty ProcessName",
+    // First try: Use WMI which is often more reliable than Get-Process
+    let wmi_command = format!(
+        "Get-WmiObject -Class Win32_Process -Filter \"ProcessId = {}\" | Select-Object -ExpandProperty Name",
         pid
     );
+    
+    let wmi_result = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &wmi_command])
+        .output();
+    
+    if let Ok(output) = wmi_result {
+        if output.status.success() {
+            let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !process_name.is_empty() && !process_name.contains("Error") {
+                return Ok(process_name);
+            }
+        }
+    }
+    
+    // Second try: Use Get-Process with longer timeout and bypass execution policy
+    let get_process_command = format!(
+        "Get-Process -Id {} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName",
+        pid
+    );
+    
     let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &get_process_command])
         .output()
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to execute PowerShell to get process name: {}", e)))?;
+        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
 
     if output.status.success() {
         let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if process_name.is_empty() {
+            // Third try: Use tasklist as final fallback
+            let tasklist_output = std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+                .output();
+            
+            if let Ok(tasklist_result) = tasklist_output {
+                if tasklist_result.status.success() {
+                    let tasklist_content = String::from_utf8_lossy(&tasklist_result.stdout);
+                    if let Some(line) = tasklist_content.lines().next() {
+                        // Parse CSV format: "process.exe","PID","Session","Mem Usage"
+                        if let Some(process_name) = line.split(',').next() {
+                            let clean_name = process_name.trim_matches('"');
+                            if !clean_name.is_empty() {
+                                return Ok(clean_name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            
             Err(AutomationError::PlatformError(format!(
-                "Process name not found for PID {}",
+                "Process name not found for PID {} (all methods failed)",
                 pid
             )))
         } else {
@@ -2562,16 +2603,39 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
     );
 
     let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-        .expect("Failed to execute PowerShell script");
-
-    if output.status.success() {
-        // return only parent pid
-        let pid_str = String::from_utf8_lossy(&output.stdout);
-        pid_str.lines().next()?.trim().parse().ok()
-    } else {
-        None
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "hidden", "-Command", &command])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                // return only parent pid
+                let pid_str = String::from_utf8_lossy(&output.stdout);
+                pid_str.lines().next()?.trim().parse().ok()
+            } else {
+                // Fallback: try with tasklist
+                let tasklist_command = format!("tasklist /FI \"IMAGENAME eq {}*\" /FO CSV /NH", name);
+                let tasklist_output = std::process::Command::new("cmd")
+                    .args(["/C", &tasklist_command])
+                    .output();
+                
+                if let Ok(tasklist_result) = tasklist_output {
+                    if tasklist_result.status.success() {
+                        let tasklist_content = String::from_utf8_lossy(&tasklist_result.stdout);
+                        if let Some(line) = tasklist_content.lines().next() {
+                            // Parse CSV format: "process.exe","PID","Session","Mem Usage"
+                            let parts: Vec<&str> = line.split(',').collect();
+                            if parts.len() >= 2 {
+                                let pid_str = parts[1].trim_matches('"');
+                                return pid_str.parse().ok();
+                            }
+                        }
+                    }
+                }
+                None
+            }
+        }
+        Err(_) => None,
     }
 }
 

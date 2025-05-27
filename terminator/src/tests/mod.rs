@@ -1,7 +1,6 @@
 mod e2e_tests;
 
 
-#[cfg(all(test, feature = "firefox_tests"))]
 mod firefox_window_tests;
 
 // Initialize tracing for tests
