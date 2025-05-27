@@ -656,7 +656,7 @@ impl MacOSUIElement {
     }
 
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = self.element.0.clone();
+        let mut current_ax_element = (*self.element.0).clone();
         loop {
             match current_ax_element.role() {
                 Ok(role) => {
@@ -679,7 +679,7 @@ impl MacOSUIElement {
     }
 
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = self.element.0.clone();
+        let mut current_ax_element = (*self.element.0).clone();
         loop {
             match current_ax_element.role() {
                 Ok(role_cfstring) => {
