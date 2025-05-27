@@ -244,6 +244,138 @@ pub struct TextInputEvent {
     pub ui_element: Option<UiElement>,
 }
 
+/// Represents the trigger for a field input completion
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FieldInputTrigger {
+    /// User pressed Tab to move to next field
+    TabKey,
+    /// User pressed Enter to submit or move to next field
+    EnterKey,
+    /// User clicked on a different field
+    MouseClick,
+    /// User used keyboard navigation (arrow keys, etc.)
+    KeyboardNavigation,
+    /// Focus was lost due to window/application change
+    FocusLost,
+    /// Form was submitted
+    FormSubmit,
+    /// Field validation triggered
+    Validation,
+    /// User pressed Escape
+    EscapeKey,
+}
+
+/// Represents a complete field input event (triggered when user finishes entering text in a field)
+/// 
+/// This event is emitted when a user completes entering text in a form field or input control.
+/// It captures the entire content of the field rather than individual keystrokes, making it
+/// ideal for workflow automation and form filling analysis.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use terminator_workflow_recorder::*;
+/// 
+/// // Example of a field input event when user types "John" in a name field and presses Tab
+/// let field_event = FieldInputEvent {
+///     field_content: "John".to_string(),
+///     initial_content: Some("".to_string()),
+///     field_element: Some(UiElement {
+///         name: Some("First Name".to_string()),
+///         automation_id: Some("txtFirstName".to_string()),
+///         class_name: Some("Edit".to_string()),
+///         control_type: Some("Edit".to_string()),
+///         // ... other fields
+///         # process_id: None,
+///         # application_name: Some("MyApp".to_string()),
+///         # window_title: Some("Registration Form".to_string()),
+///         # bounding_rect: None,
+///         # is_enabled: Some(true),
+///         # has_keyboard_focus: Some(true),
+///         # hierarchy_path: None,
+///         # value: Some("John".to_string()),
+///     }),
+///     field_label: Some("First Name".to_string()),
+///     field_type: Some("text".to_string()),
+///     completion_trigger: FieldInputTrigger::TabKey,
+///     input_duration_ms: Some(2500), // User took 2.5 seconds to type
+///     total_keystrokes: Some(4), // J-o-h-n
+///     corrections_count: Some(0), // No backspaces
+///     validation_status: Some(ValidationStatus::Valid),
+///     application: Some("MyApp".to_string()),
+///     form_context: Some("Registration Form".to_string()),
+///     is_multi_step_form: false,
+///     form_step: None,
+/// };
+/// ```
+/// 
+/// # Use Cases
+/// 
+/// - **Form Analysis**: Understanding how users interact with forms
+/// - **Workflow Automation**: Recording complete field entries for playback
+/// - **UX Research**: Analyzing typing patterns and field completion behavior
+/// - **Testing**: Validating form filling workflows
+/// - **Accessibility**: Understanding how users navigate between fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldInputEvent {
+    /// The complete text that was entered in the field
+    pub field_content: String,
+    
+    /// The initial content of the field before user started typing
+    pub initial_content: Option<String>,
+    
+    /// The UI element representing the input field
+    pub field_element: Option<UiElement>,
+    
+    /// The field label or name (if available)
+    pub field_label: Option<String>,
+    
+    /// The field type (e.g., "text", "password", "email", "number")
+    pub field_type: Option<String>,
+    
+    /// What triggered the completion of this field input
+    pub completion_trigger: FieldInputTrigger,
+    
+    /// Duration spent in this field (milliseconds)
+    pub input_duration_ms: Option<u64>,
+    
+    /// Number of characters typed (including backspaces/deletions)
+    pub total_keystrokes: Option<u32>,
+    
+    /// Number of corrections made (backspaces, deletions, replacements)
+    pub corrections_count: Option<u32>,
+    
+    /// Whether the field content was validated (and if it passed)
+    pub validation_status: Option<ValidationStatus>,
+    
+    /// The application where this field input occurred
+    pub application: Option<String>,
+    
+    /// The form or dialog context (if available)
+    pub form_context: Option<String>,
+    
+    /// Whether this field is part of a multi-step form
+    pub is_multi_step_form: bool,
+    
+    /// The step number in a multi-step form (if applicable)
+    pub form_step: Option<u32>,
+}
+
+/// Represents field validation status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ValidationStatus {
+    /// Field content is valid
+    Valid,
+    /// Field content is invalid
+    Invalid,
+    /// Field content has warnings but is acceptable
+    Warning,
+    /// Validation is pending (e.g., async validation)
+    Pending,
+    /// No validation was performed
+    NotValidated,
+}
+
 /// Represents application lifecycle events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApplicationAction {
@@ -549,6 +681,9 @@ pub enum WorkflowEvent {
     
     /// A hotkey event
     Hotkey(HotkeyEvent),
+    
+    /// A field input event
+    FieldInput(FieldInputEvent),
 }
 
 /// Represents a recorded event with timestamp

@@ -10,7 +10,7 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[EARLY] Comprehensive workflow recorder started");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .with_target(true)
         .with_thread_ids(false)
         .with_file(true)
@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Advanced workflow features
         record_clipboard: true,
         record_text_input: true,
+        record_field_input: true,
         record_text_selection: true,
         record_applications: true,
         record_file_operations: true, // Can be very noisy, enable if needed
@@ -193,6 +194,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         file_event.action,
                         file_event.path);
                 }
+                terminator_workflow_recorder::WorkflowEvent::FieldInput(field_event) => {
+                    println!("🔑 Field Input {}: {:?} -> \"{}\"", 
+                        event_count,
+                        field_event.completion_trigger,
+                        field_event.field_content);
+                }
+                
                 _ => {
                     // Display other event types more briefly
                     println!("📝 Event {}: {:?}", event_count, event);

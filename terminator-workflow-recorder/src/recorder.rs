@@ -66,6 +66,9 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record hotkey/shortcut events
     pub record_hotkeys: bool,
     
+    /// Whether to record field input completion events
+    pub record_field_input: bool,
+    
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
     
@@ -118,6 +121,7 @@ impl Default for WorkflowRecorderConfig {
             record_system_events: false, // Can be noisy, disabled by default
             record_drag_drop: true,
             record_hotkeys: true,
+            record_field_input: true,
             max_clipboard_content_length: 1024, // 1KB max
             max_text_selection_length: 512, // 512 chars max for selections
             record_window_geometry: true,
