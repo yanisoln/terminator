@@ -115,12 +115,14 @@ mod tests {
             format: Some("text/plain".to_string()),
             source_application: Some("Notepad".to_string()),
             truncated: false,
+            ui_element: None,
         };
 
         assert_eq!(clipboard_event.action, ClipboardAction::Copy);
         assert_eq!(clipboard_event.content, Some("Hello World".to_string()));
         assert_eq!(clipboard_event.content_size, Some(11));
         assert!(!clipboard_event.truncated);
+        assert!(clipboard_event.ui_element.is_none());
     }
 
     #[test]
@@ -156,11 +158,13 @@ mod tests {
             handle: Some("0x12345678".to_string()),
             parent_handle: None,
             state: Some("normal".to_string()),
+            ui_element: None,
         };
 
         assert_eq!(window_event.action, WindowAction::FocusGained);
         assert_eq!(window_event.title, Some("Test Application".to_string()));
         assert_eq!(window_event.process_id, Some(5678));
+        assert!(window_event.ui_element.is_none());
     }
 
     #[test]
@@ -303,11 +307,13 @@ mod tests {
             action: Some("Copy".to_string()),
             application: Some("Notepad".to_string()),
             is_global: true,
+            ui_element: None,
         };
 
         assert_eq!(hotkey_event.combination, "Ctrl+C");
         assert_eq!(hotkey_event.action, Some("Copy".to_string()));
         assert!(hotkey_event.is_global);
+        assert!(hotkey_event.ui_element.is_none());
     }
 
     #[test]

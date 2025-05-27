@@ -162,6 +162,9 @@ pub struct ClipboardEvent {
     
     /// Whether the content was truncated due to size
     pub truncated: bool,
+    
+    /// The UI element that was focused when the clipboard action occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents window actions
@@ -211,6 +214,9 @@ pub struct WindowEvent {
     
     /// Window state (normal, minimized, maximized)
     pub state: Option<String>,
+    
+    /// The UI element associated with this window event
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents text input events (high-level text changes)
@@ -233,6 +239,9 @@ pub struct TextInputEvent {
     
     /// Selection end position
     pub selection_end: Option<u32>,
+    
+    /// The UI element that had focus during text input (same as target_element for consistency)
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents application lifecycle events
@@ -266,6 +275,9 @@ pub struct ApplicationEvent {
     
     /// Application version
     pub version: Option<String>,
+    
+    /// The UI element that was focused when the application event occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents file system operations
@@ -302,6 +314,9 @@ pub struct FileEvent {
     
     /// The application that performed the action
     pub source_application: Option<String>,
+    
+    /// The UI element that was focused when the file operation occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents menu and context menu interactions
@@ -321,6 +336,9 @@ pub struct MenuEvent {
     
     /// The UI element that had focus when menu was opened
     pub context_element: Option<UiElement>,
+    
+    /// The UI element that was focused when the menu interaction occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents dialog interactions
@@ -343,6 +361,9 @@ pub struct DialogEvent {
     
     /// The application that showed the dialog
     pub application: Option<String>,
+    
+    /// The UI element that was focused when the dialog interaction occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents scroll events
@@ -397,6 +418,9 @@ pub struct SystemEvent {
     
     /// Relevant device information (for hardware events)
     pub device_info: Option<String>,
+    
+    /// The UI element that was focused when the system event occurred
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents drag and drop operations
@@ -438,6 +462,9 @@ pub struct HotkeyEvent {
     
     /// Whether this was a global or application-specific hotkey
     pub is_global: bool,
+    
+    /// The UI element that was focused when the hotkey was triggered
+    pub ui_element: Option<UiElement>,
 }
 
 /// Represents text selection events

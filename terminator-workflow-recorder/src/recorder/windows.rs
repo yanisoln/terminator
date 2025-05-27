@@ -270,6 +270,7 @@ impl WindowsRecorder {
             size: None,
             file_type,
             source_application: None,
+            ui_element: None, // File system events don't have direct UI element context
         }))
     }
     
@@ -659,6 +660,7 @@ impl WindowsRecorder {
                     action: Some(pattern.action.clone()),
                     application: None, // TODO: Get current application
                     is_global: true,
+                    ui_element: None, // TODO: Pass UI element context from caller
                 });
             }
         }
@@ -689,6 +691,8 @@ impl WindowsRecorder {
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let last_hash = Arc::clone(&self.last_clipboard_hash);
         let max_content_length = self.config.max_clipboard_content_length;
+        let process_info_cache = Arc::clone(&self.process_info_cache);
+        let capture_ui_elements = self.config.capture_ui_elements;
         
         thread::spawn(move || {
             let mut clipboard = match Clipboard::new() {
@@ -697,6 +701,18 @@ impl WindowsRecorder {
                     error!("Failed to initialize clipboard: {}", e);
                     return;
                 }
+            };
+            
+            let automation = if capture_ui_elements {
+                match UIAutomation::new() {
+                    Ok(auto) => Some(auto),
+                    Err(e) => {
+                        error!("Failed to create UIAutomation instance for clipboard monitoring: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
             };
             
             while !stop_indicator.load(Ordering::SeqCst) {
@@ -714,6 +730,13 @@ impl WindowsRecorder {
                             (content.clone(), false)
                         };
                         
+                        // Capture UI element if enabled
+                        let ui_element = if let Some(ref automation) = automation {
+                            Self::get_focused_ui_element(automation, Arc::clone(&process_info_cache))
+                        } else {
+                            None
+                        };
+                        
                         let clipboard_event = ClipboardEvent {
                             action: ClipboardAction::Copy, // Assume copy for content changes
                             content: Some(truncated_content),
@@ -721,6 +744,7 @@ impl WindowsRecorder {
                             format: Some("text".to_string()),
                             source_application: None, // TODO: Detect source app
                             truncated,
+                            ui_element,
                         };
                         
                         let _ = event_tx.send(WorkflowEvent::Clipboard(clipboard_event));
