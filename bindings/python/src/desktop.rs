@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use pyo3_async_runtimes::tokio as pyo3_tokio;
 use pyo3_async_runtimes::TaskLocals;
-use pyo3::IntoPyObjectExt;
 use std::sync::Once;
 use ::terminator_core::Desktop as TerminatorDesktop;
 use crate::exceptions::automation_error_to_pyerr;
