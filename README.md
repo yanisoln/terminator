@@ -33,7 +33,9 @@ maturin develop
 ```python
 import terminator
 desktop = terminator.Desktop()
-print(desktop.hello())  # → "Hello from Terminator"
+desktop.open_application('calc')
+seven = desktop.locator('name:Seven')
+seven.click()
 ```
 
 ### 🟦 TypeScript / Node.js
@@ -47,16 +49,18 @@ npm run build
 ```ts
 const { Desktop } = require('./bindings/nodejs/index.js');
 const desktop = new Desktop();
-console.log(desktop.hello()); // → "Hello from Terminator"
+await client.openApplication('notepad')
+await client.locator('name:Edit').typeText('hello world')
 ```
 
 ### 🧠 What is Terminator?
-Terminator is an SDK that lets AI agents see and control native desktop apps like they were web pages.
+Terminator is the Playwright-style SDK for automating Windows GUI apps.
 
-- Built for Windows, supports macOS (partial)
-- Playwright-style API (TS, Python, Rust)
-- Uses accessibility APIs for 100x faster, more reliable interaction vs vision
-- Can record workflows, compile into decision trees, and fallback to AI when needed
+- 🪟 Built for Windows, works on macOS (partial)
+- 🧠 Designed for AI agents, not humans
+- ⚡ Uses OS-level accessibility (not vision)
+- 🧩 TS, Python, and Rust support
+- 📈 80ms UI scans, 10000x speedup via compiled workflows
 
 ## Benchmarks
 
