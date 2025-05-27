@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use pyo3_asyncio_0_21::tokio as pyo3_tokio;
+use pyo3_async_runtimes::tokio as pyo3_tokio;
+use pyo3_async_runtimes::TaskLocals;
+use pyo3::IntoPyObjectExt;
 use std::sync::Once;
 use ::terminator_core::Desktop as TerminatorDesktop;
 use crate::exceptions::automation_error_to_pyerr;
@@ -121,12 +123,10 @@ impl Desktop {
     ///     ScreenshotResult: The screenshot data.
     pub fn capture_screen<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.capture_screen().await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = ScreenshotResult::from(result);
-                Ok(py_result.into_py(py))
-            })
+            let py_result = ScreenshotResult::from(result);
+            Ok(py_result)
         })
     }
 
@@ -141,12 +141,10 @@ impl Desktop {
     ///     CommandOutput: The command output.
     pub fn run_command<'py>(&self, py: Python<'py>, windows_command: Option<String>, unix_command: Option<String>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.run_command(windows_command.as_deref(), unix_command.as_deref()).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = CommandOutput::from(result);
-                Ok(py_result.into_py(py))
-            })
+            let py_result = CommandOutput::from(result);
+            Ok(py_result)
         })
     }
 
@@ -161,12 +159,10 @@ impl Desktop {
     pub fn capture_monitor_by_name<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
         let name = name.to_string();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.capture_monitor_by_name(&name).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = ScreenshotResult::from(result);
-                Ok(py_result.into_py(py))
-            })
+            let py_result = ScreenshotResult::from(result);
+            Ok(py_result)
         })
     }
 
@@ -181,11 +177,9 @@ impl Desktop {
     pub fn ocr_image_path<'py>(&self, py: Python<'py>, image_path: &str) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
         let image_path = image_path.to_string();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.ocr_image_path(&image_path).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                Ok(result.into_py(py))
-            })
+            Ok(result)
         })
     }
 
@@ -204,11 +198,9 @@ impl Desktop {
             width: screenshot.width,
             height: screenshot.height,
         };
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.ocr_screenshot(&core_screenshot).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                Ok(result.into_py(py))
-            })
+            Ok(result)
         })
     }
 
@@ -224,12 +216,10 @@ impl Desktop {
     pub fn find_window_by_criteria<'py>(&self, py: Python<'py>, title_contains: Option<&str>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
         let title_contains = title_contains.map(|s| s.to_string());
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.find_window_by_criteria(title_contains.as_deref(), timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = UIElement { inner: result };
-                Ok(py_result.into_py(py))
-            })
+            let py_result = UIElement { inner: result };
+            Ok(py_result)
         })
     }
 
@@ -240,12 +230,10 @@ impl Desktop {
     ///     UIElement: The current browser window element.
     pub fn get_current_browser_window<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.get_current_browser_window().await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = UIElement { inner: result };
-                Ok(py_result.into_py(py))
-            })
+            let py_result = UIElement { inner: result };
+            Ok(py_result)
         })
     }
 
@@ -256,12 +244,10 @@ impl Desktop {
     ///     UIElement: The current window element.
     pub fn get_current_window<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.get_current_window().await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = UIElement { inner: result };
-                Ok(py_result.into_py(py))
-            })
+            let py_result = UIElement { inner: result };
+            Ok(py_result)
         })
     }
 
@@ -272,12 +258,10 @@ impl Desktop {
     ///     UIElement: The current application element.
     pub fn get_current_application<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop.get_current_application().await.map_err(|e| automation_error_to_pyerr(e))?;
-            Python::with_gil(|py| {
-                let py_result = UIElement { inner: result };
-                Ok(py_result.into_py(py))
-            })
+            let py_result = UIElement { inner: result };
+            Ok(py_result)
         })
     }
 

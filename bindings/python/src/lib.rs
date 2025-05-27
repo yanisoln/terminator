@@ -30,14 +30,14 @@ fn terminator(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ExploreResponse>()?;
     m.add_class::<ExploredElementDetail>()?;
 
-    m.add("ElementNotFoundError", _py.get_type_bound::<ElementNotFoundError>())?;
-    m.add("TimeoutError", _py.get_type_bound::<TimeoutError>())?;
-    m.add("PermissionDeniedError", _py.get_type_bound::<PermissionDeniedError>())?;
-    m.add("PlatformError", _py.get_type_bound::<PlatformError>())?;
-    m.add("UnsupportedOperationError", _py.get_type_bound::<UnsupportedOperationError>())?;
-    m.add("UnsupportedPlatformError", _py.get_type_bound::<UnsupportedPlatformError>())?;
-    m.add("InvalidArgumentError", _py.get_type_bound::<InvalidArgumentError>())?;
-    m.add("InternalError", _py.get_type_bound::<InternalError>())?;
+    m.add("ElementNotFoundError", _py.get_type::<ElementNotFoundError>())?;
+    m.add("TimeoutError", _py.get_type::<TimeoutError>())?;
+    m.add("PermissionDeniedError", _py.get_type::<PermissionDeniedError>())?;
+    m.add("PlatformError", _py.get_type::<PlatformError>())?;
+    m.add("UnsupportedOperationError", _py.get_type::<UnsupportedOperationError>())?;
+    m.add("UnsupportedPlatformError", _py.get_type::<UnsupportedPlatformError>())?;
+    m.add("InvalidArgumentError", _py.get_type::<InvalidArgumentError>())?;
+    m.add("InternalError", _py.get_type::<InternalError>())?;
     Ok(())
 }
 

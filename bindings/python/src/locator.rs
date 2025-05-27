@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use pyo3_asyncio_0_21::tokio as pyo3_tokio;
+use pyo3_async_runtimes::tokio as pyo3_tokio;
+use pyo3_async_runtimes::TaskLocals;
 use ::terminator_core::locator::Locator as TerminatorLocator;
 use crate::exceptions::automation_error_to_pyerr;
 use crate::types::{UIElementAttributes, Bounds, ClickResult};
@@ -23,7 +24,7 @@ impl Locator {
     ///     UIElement: The first matching element.
     pub fn first<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, UIElement>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let element = locator.first(None).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElement { inner: element })
         })
@@ -40,9 +41,9 @@ impl Locator {
     ///     List[UIElement]: List of matching elements.
     pub fn all<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>, depth: Option<usize>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Vec<UIElement>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let elements = locator.all(timeout_ms.map(std::time::Duration::from_millis), depth).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Ok(elements.into_iter().map(|e| UIElement { inner: e }).collect())
+            Ok(elements.into_iter().map(|e| UIElement { inner: e }).collect::<Vec<_>>())
         })
     }
 
@@ -56,7 +57,7 @@ impl Locator {
     ///     UIElement: The first matching element.
     pub fn wait<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, UIElement>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let element = locator.wait(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElement { inner: element })
         })
@@ -97,7 +98,7 @@ impl Locator {
     ///     ClickResult: Result of the click operation.
     pub fn click<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ClickResult>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = locator.click(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(ClickResult::from(result))
         })
@@ -116,7 +117,7 @@ impl Locator {
     pub fn type_text<'py>(&self, py: Python<'py>, text: &str, use_clipboard: Option<bool>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let text = text.to_string();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.type_text(&text, use_clipboard.unwrap_or(false), timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -134,7 +135,7 @@ impl Locator {
     pub fn press_key<'py>(&self, py: Python<'py>, key: &str, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let key = key.to_string();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.press_key(&key, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -151,7 +152,7 @@ impl Locator {
     ///     str: The element's text content.
     pub fn text<'py>(&self, py: Python<'py>, max_depth: Option<usize>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, String>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let text = locator.text(max_depth.unwrap_or(1), timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(text)
         })
@@ -167,7 +168,7 @@ impl Locator {
     ///     UIElementAttributes: The element's attributes.
     pub fn attributes<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, UIElementAttributes>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let attrs = locator.attributes(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElementAttributes {
                 role: attrs.role,
@@ -193,7 +194,7 @@ impl Locator {
     ///     Bounds: The element's bounds.
     pub fn bounds<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Bounds>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let (x, y, width, height) = locator.bounds(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(Bounds { x, y, width, height })
         })
@@ -209,7 +210,7 @@ impl Locator {
     ///     bool: True if the element is visible.
     pub fn is_visible<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, bool>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let visible = locator.is_visible(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(visible)
         })
@@ -225,7 +226,7 @@ impl Locator {
     ///     UIElement: The enabled element.
     pub fn expect_enabled<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, UIElement>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let element = locator.expect_enabled(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElement { inner: element })
         })
@@ -241,7 +242,7 @@ impl Locator {
     ///     UIElement: The visible element.
     pub fn expect_visible<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, UIElement>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let element = locator.expect_visible(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElement { inner: element })
         })
@@ -260,7 +261,7 @@ impl Locator {
     pub fn expect_text_equals<'py>(&self, py: Python<'py>, expected_text: &str, max_depth: Option<usize>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let expected_text = expected_text.to_string();
-        pyo3_tokio::future_into_py::<_, UIElement>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let element = locator.expect_text_equals(&expected_text, max_depth.unwrap_or(1), timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(UIElement { inner: element })
         })
@@ -288,7 +289,7 @@ impl Locator {
     ///     ClickResult: Result of the click operation.
     pub fn double_click<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ClickResult>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = locator.double_click(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(ClickResult::from(result))
         })
@@ -304,7 +305,7 @@ impl Locator {
     ///     None
     pub fn right_click<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.right_click(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -320,7 +321,7 @@ impl Locator {
     ///     None
     pub fn hover<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.hover(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -335,7 +336,7 @@ impl Locator {
     ///     ExploreResponse: Details about the element and its children.
     pub fn explore<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, crate::types::ExploreResponse>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let response = locator.explore(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(crate::types::ExploreResponse {
                 parent: UIElement { inner: response.parent },
@@ -365,7 +366,7 @@ impl Locator {
     ///     Optional[str]: The element's id, or None if not present.
     pub fn id<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Option<String>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.id(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
         })
     }
@@ -380,7 +381,7 @@ impl Locator {
     ///     str: The element's role.
     pub fn role<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, String>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.role(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
         })
     }
@@ -395,9 +396,9 @@ impl Locator {
     ///     List[UIElement]: The element's children.
     pub fn children<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Vec<UIElement>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let children = locator.children(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
-            Ok(children.into_iter().map(|e| UIElement { inner: e }).collect())
+            Ok(children.into_iter().map(|e| UIElement { inner: e }).collect::<Vec<_>>())
         })
     }
 
@@ -411,7 +412,7 @@ impl Locator {
     ///     Optional[UIElement]: The element's parent, or None if not present.
     pub fn parent<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let parent = locator.parent(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(parent.map(|e| UIElement { inner: e }))
         })
@@ -429,7 +430,7 @@ impl Locator {
     pub fn set_value<'py>(&self, py: Python<'py>, value: &str, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let value = value.to_string();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.set_value(&value, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -445,7 +446,7 @@ impl Locator {
     ///     bool: True if the element is focused.
     pub fn is_focused<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, bool>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.is_focused(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
         })
     }
@@ -462,7 +463,7 @@ impl Locator {
     pub fn perform_action<'py>(&self, py: Python<'py>, action: &str, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let action = action.to_string();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.perform_action(&action, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -481,7 +482,7 @@ impl Locator {
     pub fn scroll<'py>(&self, py: Python<'py>, direction: &str, amount: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
         let direction = direction.to_string();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.scroll(&direction, amount, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -497,7 +498,7 @@ impl Locator {
     ///     None
     pub fn activate_window<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.activate_window(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -513,7 +514,7 @@ impl Locator {
     ///     Optional[str]: The element's name, or None if not present.
     pub fn name<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Option<String>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.name(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
         })
     }
@@ -528,7 +529,7 @@ impl Locator {
     ///     bool: True if the element is keyboard focusable.
     pub fn is_keyboard_focusable<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, bool>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.is_keyboard_focusable(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))
         })
     }
@@ -547,7 +548,7 @@ impl Locator {
     ///     None
     pub fn mouse_drag<'py>(&self, py: Python<'py>, start_x: f64, start_y: f64, end_x: f64, end_y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.mouse_drag(start_x, start_y, end_x, end_y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -565,7 +566,7 @@ impl Locator {
     ///     None
     pub fn mouse_click_and_hold<'py>(&self, py: Python<'py>, x: f64, y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.mouse_click_and_hold(x, y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -583,7 +584,7 @@ impl Locator {
     ///     None
     pub fn mouse_move<'py>(&self, py: Python<'py>, x: f64, y: f64, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.mouse_move(x, y, timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -599,7 +600,7 @@ impl Locator {
     ///     None
     pub fn mouse_release<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, ()>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             locator.mouse_release(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(())
         })
@@ -615,7 +616,7 @@ impl Locator {
     ///     Optional[UIElement]: The application element, or None if not present.
     pub fn application<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let app = locator.application(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(app.map(|e| UIElement { inner: e }))
         })
@@ -631,7 +632,7 @@ impl Locator {
     ///     Optional[UIElement]: The window element, or None if not present.
     pub fn window<'py>(&self, py: Python<'py>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let locator = self.inner.clone();
-        pyo3_tokio::future_into_py::<_, Option<UIElement>>(py, async move {
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let win = locator.window(timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
             Ok(win.map(|e| UIElement { inner: e }))
         })
