@@ -47,7 +47,7 @@ npm run build
 ```
 
 ```ts
-const { Desktop } = require('./bindings/nodejs/index.js');
+const { Desktop } = require('../bindings/nodejs');
 const desktop = new Desktop();
 await client.openApplication('notepad')
 await client.locator('name:Edit').typeText('hello world')
