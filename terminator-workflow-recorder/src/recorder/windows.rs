@@ -1,17 +1,15 @@
 use crate::{
     KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, UiElement,
     WorkflowEvent, WorkflowRecorderConfig, ClipboardEvent, ClipboardAction,
-    FileEvent, FileAction, ScrollEvent, ScrollDirection,
-    DragDropEvent, HotkeyEvent, Rect, Result, TextSelectionEvent, SelectionMethod,
-    FieldInputEvent, FieldInputTrigger, ValidationStatus
+    HotkeyEvent, Result, EventMetadata,
+    UiPropertyChangedEvent, UiFocusChangedEvent
 };
 use std::{
     sync::{Arc, Mutex, mpsc},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
     thread,
-    path::PathBuf,
 };
 use tokio::sync::broadcast;
 use tracing::{debug, info, error, warn};
@@ -21,7 +19,6 @@ use uiautomation::types::{Point, UIProperty};
 use windows::Win32::Foundation::POINT;
 use dashmap::DashMap;
 use arboard::Clipboard;
-use notify::{Watcher, RecursiveMode, Event, EventKind};
 use regex::Regex;
 
 /// The Windows-specific recorder
@@ -47,26 +44,11 @@ pub struct WindowsRecorder {
     /// Last clipboard content hash for change detection
     last_clipboard_hash: Arc<Mutex<Option<u64>>>,
     
-    /// Window tracking for geometry changes
-    window_tracker: Arc<Mutex<HashMap<isize, WindowInfo>>>,
-    
-    /// Drag state tracking
-    drag_state: Arc<Mutex<Option<DragState>>>,
-    
-    /// Text input buffer for batching character events
-    text_buffer: Arc<Mutex<TextBuffer>>,
-    
     /// Last mouse move time for throttling
     last_mouse_move_time: Arc<Mutex<Instant>>,
     
     /// Known hotkey patterns
     hotkey_patterns: Arc<Vec<HotkeyPattern>>,
-    
-    /// File system watcher
-    _file_watcher: Option<notify::RecommendedWatcher>,
-    
-    /// Active windows set for tracking
-    active_windows: Arc<Mutex<HashSet<isize>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,34 +59,6 @@ struct ModifierStates {
     win: bool,
 }
 
-#[derive(Debug, Clone)]
-struct WindowInfo {
-    title: String,
-    bounds: Rect,
-    state: String,
-    process_id: u32,
-}
-
-#[derive(Debug)]
-struct DragState {
-    start_pos: Position,
-    start_element: Option<UiElement>,
-    is_dragging: bool,
-}
-
-#[derive(Debug)]
-struct TextBuffer {
-    content: String,
-    target_element: Option<UiElement>,
-    last_update: Instant,
-    selection_start: Option<u32>,
-    selection_end: Option<u32>,
-    initial_content: Option<String>,
-    field_start_time: Option<Instant>,
-    total_keystrokes: u32,
-    corrections_count: u32,
-    last_element_id: Option<String>,
-}
 
 #[derive(Debug, Clone)]
 struct HotkeyPattern {
@@ -129,33 +83,10 @@ impl WindowsRecorder {
             ctrl: false, alt: false, shift: false, win: false,
         }));
         let last_clipboard_hash = Arc::new(Mutex::new(None));
-        let window_tracker = Arc::new(Mutex::new(HashMap::new()));
-        let drag_state = Arc::new(Mutex::new(None));
-        let text_buffer = Arc::new(Mutex::new(TextBuffer {
-            content: String::new(),
-            target_element: None,
-            last_update: Instant::now(),
-            selection_start: None,
-            selection_end: None,
-            initial_content: None,
-            field_start_time: None,
-            total_keystrokes: 0,
-            corrections_count: 0,
-            last_element_id: None,
-        }));
         let last_mouse_move_time = Arc::new(Mutex::new(Instant::now()));
         
         // Initialize hotkey patterns
         let hotkey_patterns = Arc::new(Self::initialize_hotkey_patterns());
-        
-        let active_windows = Arc::new(Mutex::new(HashSet::new()));
-        
-        // Set up file system watcher if enabled
-        let file_watcher = if config.monitor_file_system {
-            Some(Self::setup_file_watcher(&config, event_tx.clone())?)
-        } else {
-            None
-        };
         
         let mut recorder = Self {
             event_tx,
@@ -165,13 +96,8 @@ impl WindowsRecorder {
             process_info_cache,
             modifier_states,
             last_clipboard_hash,
-            window_tracker,
-            drag_state,
-            text_buffer,
             last_mouse_move_time,
             hotkey_patterns,
-            _file_watcher: file_watcher,
-            active_windows,
         };
         
         // Set up comprehensive event listeners
@@ -231,60 +157,6 @@ impl WindowsRecorder {
         ]
     }
     
-    /// Set up file system watcher
-    fn setup_file_watcher(
-        config: &WorkflowRecorderConfig,
-        event_tx: broadcast::Sender<WorkflowEvent>,
-    ) -> Result<notify::RecommendedWatcher> {
-        let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-            match res {
-                Ok(event) => {
-                    if let Some(workflow_event) = Self::convert_file_event(&event) {
-                        let _ = event_tx.send(workflow_event);
-                    }
-                }
-                Err(e) => error!("File watcher error: {:?}", e),
-            }
-        })?;
-
-        let paths = if config.file_system_watch_paths.is_empty() {
-            vec![std::env::current_dir().unwrap_or_else(|_| PathBuf::from("C:\\"))]
-        } else {
-            config.file_system_watch_paths.iter().map(PathBuf::from).collect()
-        };
-
-        for path in paths {
-            if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
-                warn!("Failed to watch path {:?}: {}", path, e);
-            }
-        }
-
-        Ok(watcher)
-    }
-    
-    /// Convert notify file event to workflow event
-    fn convert_file_event(event: &Event) -> Option<WorkflowEvent> {
-        let action = match &event.kind {
-            EventKind::Create(_) => FileAction::Created,
-            EventKind::Modify(_) => FileAction::Modified,
-            EventKind::Remove(_) => FileAction::Deleted,
-            _ => return None,
-        };
-
-        let path = event.paths.first()?.to_string_lossy().to_string();
-        let file_type = path.split('.').last().map(|s| s.to_string());
-
-        Some(WorkflowEvent::File(FileEvent {
-            action,
-            path,
-            destination_path: None,
-            size: None,
-            file_type,
-            source_application: None,
-            ui_element: None, // File system events don't have direct UI element context
-        }))
-    }
-    
     /// Set up comprehensive event listeners
     fn setup_comprehensive_listeners(&mut self) -> Result<()> {
         // Main input event listener (enhanced from original)
@@ -295,20 +167,8 @@ impl WindowsRecorder {
             self.setup_clipboard_monitor()?;
         }
         
-        // Window event monitoring
-        if self.config.record_window {
-            self.setup_window_monitor()?;
-        }
-        
-        // System event monitoring
-        if self.config.record_system_events {
-            self.setup_system_monitor()?;
-        }
-        
-        // Application monitoring
-        if self.config.record_applications {
-            self.setup_application_monitor()?;
-        }
+        // UI Automation event monitoring
+        self.setup_ui_automation_events()?;
         
         Ok(())
     }
@@ -321,19 +181,12 @@ impl WindowsRecorder {
         let stop_indicator_clone = Arc::clone(&self.stop_indicator);
         let process_info_cache_clone = Arc::clone(&self.process_info_cache);
         let modifier_states = Arc::clone(&self.modifier_states);
-        let drag_state = Arc::clone(&self.drag_state);
-        let text_buffer = Arc::clone(&self.text_buffer);
         let last_mouse_move_time = Arc::clone(&self.last_mouse_move_time);
         let hotkey_patterns = Arc::clone(&self.hotkey_patterns);
         let mouse_move_throttle = self.config.mouse_move_throttle_ms;
         let track_modifiers = self.config.track_modifier_states;
-        let record_scroll = self.config.record_scroll;
-        let record_drag_drop = self.config.record_drag_drop;
         let record_hotkeys = self.config.record_hotkeys;
-        let record_text_selection = self.config.record_text_selection;
-        let max_text_selection_length = self.config.max_text_selection_length;
-        let min_drag_distance = self.config.min_drag_distance;
-        let record_field_input = self.config.record_field_input;
+
         
         thread::spawn(move || {
             let automation = match UIAutomation::new() {
@@ -403,49 +256,8 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character,
                             scan_code: None, // TODO: Get actual scan code
-                            ui_element: ui_element.clone(),
+                            metadata: EventMetadata::from_ui_element(ui_element),
                         };
-                        
-                        // Add to text buffer if it's a printable character
-                        if let Some(ch) = character {
-                            Self::add_to_text_buffer(&text_buffer, ch, &automation, &last_mouse_pos, &process_info_cache_clone);
-                        }
-                        
-                        // Check for field completion triggers
-                        let field_completion_trigger = match key {
-                            Key::Tab => Some(FieldInputTrigger::TabKey),
-                            Key::Return => Some(FieldInputTrigger::EnterKey),
-                            Key::Escape => Some(FieldInputTrigger::EscapeKey),
-                            Key::UpArrow | Key::DownArrow | Key::LeftArrow | Key::RightArrow => {
-                                // Only trigger on arrow keys if they're likely to move to another field
-                                // This is a heuristic - in practice, you might want to be more selective
-                                if modifiers.ctrl || modifiers.alt {
-                                    Some(FieldInputTrigger::KeyboardNavigation)
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
-                        };
-                        
-                        if let Some(trigger) = field_completion_trigger {
-                            if record_field_input {
-                                Self::handle_field_completion(
-                                    &text_buffer,
-                                    trigger,
-                                    &event_tx,
-                                    &automation,
-                                    &last_mouse_pos,
-                                    &process_info_cache_clone,
-                                );
-                            }
-                        }
-                        
-                        // Track corrections (backspace, delete)
-                        if key == Key::Backspace || key == Key::Delete {
-                            let mut buffer = text_buffer.lock().unwrap();
-                            buffer.corrections_count += 1;
-                        }
                         
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
                     }
@@ -486,7 +298,7 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character: None,
                             scan_code: None,
-                            ui_element,
+                            metadata: EventMetadata::from_ui_element(ui_element),
                         };
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
                     }
@@ -504,50 +316,13 @@ impl WindowsRecorder {
                                 ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
                             }
                             
-                            // Handle drag start
-                            if record_drag_drop && mouse_button == MouseButton::Left {
-                                *drag_state.lock().unwrap() = Some(DragState {
-                                    start_pos: Position { x, y },
-                                    start_element: ui_element.clone(),
-                                    is_dragging: false,
-                                });
-                            }
-                            
-                            // Check for field completion on mouse click (if clicking on a different element)
-                            if mouse_button == MouseButton::Left {
-                                // Check if we're clicking on a different UI element than the current text buffer target
-                                let should_complete_field = {
-                                    let buffer = text_buffer.lock().unwrap();
-                                    if let (Some(ref current_element), Some(ref clicked_element)) = (&buffer.target_element, &ui_element) {
-                                        let current_id = Self::get_element_identifier(current_element);
-                                        let clicked_id = Self::get_element_identifier(clicked_element);
-                                        current_id != clicked_id && !buffer.content.trim().is_empty()
-                                    } else {
-                                        false
-                                    }
-                                };
-                                
-                                if should_complete_field {
-                                    if record_field_input {
-                                        Self::handle_field_completion(
-                                            &text_buffer,
-                                            FieldInputTrigger::MouseClick,
-                                            &event_tx,
-                                            &automation,
-                                            &last_mouse_pos,
-                                            &process_info_cache_clone,
-                                        );
-                                    }
-                                }
-                            }
-                            
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Down,
                                 button: mouse_button,
                                 position: Position { x, y },
-                                ui_element,
                                 scroll_delta: None,
                                 drag_start: None,
+                                metadata: EventMetadata::from_ui_element(ui_element),
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -566,68 +341,13 @@ impl WindowsRecorder {
                                 ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
                             }
                             
-                            // Handle drag end
-                            if record_drag_drop && mouse_button == MouseButton::Left {
-                                if let Some(drag) = drag_state.lock().unwrap().take() {
-                                    let distance = ((x - drag.start_pos.x).pow(2) + (y - drag.start_pos.y).pow(2)) as f64;
-                                    let distance_sqrt = distance.sqrt();
-                                    
-                                    if distance_sqrt > min_drag_distance {
-                                        // Check if this is a text selection by examining the UI elements
-                                        let is_text_selection = Self::is_text_selection_drag(
-                                            &drag.start_element,
-                                            &ui_element,
-                                            &automation,
-                                            drag.start_pos,
-                                            Position { x, y }
-                                        );
-                                        
-                                        if is_text_selection && record_text_selection {
-                                            // Try to get selected text from the UI automation
-                                            if let Some(selected_text) = Self::get_selected_text(&automation) {
-                                                let (truncated_text, truncated) = if selected_text.len() > max_text_selection_length {
-                                                    (selected_text[..max_text_selection_length].to_string(), true)
-                                                } else {
-                                                    (selected_text.clone(), false)
-                                                };
-                                                
-                                                let text_selection_event = TextSelectionEvent {
-                                                    selected_text: truncated_text,
-                                                    start_position: drag.start_pos,
-                                                    end_position: Position { x, y },
-                                                    target_element: ui_element.clone(),
-                                                    selection_method: SelectionMethod::MouseDrag,
-                                                    selection_length: selected_text.len(),
-                                                    is_partial_selection: truncated,
-                                                    application: ui_element.as_ref()
-                                                        .and_then(|elem| elem.application_name.clone()),
-                                                };
-                                                let _ = event_tx.send(WorkflowEvent::TextSelection(text_selection_event));
-                                            }
-                                        } else if drag.is_dragging {
-                                            // Regular drag and drop operation
-                                            let drag_drop_event = DragDropEvent {
-                                                start_position: drag.start_pos,
-                                                end_position: Position { x, y },
-                                                source_element: drag.start_element,
-                                                target_element: ui_element.clone(),
-                                                data_type: None, // TODO: Detect data type
-                                                content: None, // TODO: Extract content if text
-                                                success: true, // TODO: Detect success
-                                            };
-                                            let _ = event_tx.send(WorkflowEvent::DragDrop(drag_drop_event));
-                                        }
-                                    }
-                                }
-                            }
-                            
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Up,
                                 button: mouse_button,
                                 position: Position { x, y },
-                                ui_element,
                                 scroll_delta: None,
                                 drag_start: None,
+                                metadata: EventMetadata::from_ui_element(ui_element),
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -650,60 +370,34 @@ impl WindowsRecorder {
                         
                         *last_mouse_pos.lock().unwrap() = Some((x, y));
                         
-                        // Update drag state
-                        if record_drag_drop {
-                            if let Some(ref mut drag) = *drag_state.lock().unwrap() {
-                                let distance = ((x - drag.start_pos.x).pow(2) + (y - drag.start_pos.y).pow(2)) as f64;
-                                if distance.sqrt() > 5.0 { // 5 pixel threshold
-                                    drag.is_dragging = true;
-                                }
-                            }
-                        }
-                        
                         if should_record {
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Move,
                                 button: MouseButton::Left,
                                 position: Position { x, y },
-                                ui_element: None,
                                 scroll_delta: None,
                                 drag_start: None,
+                                metadata: EventMetadata::from_ui_element(None),
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
-                        if record_scroll {
-                            if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
-                                let mut ui_element = None;
-                                if capture_ui_elements {
-                                    ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
-                                }
-                                
-                                let scroll_event = ScrollEvent {
-                                    delta: (delta_x as i32, delta_y as i32),
-                                    position: Position { x, y },
-                                    target_element: ui_element.clone(),
-                                    direction: if delta_x != 0 && delta_y != 0 {
-                                        ScrollDirection::Both
-                                    } else if delta_x != 0 {
-                                        ScrollDirection::Horizontal
-                                    } else {
-                                        ScrollDirection::Vertical
-                                    },
-                                };
-                                let _ = event_tx.send(WorkflowEvent::Scroll(scroll_event));
-                                
-                                let mouse_event = MouseEvent {
-                                    event_type: MouseEventType::Wheel,
-                                    button: MouseButton::Middle,
-                                    position: Position { x, y },
-                                    ui_element,
-                                    scroll_delta: Some((delta_x as i32, delta_y as i32)),
-                                    drag_start: None,
-                                };
-                                let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                        if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
+                            let mut ui_element = None;
+                            if capture_ui_elements {
+                                ui_element = get_ui_element_at_point(&automation, x, y, Arc::clone(&process_info_cache_clone));
                             }
+                            
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Wheel,
+                                button: MouseButton::Middle,
+                                position: Position { x, y },
+                                scroll_delta: Some((delta_x as i32, delta_y as i32)),
+                                drag_start: None,
+                                metadata: EventMetadata::from_ui_element(ui_element),
+                            };
+                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
                     }
                 }
@@ -734,197 +428,12 @@ impl WindowsRecorder {
                 return Some(HotkeyEvent {
                     combination: format!("{:?}", pattern.keys), // TODO: Format properly
                     action: Some(pattern.action.clone()),
-                    application: None, // TODO: Get current application
                     is_global: true,
-                    ui_element: None, // TODO: Pass UI element context from caller
+                    metadata: EventMetadata::empty(), // TODO: Pass UI element context from caller
                 });
             }
         }
         None
-    }
-    
-    /// Add character to text buffer
-    fn add_to_text_buffer(
-        text_buffer: &Arc<Mutex<TextBuffer>>,
-        ch: char,
-        automation: &UIAutomation,
-        last_mouse_pos: &Arc<Mutex<Option<(i32, i32)>>>,
-        process_cache: &Arc<DashMap<u32, (Option<String>, Option<String>)>>,
-    ) {
-        // Get current UI element for context
-        let current_element = if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
-            get_ui_element_at_point(automation, x, y, Arc::clone(process_cache))
-        } else {
-            None
-        };
-        
-        // Calculate element ID outside of the mutable borrow
-        let element_id = current_element.as_ref().map(|elem| Self::get_element_identifier(elem));
-        
-        let mut buffer = text_buffer.lock().unwrap();
-        buffer.content.push(ch);
-        buffer.last_update = Instant::now();
-        buffer.total_keystrokes += 1;
-        buffer.target_element = current_element;
-        
-        // Initialize field tracking if this is a new field
-        if let Some(element_id) = element_id {
-            if buffer.last_element_id.as_ref() != Some(&element_id) {
-                // New field detected
-                buffer.last_element_id = Some(element_id);
-                buffer.field_start_time = Some(Instant::now());
-                buffer.initial_content = buffer.target_element.as_ref().and_then(|elem| elem.value.clone());
-                buffer.total_keystrokes = 1; // Reset for new field
-                buffer.corrections_count = 0;
-            }
-        }
-    }
-    
-    /// Handle field completion and emit FieldInputEvent
-    fn handle_field_completion(
-        text_buffer: &Arc<Mutex<TextBuffer>>,
-        trigger: FieldInputTrigger,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        automation: &UIAutomation,
-        last_mouse_pos: &Arc<Mutex<Option<(i32, i32)>>>,
-        process_cache: &Arc<DashMap<u32, (Option<String>, Option<String>)>>,
-    ) {
-        let (field_element, input_duration, total_keystrokes, corrections_count, initial_content, buffer_content) = {
-            let buffer = text_buffer.lock().unwrap();
-            
-            // Only emit if we have meaningful content and a target element
-            if buffer.content.trim().is_empty() || buffer.target_element.is_none() {
-                return;
-            }
-            
-            let field_element = buffer.target_element.clone();
-            let input_duration = buffer.field_start_time
-                .map(|start| Instant::now().duration_since(start).as_millis() as u64);
-            
-            (
-                field_element,
-                input_duration,
-                buffer.total_keystrokes,
-                buffer.corrections_count,
-                buffer.initial_content.clone(),
-                buffer.content.clone()
-            )
-        };
-        
-        // Try to get updated field content from the UI element
-        let current_field_content = if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
-            get_ui_element_at_point(automation, x, y, Arc::clone(process_cache))
-                .and_then(|elem| elem.value)
-                .unwrap_or(buffer_content)
-        } else {
-            buffer_content
-        };
-        
-        let field_input_event = FieldInputEvent {
-            field_content: current_field_content,
-            initial_content,
-            field_element: field_element.clone(),
-            field_label: field_element.as_ref().and_then(|elem| elem.name.clone()),
-            field_type: Self::detect_field_type(&field_element),
-            completion_trigger: trigger,
-            input_duration_ms: input_duration,
-            total_keystrokes: Some(total_keystrokes),
-            corrections_count: Some(corrections_count),
-            validation_status: Some(ValidationStatus::NotValidated), // TODO: Implement validation detection
-            application: field_element.as_ref().and_then(|elem| elem.application_name.clone()),
-            form_context: Self::detect_form_context(&field_element),
-            is_multi_step_form: false, // TODO: Implement multi-step form detection
-            form_step: None,
-        };
-        
-        let _ = event_tx.send(WorkflowEvent::FieldInput(field_input_event));
-        
-        // Reset buffer for next field
-        {
-            let mut buffer = text_buffer.lock().unwrap();
-            buffer.content.clear();
-            buffer.initial_content = None;
-            buffer.field_start_time = None;
-            buffer.total_keystrokes = 0;
-            buffer.corrections_count = 0;
-        }
-    }
-    
-    /// Get a unique identifier for a UI element
-    fn get_element_identifier(element: &UiElement) -> String {
-        // Create a unique identifier based on multiple properties
-        format!(
-            "{}|{}|{}|{}",
-            element.automation_id.as_deref().unwrap_or(""),
-            element.name.as_deref().unwrap_or(""),
-            element.class_name.as_deref().unwrap_or(""),
-            element.hierarchy_path.as_deref().unwrap_or("")
-        )
-    }
-    
-    /// Detect the field type based on UI element properties
-    fn detect_field_type(element: &Option<UiElement>) -> Option<String> {
-        element.as_ref().and_then(|elem| {
-            // Check automation ID for common patterns
-            if let Some(ref id) = elem.automation_id {
-                let id_lower = id.to_lowercase();
-                if id_lower.contains("password") || id_lower.contains("pwd") {
-                    return Some("password".to_string());
-                }
-                if id_lower.contains("email") || id_lower.contains("mail") {
-                    return Some("email".to_string());
-                }
-                if id_lower.contains("phone") || id_lower.contains("tel") {
-                    return Some("tel".to_string());
-                }
-                if id_lower.contains("number") || id_lower.contains("num") {
-                    return Some("number".to_string());
-                }
-                if id_lower.contains("date") {
-                    return Some("date".to_string());
-                }
-                if id_lower.contains("url") || id_lower.contains("website") {
-                    return Some("url".to_string());
-                }
-            }
-            
-            // Check name for patterns
-            if let Some(ref name) = elem.name {
-                let name_lower = name.to_lowercase();
-                if name_lower.contains("password") {
-                    return Some("password".to_string());
-                }
-                if name_lower.contains("email") {
-                    return Some("email".to_string());
-                }
-            }
-            
-            // Default to text for edit controls
-            if let Some(ref control_type) = elem.control_type {
-                if control_type.to_lowercase().contains("edit") {
-                    return Some("text".to_string());
-                }
-            }
-            
-            None
-        })
-    }
-    
-    /// Detect form context based on UI element hierarchy
-    fn detect_form_context(element: &Option<UiElement>) -> Option<String> {
-        element.as_ref().and_then(|elem| {
-            // Try to extract form context from window title or hierarchy
-            elem.window_title.clone()
-                .or_else(|| elem.hierarchy_path.as_ref().and_then(|path| {
-                    // Extract meaningful context from hierarchy path
-                    path.split('/').find(|part| {
-                        let part_lower = part.to_lowercase();
-                        part_lower.contains("form") || 
-                        part_lower.contains("dialog") || 
-                        part_lower.contains("window")
-                    }).map(|s| s.to_string())
-                }))
-        })
     }
     
     /// Set up clipboard monitoring
@@ -991,9 +500,8 @@ impl WindowsRecorder {
                             content: Some(truncated_content),
                             content_size: Some(content.len()),
                             format: Some("text".to_string()),
-                            source_application: None, // TODO: Detect source app
                             truncated,
-                            ui_element,
+                            metadata: EventMetadata::from_ui_element(ui_element),
                         };
                         
                         let _ = event_tx.send(WorkflowEvent::Clipboard(clipboard_event));
@@ -1017,93 +525,273 @@ impl WindowsRecorder {
         hasher.finish()
     }
     
-    /// Set up window monitoring
-    fn setup_window_monitor(&self) -> Result<()> {
-        // Implementation for window events monitoring
-        // This would involve Windows API hooks for window messages
-        // For now, we'll implement basic window tracking
-        
-        let _event_tx = self.event_tx.clone();
+    /// Set up UI Automation event handlers
+    fn setup_ui_automation_events(&self) -> Result<()> {
+        let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
-        let _window_tracker = Arc::clone(&self.window_tracker);
-        let _active_windows = Arc::clone(&self.active_windows);
+        let process_info_cache = Arc::clone(&self.process_info_cache);
+        let record_structure_changes = self.config.record_ui_structure_changes;
+        let record_property_changes = self.config.record_ui_property_changes;
+        let record_focus_changes = self.config.record_ui_focus_changes;
+        
+        if !record_structure_changes && !record_property_changes && !record_focus_changes {
+            debug!("No UI Automation events enabled, skipping setup");
+            return Ok(());
+        }
         
         thread::spawn(move || {
-            while !stop_indicator.load(Ordering::SeqCst) {
-                // TODO: Implement proper window enumeration and change detection
-                // This is a placeholder for the comprehensive window monitoring
-                thread::sleep(Duration::from_millis(500));
+            let automation = match UIAutomation::new() {
+                Ok(auto) => auto,
+                Err(e) => {
+                    error!("Failed to create UIAutomation instance for events: {}", e);
+                    return;
+                }
+            };
+            
+            info!("UI Automation event monitoring started");
+            
+            // Set up focus change event handler if enabled
+            if record_focus_changes {
+                let focus_event_tx = event_tx.clone();
+                let focus_process_cache = Arc::clone(&process_info_cache);
+                
+                // Create a focus changed event handler struct
+                struct FocusHandler {
+                    event_tx: broadcast::Sender<WorkflowEvent>,
+                    process_cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
+                }
+                
+                impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
+                    fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
+                        let ui_element = WindowsRecorder::convert_win_element_to_ui_element(sender, Arc::clone(&self.process_cache));
+                        
+                        let focus_event = UiFocusChangedEvent {
+                            previous_element: None, // TODO: Track previous element
+                            metadata: EventMetadata::from_ui_element(ui_element),
+                        };
+                        
+                        let _ = self.event_tx.send(WorkflowEvent::UiFocusChanged(focus_event));
+                        Ok(())
+                    }
+                }
+                
+                let focus_handler = FocusHandler {
+                    event_tx: focus_event_tx,
+                    process_cache: focus_process_cache,
+                };
+                
+                let focus_event_handler = uiautomation::events::UIFocusChangedEventHandler::from(focus_handler);
+                
+                // Register the focus change event handler
+                if let Err(e) = automation.add_focus_changed_event_handler(None, &focus_event_handler) {
+                    error!("Failed to register focus change event handler: {}", e);
+                } else {
+                    info!("Focus change event handler registered");
+                }
             }
+            
+            // Set up property change event handler if enabled
+            if record_property_changes {
+                let property_event_tx = event_tx.clone();
+                let property_process_cache = Arc::clone(&process_info_cache);
+                
+                // Create a property changed event handler using the proper closure type
+                let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> = Box::new(move |sender, property, value| {
+                    // Only process certain properties to reduce noise
+                    match property {
+                        uiautomation::types::UIProperty::ValueValue |
+                        uiautomation::types::UIProperty::Name |
+                        uiautomation::types::UIProperty::HasKeyboardFocus => {
+                            // Continue processing
+                        }
+                        _ => {
+                            // Skip other properties to reduce noise
+                            return Ok(());
+                        }
+                    }
+                    
+                    let ui_element = WindowsRecorder::convert_win_element_to_ui_element(sender, Arc::clone(&property_process_cache));
+                    
+                    // Only process text-related controls
+                    let is_text_control = ui_element.as_ref()
+                        .and_then(|elem| elem.control_type.as_ref())
+                        .map(|ct| {
+                            let ct_lower = ct.to_lowercase();
+                            ct_lower.contains("edit") || 
+                            ct_lower.contains("text") || 
+                            ct_lower.contains("document") ||
+                            ct_lower.contains("input")
+                        })
+                        .unwrap_or(false);
+                    
+                    if !is_text_control && property != uiautomation::types::UIProperty::HasKeyboardFocus {
+                        return Ok(());
+                    }
+                    
+                    // Try to get the actual current value from the element instead of relying on the event value
+                    let actual_value = match property {
+                        uiautomation::types::UIProperty::ValueValue => {
+                            // For text controls, try multiple approaches to get the actual text
+                            let mut text_content = None;
+                            
+                            // First, try the value from the event parameter
+                            let event_value_str = value.to_string();
+                            if !event_value_str.is_empty() && event_value_str != "EMPTY" && event_value_str != "null" {
+                                text_content = Some(event_value_str);
+                            }
+                            
+                            // If event value is not useful, try ValueValue property
+                            if text_content.is_none() {
+                                if let Ok(prop_value) = sender.get_property_value(uiautomation::types::UIProperty::ValueValue) {
+                                    let value_str = prop_value.to_string();
+                                    if !value_str.is_empty() && value_str != "EMPTY" && value_str != "null" {
+                                        text_content = Some(value_str);
+                                    }
+                                }
+                            }
+                            
+                            // If that didn't work, try getting the name
+                            if text_content.is_none() {
+                                if let Ok(name) = sender.get_name() {
+                                    if !name.is_empty() {
+                                        text_content = Some(name);
+                                    }
+                                }
+                            }
+                            
+                            // Try getting the legacy accessible value
+                            if text_content.is_none() {
+                                if let Ok(legacy_value) = sender.get_property_value(uiautomation::types::UIProperty::LegacyIAccessibleValue) {
+                                    let legacy_str = legacy_value.to_string();
+                                    if !legacy_str.is_empty() && legacy_str != "EMPTY" && legacy_str != "null" {
+                                        text_content = Some(legacy_str);
+                                    }
+                                }
+                            }
+                            
+                            // Final fallback - indicate that we detected a change
+                            if text_content.is_none() {
+                                text_content = Some("(text changed - content not accessible via automation)".to_string());
+                            }
+                            
+                            text_content
+                        }
+                        uiautomation::types::UIProperty::Name => {
+                            let event_value_str = value.to_string();
+                            if !event_value_str.is_empty() && event_value_str != "null" {
+                                Some(event_value_str)
+                            } else {
+                                sender.get_name().ok()
+                            }
+                        }
+                        uiautomation::types::UIProperty::HasKeyboardFocus => {
+                            Some(value.to_string())
+                        }
+                        _ => {
+                            Some(value.to_string())
+                        }
+                    };
+                    
+                    let property_event = UiPropertyChangedEvent {
+                        property_name: format!("{:?}", property),
+                        property_id: property as u32,
+                        old_value: None, // TODO: Track old values
+                        new_value: actual_value,
+                        metadata: EventMetadata::from_ui_element(ui_element),
+                    };
+                    
+                    let _ = property_event_tx.send(WorkflowEvent::UiPropertyChanged(property_event));
+                    Ok(())
+                });
+                
+                let property_event_handler = uiautomation::events::UIPropertyChangedEventHandler::from(property_handler);
+                
+                // Register property change event handler for common properties on the root element
+                let root = automation.get_root_element().unwrap();
+                let properties = vec![
+                    uiautomation::types::UIProperty::ValueValue,
+                    uiautomation::types::UIProperty::Name,
+                    uiautomation::types::UIProperty::HasKeyboardFocus,
+                ];
+                
+                if let Err(e) = automation.add_property_changed_event_handler(
+                    &root,
+                    uiautomation::types::TreeScope::Subtree,
+                    None,
+                    &property_event_handler,
+                    &properties
+                ) {
+                    error!("Failed to register property change event handler: {}", e);
+                } else {
+                    info!("Property change event handler registered for ValueValue, Name, and HasKeyboardFocus");
+                }
+            }
+            
+            // Note: Structure change events are not yet implemented in the current version
+            // of the uiautomation crate, so we'll keep the polling approach for now
+            if record_structure_changes {
+                warn!("Structure change events are not yet fully supported, using polling fallback");
+                // TODO: Implement when structure change events become available
+            }
+            
+            // Keep the thread alive while monitoring
+            while !stop_indicator.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(100));
+            }
+            
+            info!("UI Automation event monitoring stopped");
         });
         
         Ok(())
     }
     
-    /// Set up system event monitoring
-    fn setup_system_monitor(&self) -> Result<()> {
-        // Implementation for system events like power, network, etc.
-        // This would involve various Windows API event subscriptions
-        Ok(())
-    }
-    
-    /// Set up application monitoring
-    fn setup_application_monitor(&self) -> Result<()> {
-        // Implementation for application lifecycle monitoring
-        // This would involve process enumeration and change detection
-        Ok(())
-    }
-    
-    /// Check if a drag operation is likely a text selection
-    fn is_text_selection_drag(
-        start_element: &Option<UiElement>,
-        end_element: &Option<UiElement>,
-        _automation: &UIAutomation,
-        _start_pos: Position,
-        _end_pos: Position,
-    ) -> bool {
-        // Check if both elements are text-related controls
-        if let (Some(start_elem), Some(end_elem)) = (start_element, end_element) {
-            let text_control_types = ["Text", "Edit", "Document", "Group", "Pane"];
-            
-            let start_is_text = start_elem.control_type.as_ref()
-                .map(|ct| text_control_types.contains(&ct.as_str()))
-                .unwrap_or(false);
-                
-            let end_is_text = end_elem.control_type.as_ref()
-                .map(|ct| text_control_types.contains(&ct.as_str()))
-                .unwrap_or(false);
-            
-            // Text selection typically happens within the same element or closely related elements
-            let same_application = start_elem.application_name == end_elem.application_name;
-            let same_window = start_elem.window_title == end_elem.window_title;
-            
-            return start_is_text && end_is_text && same_application && same_window;
-        }
+    /// Convert a Windows UI element to our UiElement struct
+    fn convert_win_element_to_ui_element(
+        element: &uiautomation::UIElement,
+        process_info_cache: Arc<DashMap<u32, (Option<String>, Option<String>)>>,
+    ) -> Option<UiElement> {
+        let name = element.get_name().ok();
+        let automation_id = element.get_automation_id().ok();
+        let class_name = element.get_classname().ok();
+        let control_type = element.get_control_type().ok().map(|ct| ct.to_string());
+        let process_id = element.get_process_id().ok().map(|pid| pid as u32);
         
-        false
-    }
-    
-    /// Try to get selected text using UI Automation
-    fn get_selected_text(automation: &UIAutomation) -> Option<String> {
-        // Get the currently focused element
-        if let Ok(focused_element) = automation.get_focused_element() {
-            // Try to get the element's value - this works for many text controls
-            if let Ok(value) = focused_element.get_property_value(UIProperty::Name) {
-                let value_str = value.to_string();
-                if !value_str.is_empty() && value_str != "null" {
-                    return Some(value_str);
-                }
-            }
-            
-            // Try to get the element's name as fallback
-            if let Ok(name) = focused_element.get_name() {
-                if !name.is_empty() {
-                    return Some(name);
-                }
-            }
-        }
+        let is_enabled = element.is_enabled().ok();
+        let has_keyboard_focus = element.has_keyboard_focus().ok();
+        let value = element.get_property_value(uiautomation::types::UIProperty::Name)
+            .ok().map(|v| v.to_string());
         
-        None
+        let bounding_rect = element.get_bounding_rectangle().ok().map(|rect| {
+            crate::events::Rect {
+                x: rect.get_left() as i32,
+                y: rect.get_top() as i32,
+                width: rect.get_width() as i32,
+                height: rect.get_height() as i32,
+            }
+        });
+        
+        let hierarchy_path = get_element_hierarchy_path(element);
+        
+        let (window_title, application_name) = if let Some(pid) = process_id {
+            get_window_info_for_process(pid, Arc::clone(&process_info_cache))
+        } else {
+            (None, None)
+        };
+        
+        Some(UiElement {
+            name,
+            automation_id,
+            class_name,
+            control_type,
+            process_id,
+            application_name,
+            window_title,
+            bounding_rect,
+            is_enabled,
+            has_keyboard_focus,
+            hierarchy_path,
+            value,
+        })
     }
     
     /// Get the currently focused UI element

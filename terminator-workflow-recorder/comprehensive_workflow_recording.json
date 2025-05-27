@@ -1,2338 +1,1328 @@
 {
   "name": "Comprehensive Workflow Recording",
-  "start_time": 1748306800276,
-  "end_time": 1748306812730,
+  "start_time": 1748313473019,
+  "end_time": 1748313480338,
   "events": [
     {
-      "timestamp": 1748306800385,
+      "timestamp": 1748313473463,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1414,
-            "y": 1106
+            "x": 511,
+            "y": 1200
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800449,
+      "timestamp": 1748313473519,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1412,
-            "y": 1106
+            "x": 519,
+            "y": 1197
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800505,
+      "timestamp": 1748313473549,
+      "event": {
+        "UiFocusChanged": {
+          "previous_element": null,
+          "metadata": {
+            "ui_element": {
+              "name": "Taskbar",
+              "automation_id": "",
+              "class_name": "Shell_TrayWnd",
+              "control_type": "Pane",
+              "process_id": 7268,
+              "application_name": "explorer",
+              "window_title": "Taskbar",
+              "bounding_rect": {
+                "x": 0,
+                "y": 1392,
+                "width": 2561,
+                "height": 49
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": false,
+              "hierarchy_path": "Pane[Taskbar]",
+              "value": "STRING(Taskbar)"
+            },
+            "application": "explorer",
+            "window_title": "Taskbar",
+            "process_id": 7268
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313473575,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1393,
-            "y": 1112
+            "x": 534,
+            "y": 1193
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800561,
+      "timestamp": 1748313473631,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1374,
-            "y": 1116
+            "x": 600,
+            "y": 1188
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800617,
+      "timestamp": 1748313473687,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1368,
-            "y": 1118
+            "x": 823,
+            "y": 1188
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800681,
+      "timestamp": 1748313473743,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1364,
-            "y": 1119
+            "x": 1139,
+            "y": 1193
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306800737,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1358,
-            "y": 1119
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306800905,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1355,
-            "y": 1119
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306800977,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1353,
-            "y": 1120
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306801033,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1353,
-            "y": 1125
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306801089,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1358,
-            "y": 1139
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306801145,
+      "timestamp": 1748313473799,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
             "x": 1383,
-            "y": 1158
+            "y": 1239
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801201,
+      "timestamp": 1748313473855,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1412,
-            "y": 1177
+            "x": 1530,
+            "y": 1244
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801257,
+      "timestamp": 1748313473911,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1459,
-            "y": 1196
+            "x": 1722,
+            "y": 1273
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801313,
+      "timestamp": 1748313473967,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1488,
-            "y": 1212
+            "x": 1838,
+            "y": 1298
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801369,
+      "timestamp": 1748313474023,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1516,
-            "y": 1228
+            "x": 1882,
+            "y": 1312
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801425,
+      "timestamp": 1748313474079,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1535,
-            "y": 1240
+            "x": 1944,
+            "y": 1322
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801481,
+      "timestamp": 1748313474135,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1546,
-            "y": 1247
+            "x": 2012,
+            "y": 1323
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801537,
+      "timestamp": 1748313474199,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1559,
-            "y": 1255
+            "x": 2025,
+            "y": 1322
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801593,
+      "timestamp": 1748313474287,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1568,
-            "y": 1269
+            "x": 2026,
+            "y": 1320
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801649,
+      "timestamp": 1748313474343,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1565,
-            "y": 1290
+            "x": 2032,
+            "y": 1317
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801705,
+      "timestamp": 1748313474399,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1529,
-            "y": 1326
+            "x": 2046,
+            "y": 1306
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801761,
+      "timestamp": 1748313474455,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1494,
-            "y": 1354
+            "x": 2050,
+            "y": 1302
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801833,
+      "timestamp": 1748313474511,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1488,
-            "y": 1362
+            "x": 2052,
+            "y": 1299
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306801889,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1488,
-            "y": 1374
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306801945,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1497,
-            "y": 1403
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306802001,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1500,
-            "y": 1423
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306802279,
+      "timestamp": 1748313474891,
       "event": {
         "Mouse": {
           "event_type": "Down",
           "button": "Left",
           "position": {
-            "x": 1501,
-            "y": 1425
-          },
-          "ui_element": {
-            "name": "Firefox - 1 running window",
-            "automation_id": "Appid: 308046B0AF4A39CB",
-            "class_name": "Taskbar.TaskListButtonAutomationPeer",
-            "control_type": "Button",
-            "process_id": 7268,
-            "application_name": "explorer",
-            "window_title": "Taskbar",
-            "bounding_rect": {
-              "x": 1481,
-              "y": 1392,
-              "width": 45,
-              "height": 49
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Button[Appid: 308046B0AF4A39CB]",
-            "value": "STRING(Firefox - 1 running window)"
+            "x": 2054,
+            "y": 1295
           },
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": {
+              "name": "Plan, search, build anything",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Text",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1279,
+                "width": 146,
+                "height": 18
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": false,
+              "hierarchy_path": "Text[Plan, search, build anything]",
+              "value": "STRING(Plan, search, build anything)"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802299,
+      "timestamp": 1748313474895,
       "event": {
         "Mouse": {
           "event_type": "Up",
           "button": "Left",
           "position": {
-            "x": 1501,
-            "y": 1425
+            "x": 2054,
+            "y": 1295
           },
-          "ui_element": {
-            "name": "Firefox - 1 running window",
-            "automation_id": "Appid: 308046B0AF4A39CB",
-            "class_name": "Taskbar.TaskListButtonAutomationPeer",
-            "control_type": "Button",
-            "process_id": 7268,
-            "application_name": "explorer",
-            "window_title": "Taskbar",
-            "bounding_rect": {
-              "x": 1481,
-              "y": 1392,
-              "width": 45,
-              "height": 49
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": false,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
             },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Button[Appid: 308046B0AF4A39CB]",
-            "value": "STRING(Firefox - 1 running window)"
-          },
-          "scroll_delta": null,
-          "drag_start": null
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802361,
+      "timestamp": 1748313474938,
+      "event": {
+        "UiFocusChanged": {
+          "previous_element": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476171,
+      "event": {
+        "Keyboard": {
+          "key_code": 72,
+          "is_key_down": true,
+          "ctrl_pressed": false,
+          "alt_pressed": false,
+          "shift_pressed": false,
+          "win_pressed": false,
+          "character": "H",
+          "scan_code": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476188,
+      "event": {
+        "Keyboard": {
+          "key_code": 72,
+          "is_key_down": false,
+          "ctrl_pressed": false,
+          "alt_pressed": false,
+          "shift_pressed": false,
+          "win_pressed": false,
+          "character": null,
+          "scan_code": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476202,
+      "event": {
+        "UiPropertyChanged": {
+          "property_name": "ValueValue",
+          "property_id": 30045,
+          "old_value": null,
+          "new_value": "STRING(h)",
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476328,
+      "event": {
+        "Keyboard": {
+          "key_code": 73,
+          "is_key_down": true,
+          "ctrl_pressed": false,
+          "alt_pressed": false,
+          "shift_pressed": false,
+          "win_pressed": false,
+          "character": "I",
+          "scan_code": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476362,
+      "event": {
+        "UiPropertyChanged": {
+          "property_name": "ValueValue",
+          "property_id": 30045,
+          "old_value": null,
+          "new_value": "STRING(hi)",
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313476415,
+      "event": {
+        "Keyboard": {
+          "key_code": 73,
+          "is_key_down": false,
+          "ctrl_pressed": false,
+          "alt_pressed": false,
+          "shift_pressed": false,
+          "win_pressed": false,
+          "character": null,
+          "scan_code": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 2036,
+                "y": 1278,
+                "width": 506,
+                "height": 20
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313477319,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1502,
-            "y": 1425
+            "x": 2054,
+            "y": 1294
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802441,
+      "timestamp": 1748313478119,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1502,
-            "y": 1425
+            "x": 2053,
+            "y": 1294
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802505,
+      "timestamp": 1748313478175,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1503,
-            "y": 1424
+            "x": 2047,
+            "y": 1288
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802585,
+      "timestamp": 1748313478231,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1504,
-            "y": 1422
+            "x": 2043,
+            "y": 1281
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802641,
+      "timestamp": 1748313478287,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1505,
-            "y": 1419
+            "x": 2034,
+            "y": 1274
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802697,
+      "timestamp": 1748313478343,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1507,
-            "y": 1409
+            "x": 1926,
+            "y": 1223
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802753,
+      "timestamp": 1748313478399,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1499,
-            "y": 1380
+            "x": 1708,
+            "y": 1157
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802809,
+      "timestamp": 1748313478455,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1464,
-            "y": 1346
+            "x": 1598,
+            "y": 1136
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802865,
+      "timestamp": 1748313478511,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1449,
-            "y": 1336
+            "x": 1564,
+            "y": 1125
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802921,
+      "timestamp": 1748313478567,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1430,
-            "y": 1328
+            "x": 1555,
+            "y": 1125
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306802977,
+      "timestamp": 1748313478623,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1405,
-            "y": 1322
+            "x": 1538,
+            "y": 1126
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803033,
+      "timestamp": 1748313478679,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1398,
-            "y": 1318
+            "x": 1510,
+            "y": 1129
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803089,
+      "timestamp": 1748313478735,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1393,
-            "y": 1316
+            "x": 1462,
+            "y": 1122
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803145,
+      "timestamp": 1748313478791,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1387,
-            "y": 1315
+            "x": 1408,
+            "y": 1111
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803201,
+      "timestamp": 1748313478847,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1381,
+            "y": 1107
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313478903,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1376,
+            "y": 1105
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313478959,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1371,
+            "y": 1105
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313478974,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 1370,
+            "y": 1105
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Image",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 20,
+                "y": 964,
+                "width": 1982,
+                "height": 375
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": false,
+              "hierarchy_path": "Image",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313479059,
+      "event": {
+        "UiFocusChanged": {
+          "previous_element": null,
+          "metadata": {
+            "ui_element": {
+              "name": "Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 20,
+                "y": 1321,
+                "width": 8,
+                "height": 18
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit[Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help]",
+              "value": "STRING(Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help)"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313479067,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 1369,
+            "y": 1105
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": {
+              "name": "",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Image",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 20,
+                "y": 964,
+                "width": 1982,
+                "height": 375
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": false,
+              "hierarchy_path": "Image",
+              "value": "STRING()"
+            },
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313479759,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1367,
+            "y": 1105
+          },
+          "scroll_delta": null,
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1748313479823,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
             "x": 1366,
-            "y": 1311
+            "y": 1108
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803257,
+      "timestamp": 1748313479887,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1350,
-            "y": 1307
+            "x": 1365,
+            "y": 1110
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803313,
+      "timestamp": 1748313480023,
       "event": {
         "Mouse": {
           "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1347,
-            "y": 1306
+            "x": 1364,
+            "y": 1112
           },
-          "ui_element": null,
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306803369,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1331,
-            "y": 1300
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306803433,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1318,
-            "y": 1295
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306803489,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1311,
-            "y": 1293
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306803545,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1307,
-            "y": 1292
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306803894,
-      "event": {
-        "Mouse": {
-          "event_type": "Down",
-          "button": "Left",
-          "position": {
-            "x": 1306,
-            "y": 1292
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306803911,
-      "event": {
-        "Mouse": {
-          "event_type": "Up",
-          "button": "Left",
-          "position": {
-            "x": 1306,
-            "y": 1292
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306804857,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1305,
-            "y": 1292
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306804913,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1303,
-            "y": 1290
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306804969,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1299,
-            "y": 1287
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805025,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1296,
-            "y": 1283
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805081,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1292,
-            "y": 1280
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805137,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1285,
-            "y": 1275
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805193,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1283,
-            "y": 1273
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805361,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1282,
-            "y": 1273
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805593,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1281,
-            "y": 1273
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306805649,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1275,
-            "y": 1273
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306806529,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1274,
-            "y": 1273
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807153,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1273,
-            "y": 1272
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807225,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1270,
-            "y": 1272
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807281,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1270,
-            "y": 1272
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807337,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1253,
-            "y": 1267
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807465,
-      "event": {
-        "Mouse": {
-          "event_type": "Down",
-          "button": "Left",
-          "position": {
-            "x": 1247,
-            "y": 1267
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807541,
-      "event": {
-        "Mouse": {
-          "event_type": "Up",
-          "button": "Left",
-          "position": {
-            "x": 1247,
-            "y": 1267
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306807961,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1246,
-            "y": 1267
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808017,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1240,
-            "y": 1266
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808121,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1235,
-            "y": 1265
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808201,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1234,
-            "y": 1265
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808256,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1233,
-            "y": 1265
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808321,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1227,
-            "y": 1257
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808401,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1224,
-            "y": 1254
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808577,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1224,
-            "y": 1254
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808665,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1222,
-            "y": 1254
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808737,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1219,
-            "y": 1256
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808793,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1219,
-            "y": 1246
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808849,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1232
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306808947,
-      "event": {
-        "Mouse": {
-          "event_type": "Down",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1227
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809065,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1227
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809080,
-      "event": {
-        "Mouse": {
-          "event_type": "Up",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1227
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809145,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1226
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809241,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1225
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809361,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1221,
-            "y": 1224
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809417,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1220,
-            "y": 1223
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809521,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1220,
-            "y": 1223
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809577,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1255,
-            "y": 1214
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809633,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1461,
-            "y": 1174
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809689,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1705,
-            "y": 1106
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809745,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1837,
-            "y": 1052
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809801,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1873,
-            "y": 1033
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809857,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1885,
-            "y": 1025
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809913,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1910,
-            "y": 1015
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306809969,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1917,
-            "y": 1005
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810025,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1920,
-            "y": 998
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810081,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1924,
-            "y": 995
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810137,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1932,
-            "y": 990
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810209,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1936,
-            "y": 988
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810265,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1941,
-            "y": 987
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810321,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1946,
-            "y": 985
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810377,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1954,
-            "y": 984
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810433,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1958,
-            "y": 984
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810545,
-      "event": {
-        "Mouse": {
-          "event_type": "Down",
-          "button": "Left",
-          "position": {
-            "x": 1958,
-            "y": 984
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810593,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1959,
-            "y": 984
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810630,
-      "event": {
-        "Mouse": {
-          "event_type": "Up",
-          "button": "Left",
-          "position": {
-            "x": 1960,
-            "y": 984
-          },
-          "ui_element": {
-            "name": "Close (Esc)",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Button",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 1954,
-              "y": 971,
-              "width": 21,
-              "height": 22
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": true,
-            "hierarchy_path": "Button[Close (Esc)]",
-            "value": "STRING(Close (Esc))"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810649,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1960,
-            "y": 984
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810761,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1959,
-            "y": 984
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810817,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1892,
-            "y": 1023
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810873,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1701,
-            "y": 1119
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306810929,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1639,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811007,
-      "event": {
-        "Mouse": {
-          "event_type": "Down",
-          "button": "Left",
-          "position": {
-            "x": 1638,
-            "y": 1157
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811130,
-      "event": {
-        "Mouse": {
-          "event_type": "Up",
-          "button": "Left",
-          "position": {
-            "x": 1638,
-            "y": 1157
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
-          },
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811289,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1637,
-            "y": 1157
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811345,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1635,
-            "y": 1157
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811401,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1627,
-            "y": 1157
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811457,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1606,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811513,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1574,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811569,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1531,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811625,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1478,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811681,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1442,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811737,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1411,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811793,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1377,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306811849,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1354,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812105,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1351,
-            "y": 1155
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812161,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1358,
-            "y": 1153
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812217,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1369,
-            "y": 1151
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812273,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1389,
-            "y": 1151
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812329,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1397,
-            "y": 1151
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812385,
-      "event": {
-        "Mouse": {
-          "event_type": "Move",
-          "button": "Left",
-          "position": {
-            "x": 1401,
-            "y": 1149
-          },
-          "ui_element": null,
-          "scroll_delta": null,
-          "drag_start": null
-        }
-      }
-    },
-    {
-      "timestamp": 1748306812523,
+      "timestamp": 1748313480030,
       "event": {
         "Keyboard": {
           "key_code": 162,
@@ -2343,110 +1333,93 @@
           "win_pressed": false,
           "character": null,
           "scan_code": null,
-          "ui_element": {
-            "name": "Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Edit",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 1321,
-              "width": 8,
-              "height": 18
+          "metadata": {
+            "ui_element": {
+              "name": "Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 20,
+                "y": 1321,
+                "width": 8,
+                "height": 18
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit[Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help]",
+              "value": "STRING(Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help)"
             },
-            "is_enabled": true,
-            "has_keyboard_focus": true,
-            "hierarchy_path": "Edit[Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help]",
-            "value": "STRING(Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help)"
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
           }
         }
       }
     },
     {
-      "timestamp": 1748306812546,
+      "timestamp": 1748313480143,
       "event": {
         "Mouse": {
-          "event_type": "Down",
+          "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1403,
-            "y": 1147
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
+            "x": 1363,
+            "y": 1113
           },
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306812696,
+      "timestamp": 1748313480319,
       "event": {
         "Mouse": {
-          "event_type": "Up",
+          "event_type": "Move",
           "button": "Left",
           "position": {
-            "x": 1403,
-            "y": 1147
-          },
-          "ui_element": {
-            "name": "",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Image",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 964,
-              "width": 1303,
-              "height": 375
-            },
-            "is_enabled": true,
-            "has_keyboard_focus": false,
-            "hierarchy_path": "Image",
-            "value": "STRING()"
+            "x": 1362,
+            "y": 1113
           },
           "scroll_delta": null,
-          "drag_start": null
+          "drag_start": null,
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306812714,
+      "timestamp": 1748313480327,
       "event": {
         "Hotkey": {
           "combination": "[162, 67]",
           "action": "Copy",
-          "application": null,
           "is_global": true,
-          "ui_element": null
+          "metadata": {
+            "ui_element": null,
+            "application": null,
+            "window_title": null,
+            "process_id": null
+          }
         }
       }
     },
     {
-      "timestamp": 1748306812726,
+      "timestamp": 1748313480335,
       "event": {
         "Keyboard": {
           "key_code": 67,
@@ -2457,24 +1430,29 @@
           "win_pressed": false,
           "character": "C",
           "scan_code": null,
-          "ui_element": {
-            "name": "Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help",
-            "automation_id": "",
-            "class_name": "",
-            "control_type": "Edit",
-            "process_id": 17340,
-            "application_name": "Cursor",
-            "window_title": "windows.rs - terminator - Cursor",
-            "bounding_rect": {
-              "x": 686,
-              "y": 1321,
-              "width": 8,
-              "height": 18
+          "metadata": {
+            "ui_element": {
+              "name": "Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help",
+              "automation_id": "",
+              "class_name": "",
+              "control_type": "Edit",
+              "process_id": 17340,
+              "application_name": "Cursor",
+              "window_title": "lib.rs - terminator - Cursor",
+              "bounding_rect": {
+                "x": 20,
+                "y": 1321,
+                "width": 8,
+                "height": 18
+              },
+              "is_enabled": true,
+              "has_keyboard_focus": true,
+              "hierarchy_path": "Edit[Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help]",
+              "value": "STRING(Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help)"
             },
-            "is_enabled": true,
-            "has_keyboard_focus": true,
-            "hierarchy_path": "Edit[Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help]",
-            "value": "STRING(Terminal 1, rustup Run the command: Toggle Screen Reader Accessibility Mode for an optimized screen reader experience Use Alt+F1 for terminal accessibility help)"
+            "application": "Cursor",
+            "window_title": "lib.rs - terminator - Cursor",
+            "process_id": 17340
           }
         }
       }

@@ -31,28 +31,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // Advanced workflow features
         record_clipboard: true,
-        record_text_input: true,
-        record_field_input: true,
         record_text_selection: true,
-        record_applications: true,
-        record_file_operations: true, // Can be very noisy, enable if needed
-        record_menu_interactions: true,
-        record_dialog_interactions: true,
-        record_scroll: false,
-        record_system_events: true, // Can be noisy, enable for comprehensive system monitoring
         record_drag_drop: true,
         record_hotkeys: true,
+        
+        // UI Automation events
+        record_ui_focus_changes: true,
+        record_ui_structure_changes: true,
+        record_ui_property_changes: true,
         
         // Configuration tuning
         max_clipboard_content_length: 2048, // 2KB max for clipboard content
         max_text_selection_length: 512, // 512 chars max for text selections
-        record_window_geometry: true,
         track_modifier_states: true,
-        detailed_scroll_tracking: false, // Set to true for detailed scroll analysis
-        monitor_file_system: true, 
-        file_system_watch_paths: vec![], // Add specific paths if file monitoring is enabled
-        record_network_events: true, // Privacy-sensitive, enable if needed
-        record_multimedia_events: true, // Can be noisy, enable if needed
         mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves to reduce noise
         min_drag_distance: 5.0, // 5 pixels minimum for drag detection
     };
@@ -79,6 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   • Text input with UI element context");
     info!("   • Drag and drop operations");
     info!("   • Menu and dialog interactions");
+    info!("   • UI focus changes");
+    info!("   • UI structure changes");
+    info!("   • UI property changes");
     info!("");
     info!("💡 Interact with your desktop to see comprehensive event capture...");
     info!("🛑 Press Ctrl+C to stop recording and save the workflow");
@@ -91,23 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // Display different event types with appropriate detail levels
             match &event {
-                terminator_workflow_recorder::WorkflowEvent::Mouse(mouse_event) => {
-                    if mouse_event.event_type != terminator_workflow_recorder::MouseEventType::Move {
-                        println!("🖱️  Mouse {}: {:?} at ({}, {})", 
-                            event_count,
-                            mouse_event.event_type, 
-                            mouse_event.position.x, 
-                            mouse_event.position.y);
-                        
-                        if let Some(ref ui_element) = mouse_event.ui_element {
-                            if let Some(ref app) = ui_element.application_name {
-                                println!("     └─ Target: {} in {}", 
-                                    ui_element.control_type.as_ref().unwrap_or(&"Unknown".to_string()),
-                                    app);
-                            }
-                        }
-                    }
-                }
+                
                 terminator_workflow_recorder::WorkflowEvent::Keyboard(kb_event) => {
                     if kb_event.is_key_down {
                         let modifiers = format!("{}{}{}{}",
@@ -123,8 +101,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("⌨️  Keyboard {}: {}Key({})", event_count, modifiers, kb_event.key_code);
                         }
                         
-                        if let Some(ref ui_element) = kb_event.ui_element {
-                            if let Some(ref app) = ui_element.application_name {
+                        if let Some(ref ui_element) = kb_event.metadata.ui_element {
+                            if let Some(ref app) = kb_event.metadata.application {
                                 println!("     └─ Target: {} in {}", 
                                     ui_element.control_type.as_ref().unwrap_or(&"Unknown".to_string()),
                                     app);
@@ -161,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                     println!("     └─ Text: \"{}\"", preview);
                     
-                    if let Some(ref app) = selection_event.application {
+                    if let Some(ref app) = selection_event.metadata.application {
                         println!("     └─ App: {}, Method: {:?}", app, selection_event.selection_method);
                     }
                 }
@@ -171,15 +149,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         hotkey_event.combination,
                         hotkey_event.action.as_ref().unwrap_or(&"Unknown".to_string()));
                 }
-                terminator_workflow_recorder::WorkflowEvent::Scroll(scroll_event) => {
-                    println!("📜 Scroll {}: {:?} delta({}, {}) at ({}, {})", 
-                        event_count,
-                        scroll_event.direction,
-                        scroll_event.delta.0,
-                        scroll_event.delta.1,
-                        scroll_event.position.x,
-                        scroll_event.position.y);
-                }
                 terminator_workflow_recorder::WorkflowEvent::DragDrop(drag_event) => {
                     println!("🎯 Drag & Drop {}: from ({}, {}) to ({}, {})", 
                         event_count,
@@ -188,22 +157,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         drag_event.end_position.x,
                         drag_event.end_position.y);
                 }
-                terminator_workflow_recorder::WorkflowEvent::File(file_event) => {
-                    println!("📁 File {}: {:?} -> {}", 
-                        event_count,
-                        file_event.action,
-                        file_event.path);
+                terminator_workflow_recorder::WorkflowEvent::UiFocusChanged(focus_event) => {
+                    println!("🎯 Focus changed to: {:?}", focus_event.metadata.ui_element.as_ref().map(|e| &e.name));
                 }
-                terminator_workflow_recorder::WorkflowEvent::FieldInput(field_event) => {
-                    println!("🔑 Field Input {}: {:?} -> \"{}\"", 
-                        event_count,
-                        field_event.completion_trigger,
-                        field_event.field_content);
+                terminator_workflow_recorder::WorkflowEvent::UiPropertyChanged(property_event) => {
+                    println!("🔧 Property changed: {} = {:?}", 
+                        property_event.property_name, 
+                        property_event.new_value);
                 }
-                
                 _ => {
                     // Display other event types more briefly
-                    println!("📝 Event {}: {:?}", event_count, event);
+                    // println!("📝 Event {}: {:?}", event_count, event);
                 }
             }
         }

@@ -107,8 +107,8 @@ pub struct KeyboardEvent {
     /// Raw scan code
     pub scan_code: Option<u32>,
     
-    /// The UI element that has focus when the keyboard event occurred
-    pub ui_element: Option<UiElement>,
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
 }
 
 /// Represents a mouse event
@@ -123,14 +123,14 @@ pub struct MouseEvent {
     /// The position of the mouse
     pub position: Position,
     
-    /// The UI element under the mouse
-    pub ui_element: Option<UiElement>,
-    
     /// Scroll delta for wheel events
     pub scroll_delta: Option<(i32, i32)>,
     
     /// Drag start position (for drag events)
     pub drag_start: Option<Position>,
+    
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
 }
 
 /// Represents clipboard actions
@@ -157,446 +157,11 @@ pub struct ClipboardEvent {
     /// The format of the clipboard data
     pub format: Option<String>,
     
-    /// The application that performed the action
-    pub source_application: Option<String>,
-    
     /// Whether the content was truncated due to size
     pub truncated: bool,
     
-    /// The UI element that was focused when the clipboard action occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents window actions
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum WindowAction {
-    Created,
-    Closed,
-    Minimized,
-    Maximized,
-    Restored,
-    Moved,
-    Resized,
-    FocusGained,
-    FocusLost,
-    TitleChanged,
-}
-
-/// Represents a window event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowEvent {
-    /// The window action
-    pub action: WindowAction,
-    
-    /// The window title
-    pub title: Option<String>,
-    
-    /// The window class name
-    pub class_name: Option<String>,
-    
-    /// The process ID of the application that owns the window
-    pub process_id: Option<u32>,
-    
-    /// The application name
-    pub application_name: Option<String>,
-    
-    /// Window position and size
-    pub bounds: Option<Rect>,
-    
-    /// Previous bounds (for move/resize events)
-    pub previous_bounds: Option<Rect>,
-    
-    /// Window handle
-    pub handle: Option<String>,
-    
-    /// Parent window handle
-    pub parent_handle: Option<String>,
-    
-    /// Window state (normal, minimized, maximized)
-    pub state: Option<String>,
-    
-    /// The UI element associated with this window event
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents text input events (high-level text changes)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextInputEvent {
-    /// The text that was entered
-    pub text: String,
-    
-    /// The UI element where text was entered
-    pub target_element: Option<UiElement>,
-    
-    /// Whether this was a replacement of existing text
-    pub is_replacement: bool,
-    
-    /// The previous text (if replacement)
-    pub previous_text: Option<String>,
-    
-    /// Selection start position
-    pub selection_start: Option<u32>,
-    
-    /// Selection end position
-    pub selection_end: Option<u32>,
-    
-    /// The UI element that had focus during text input (same as target_element for consistency)
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents the trigger for a field input completion
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum FieldInputTrigger {
-    /// User pressed Tab to move to next field
-    TabKey,
-    /// User pressed Enter to submit or move to next field
-    EnterKey,
-    /// User clicked on a different field
-    MouseClick,
-    /// User used keyboard navigation (arrow keys, etc.)
-    KeyboardNavigation,
-    /// Focus was lost due to window/application change
-    FocusLost,
-    /// Form was submitted
-    FormSubmit,
-    /// Field validation triggered
-    Validation,
-    /// User pressed Escape
-    EscapeKey,
-}
-
-/// Represents a complete field input event (triggered when user finishes entering text in a field)
-/// 
-/// This event is emitted when a user completes entering text in a form field or input control.
-/// It captures the entire content of the field rather than individual keystrokes, making it
-/// ideal for workflow automation and form filling analysis.
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use terminator_workflow_recorder::*;
-/// 
-/// // Example of a field input event when user types "John" in a name field and presses Tab
-/// let field_event = FieldInputEvent {
-///     field_content: "John".to_string(),
-///     initial_content: Some("".to_string()),
-///     field_element: Some(UiElement {
-///         name: Some("First Name".to_string()),
-///         automation_id: Some("txtFirstName".to_string()),
-///         class_name: Some("Edit".to_string()),
-///         control_type: Some("Edit".to_string()),
-///         // ... other fields
-///         # process_id: None,
-///         # application_name: Some("MyApp".to_string()),
-///         # window_title: Some("Registration Form".to_string()),
-///         # bounding_rect: None,
-///         # is_enabled: Some(true),
-///         # has_keyboard_focus: Some(true),
-///         # hierarchy_path: None,
-///         # value: Some("John".to_string()),
-///     }),
-///     field_label: Some("First Name".to_string()),
-///     field_type: Some("text".to_string()),
-///     completion_trigger: FieldInputTrigger::TabKey,
-///     input_duration_ms: Some(2500), // User took 2.5 seconds to type
-///     total_keystrokes: Some(4), // J-o-h-n
-///     corrections_count: Some(0), // No backspaces
-///     validation_status: Some(ValidationStatus::Valid),
-///     application: Some("MyApp".to_string()),
-///     form_context: Some("Registration Form".to_string()),
-///     is_multi_step_form: false,
-///     form_step: None,
-/// };
-/// ```
-/// 
-/// # Use Cases
-/// 
-/// - **Form Analysis**: Understanding how users interact with forms
-/// - **Workflow Automation**: Recording complete field entries for playback
-/// - **UX Research**: Analyzing typing patterns and field completion behavior
-/// - **Testing**: Validating form filling workflows
-/// - **Accessibility**: Understanding how users navigate between fields
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FieldInputEvent {
-    /// The complete text that was entered in the field
-    pub field_content: String,
-    
-    /// The initial content of the field before user started typing
-    pub initial_content: Option<String>,
-    
-    /// The UI element representing the input field
-    pub field_element: Option<UiElement>,
-    
-    /// The field label or name (if available)
-    pub field_label: Option<String>,
-    
-    /// The field type (e.g., "text", "password", "email", "number")
-    pub field_type: Option<String>,
-    
-    /// What triggered the completion of this field input
-    pub completion_trigger: FieldInputTrigger,
-    
-    /// Duration spent in this field (milliseconds)
-    pub input_duration_ms: Option<u64>,
-    
-    /// Number of characters typed (including backspaces/deletions)
-    pub total_keystrokes: Option<u32>,
-    
-    /// Number of corrections made (backspaces, deletions, replacements)
-    pub corrections_count: Option<u32>,
-    
-    /// Whether the field content was validated (and if it passed)
-    pub validation_status: Option<ValidationStatus>,
-    
-    /// The application where this field input occurred
-    pub application: Option<String>,
-    
-    /// The form or dialog context (if available)
-    pub form_context: Option<String>,
-    
-    /// Whether this field is part of a multi-step form
-    pub is_multi_step_form: bool,
-    
-    /// The step number in a multi-step form (if applicable)
-    pub form_step: Option<u32>,
-}
-
-/// Represents field validation status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ValidationStatus {
-    /// Field content is valid
-    Valid,
-    /// Field content is invalid
-    Invalid,
-    /// Field content has warnings but is acceptable
-    Warning,
-    /// Validation is pending (e.g., async validation)
-    Pending,
-    /// No validation was performed
-    NotValidated,
-}
-
-/// Represents application lifecycle events
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApplicationAction {
-    Launched,
-    Terminated,
-    InstallStarted,
-    InstallCompleted,
-    UpdateStarted,
-    UpdateCompleted,
-}
-
-/// Represents an application event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplicationEvent {
-    /// The application action
-    pub action: ApplicationAction,
-    
-    /// The application name
-    pub application_name: Option<String>,
-    
-    /// The application path
-    pub application_path: Option<String>,
-    
-    /// The process ID
-    pub process_id: Option<u32>,
-    
-    /// Command line arguments (for launched apps)
-    pub command_line: Option<String>,
-    
-    /// Application version
-    pub version: Option<String>,
-    
-    /// The UI element that was focused when the application event occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents file system operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FileAction {
-    Created,
-    Modified,
-    Deleted,
-    Moved,
-    Copied,
-    Opened,
-    Closed,
-    Downloaded,
-    Uploaded,
-}
-
-/// Represents a file system event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileEvent {
-    /// The file action
-    pub action: FileAction,
-    
-    /// The file path
-    pub path: String,
-    
-    /// The destination path (for move/copy operations)
-    pub destination_path: Option<String>,
-    
-    /// The file size
-    pub size: Option<u64>,
-    
-    /// The file type/extension
-    pub file_type: Option<String>,
-    
-    /// The application that performed the action
-    pub source_application: Option<String>,
-    
-    /// The UI element that was focused when the file operation occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents menu and context menu interactions
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MenuEvent {
-    /// The menu item that was selected
-    pub menu_item: String,
-    
-    /// The menu path (e.g., "File -> Save As")
-    pub menu_path: String,
-    
-    /// The application where the menu was accessed
-    pub application: Option<String>,
-    
-    /// Whether this was a context menu
-    pub is_context_menu: bool,
-    
-    /// The UI element that had focus when menu was opened
-    pub context_element: Option<UiElement>,
-    
-    /// The UI element that was focused when the menu interaction occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents dialog interactions
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DialogEvent {
-    /// The dialog title
-    pub title: Option<String>,
-    
-    /// The dialog type (e.g., "Save", "Open", "Error", "Warning")
-    pub dialog_type: Option<String>,
-    
-    /// The button that was clicked
-    pub button_clicked: Option<String>,
-    
-    /// The dialog text/message
-    pub message: Option<String>,
-    
-    /// Input values (for dialogs with input fields)
-    pub input_values: Option<Vec<(String, String)>>,
-    
-    /// The application that showed the dialog
-    pub application: Option<String>,
-    
-    /// The UI element that was focused when the dialog interaction occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents scroll events
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScrollEvent {
-    /// The scroll direction and amount
-    pub delta: (i32, i32),
-    
-    /// The position where scrolling occurred
-    pub position: Position,
-    
-    /// The UI element being scrolled
-    pub target_element: Option<UiElement>,
-    
-    /// Whether this was horizontal or vertical scrolling
-    pub direction: ScrollDirection,
-}
-
-/// Represents scroll direction
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ScrollDirection {
-    Vertical,
-    Horizontal,
-    Both,
-}
-
-/// Represents system-level events
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SystemAction {
-    ScreenLocked,
-    ScreenUnlocked,
-    UserLoggedIn,
-    UserLoggedOut,
-    SystemSleep,
-    SystemWake,
-    DisplayChanged,
-    AudioVolumeChanged,
-    NetworkConnected,
-    NetworkDisconnected,
-    UsbDeviceConnected,
-    UsbDeviceDisconnected,
-}
-
-/// Represents a system event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemEvent {
-    /// The system action
-    pub action: SystemAction,
-    
-    /// Additional details about the event
-    pub details: Option<String>,
-    
-    /// Relevant device information (for hardware events)
-    pub device_info: Option<String>,
-    
-    /// The UI element that was focused when the system event occurred
-    pub ui_element: Option<UiElement>,
-}
-
-/// Represents drag and drop operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DragDropEvent {
-    /// The start position of the drag
-    pub start_position: Position,
-    
-    /// The end position of the drop
-    pub end_position: Position,
-    
-    /// The UI element being dragged
-    pub source_element: Option<UiElement>,
-    
-    /// The UI element where it was dropped
-    pub target_element: Option<UiElement>,
-    
-    /// The type of data being dragged
-    pub data_type: Option<String>,
-    
-    /// The dragged content (if text)
-    pub content: Option<String>,
-    
-    /// Whether the drag was successful
-    pub success: bool,
-}
-
-/// Represents hotkey/shortcut events
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HotkeyEvent {
-    /// The key combination (e.g., "Ctrl+C", "Alt+Tab")
-    pub combination: String,
-    
-    /// The action performed by the hotkey
-    pub action: Option<String>,
-    
-    /// The application where the hotkey was used
-    pub application: Option<String>,
-    
-    /// Whether this was a global or application-specific hotkey
-    pub is_global: bool,
-    
-    /// The UI element that was focused when the hotkey was triggered
-    pub ui_element: Option<UiElement>,
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
 }
 
 /// Represents text selection events
@@ -611,9 +176,6 @@ pub struct TextSelectionEvent {
     /// The end position of the selection (screen coordinates)
     pub end_position: Position,
     
-    /// The UI element containing the selected text
-    pub target_element: Option<UiElement>,
-    
     /// The selection method (mouse drag, keyboard shortcuts, etc.)
     pub selection_method: SelectionMethod,
     
@@ -623,8 +185,8 @@ pub struct TextSelectionEvent {
     /// Whether this is a partial selection within a larger text block
     pub is_partial_selection: bool,
     
-    /// The application where the selection occurred
-    pub application: Option<String>,
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
 }
 
 /// Represents how text was selected
@@ -637,6 +199,47 @@ pub enum SelectionMethod {
     ContextMenu,
 }
 
+/// Represents drag and drop operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DragDropEvent {
+    /// The start position of the drag
+    pub start_position: Position,
+    
+    /// The end position of the drop
+    pub end_position: Position,
+    
+    /// The UI element being dragged (source)
+    pub source_element: Option<UiElement>,
+    
+    /// The type of data being dragged
+    pub data_type: Option<String>,
+    
+    /// The dragged content (if text)
+    pub content: Option<String>,
+    
+    /// Whether the drag was successful
+    pub success: bool,
+    
+    /// Event metadata (target UI element, application, etc.)
+    pub metadata: EventMetadata,
+}
+
+/// Represents hotkey/shortcut events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HotkeyEvent {
+    /// The key combination (e.g., "Ctrl+C", "Alt+Tab")
+    pub combination: String,
+    
+    /// The action performed by the hotkey
+    pub action: Option<String>,
+    
+    /// Whether this was a global or application-specific hotkey
+    pub is_global: bool,
+    
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
+}
+
 /// Represents a workflow event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowEvent {
@@ -646,35 +249,11 @@ pub enum WorkflowEvent {
     /// A keyboard event
     Keyboard(KeyboardEvent),
     
-    /// A window event
-    Window(WindowEvent),
-    
     /// A clipboard event
     Clipboard(ClipboardEvent),
     
-    /// A text input event
-    TextInput(TextInputEvent),
-    
     /// A text selection event
     TextSelection(TextSelectionEvent),
-    
-    /// An application event
-    Application(ApplicationEvent),
-    
-    /// A file system event
-    File(FileEvent),
-    
-    /// A menu interaction event
-    Menu(MenuEvent),
-    
-    /// A dialog interaction event
-    Dialog(DialogEvent),
-    
-    /// A scroll event
-    Scroll(ScrollEvent),
-    
-    /// A system event
-    System(SystemEvent),
     
     /// A drag and drop event
     DragDrop(DragDropEvent),
@@ -682,8 +261,11 @@ pub enum WorkflowEvent {
     /// A hotkey event
     Hotkey(HotkeyEvent),
     
-    /// A field input event
-    FieldInput(FieldInputEvent),
+    /// A UI Automation property change event
+    UiPropertyChanged(UiPropertyChangedEvent),
+    
+    /// A UI Automation focus change event
+    UiFocusChanged(UiFocusChangedEvent),
 }
 
 /// Represents a recorded event with timestamp
@@ -749,5 +331,112 @@ impl RecordedWorkflow {
             .as_millis() as u64;
         
         self.end_time = Some(now);
+    }
+}
+
+/// Represents UI Automation structure change types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum StructureChangeType {
+    ChildAdded,
+    ChildRemoved,
+    ChildrenInvalidated,
+    ChildrenBulkAdded,
+    ChildrenBulkRemoved,
+    ChildrenReordered,
+}
+
+/// Represents a UI Automation structure change event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UiStructureChangedEvent {
+    /// The type of structure change
+    pub change_type: StructureChangeType,
+    
+    /// The element where the structure change occurred
+    pub element: Option<UiElement>,
+    
+    /// Runtime IDs of affected children (if applicable)
+    pub runtime_ids: Option<Vec<i32>>,
+    
+    /// The application where the change occurred
+    pub application: Option<String>,
+    
+    /// Additional details about the change
+    pub details: Option<String>,
+}
+
+/// Represents a UI Automation property change event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UiPropertyChangedEvent {
+    /// The property that changed (as string for serialization)
+    pub property_name: String,
+    
+    /// The property ID
+    pub property_id: u32,
+    
+    /// The old value (if available)
+    pub old_value: Option<String>,
+    
+    /// The new value
+    pub new_value: Option<String>,
+    
+    /// Event metadata (UI element, application, etc.)
+    pub metadata: EventMetadata,
+}
+
+/// Represents a UI Automation focus change event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UiFocusChangedEvent {
+    /// The previous element that had focus (if available)
+    pub previous_element: Option<UiElement>,
+    
+    /// Event metadata (current focused UI element, application, etc.)
+    pub metadata: EventMetadata,
+}
+
+/// Unified metadata for all workflow events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventMetadata {
+    /// The UI element associated with this event (if available)
+    pub ui_element: Option<UiElement>,
+    
+    /// The application where this event occurred
+    pub application: Option<String>,
+    
+    /// The window title where this event occurred
+    pub window_title: Option<String>,
+    
+    /// The process ID of the application
+    pub process_id: Option<u32>,
+}
+
+impl EventMetadata {
+    /// Create new metadata from a UI element
+    pub fn from_ui_element(ui_element: Option<UiElement>) -> Self {
+        let (application, window_title, process_id) = if let Some(ref elem) = ui_element {
+            (
+                elem.application_name.clone(),
+                elem.window_title.clone(),
+                elem.process_id,
+            )
+        } else {
+            (None, None, None)
+        };
+
+        Self {
+            ui_element,
+            application,
+            window_title,
+            process_id,
+        }
+    }
+
+    /// Create empty metadata
+    pub fn empty() -> Self {
+        Self {
+            ui_element: None,
+            application: None,
+            window_title: None,
+            process_id: None,
+        }
     }
 } 
