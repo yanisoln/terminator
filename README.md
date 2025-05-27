@@ -66,7 +66,7 @@ Terminator is the Playwright-style SDK for automating Windows GUI apps.
 
 The [benchmark test](./terminator/src/tests/e2e_tests.rs) illustrates how fast Terminator can query the UI. It finds all edit elements in about **80&nbsp;ms**, showcasing a big speed advantage over vision-based tools.
 
-This [form-filling app](https://www.mediar.ai/) can read & fills forms as soon as you see them in <1s end-to-end using Gemini.
+This [form-filling app](https://www.mediar.ai/) can read & fill 1000 inputs forms as soon as you see them in <1s end-to-end using Gemini.
 
 ## Demos
 
