@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::debug;
@@ -27,7 +28,6 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use std::thread
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
