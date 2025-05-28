@@ -412,7 +412,7 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Path` selector not supported".to_string(),
                 ));
             }
-            Selector::UINativeId(automation_id) => {    // for windows passing `UIProperty::AutomationID` as `UINativeId`
+            Selector::NativeId(automation_id) => {    // for windows passing `UIProperty::AutomationID` as `NativeId`
                 debug!("searching for elements using AutomationId: {}", automation_id);
 
                 let ele_id = automation_id.clone();
@@ -707,7 +707,7 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Path` selector not supported".to_string(),
                 ));
             }
-            Selector::UINativeId(automation_id) => {    // for windows passing `UIProperty::AutomationID` as `UINativeId`
+            Selector::NativeId(automation_id) => {    // for windows passing `UIProperty::AutomationID` as `NativeId`
                 debug!("searching for element using AutomationId: {}", automation_id);
 
                 let ele_id = automation_id.clone();
