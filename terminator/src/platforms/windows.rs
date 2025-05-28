@@ -23,6 +23,11 @@ use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 use arboard::Clipboard;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use std::thread
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -32,33 +37,68 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
     "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc", "explorer"
 ];
 
-// Helper function to get process name by PID using PowerShell
+// Helper function to get process name by PID using native Windows API
 fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
-    let command = format!(
-        "Get-Process -Id {} | Select-Object -ExpandProperty ProcessName",
-        pid
-    );
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to execute PowerShell to get process name: {}", e)))?;
-
-    if output.status.success() {
-        let process_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if process_name.is_empty() {
-            Err(AutomationError::PlatformError(format!(
-                "Process name not found for PID {}",
-                pid
-            )))
-        } else {
-            Ok(process_name)
+    unsafe {
+        // Create a snapshot of all processes
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to create process snapshot: {}", e)))?;
+        
+        if snapshot.is_invalid() {
+            return Err(AutomationError::PlatformError("Invalid snapshot handle".to_string()));
         }
-    } else {
-        let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        
+        // Ensure we close the handle when done
+        let _guard = HandleGuard(snapshot);
+        
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        
+        // Get the first process
+        if Process32FirstW(snapshot, &mut process_entry).is_err() {
+            return Err(AutomationError::PlatformError("Failed to get first process".to_string()));
+        }
+        
+        // Iterate through processes to find the one with matching PID
+        loop {
+            if process_entry.th32ProcessID == pid as u32 {
+                // Convert the process name from wide string to String
+                let name_slice = &process_entry.szExeFile;
+                let name_len = name_slice.iter().position(|&c| c == 0).unwrap_or(name_slice.len());
+                let process_name = String::from_utf16_lossy(&name_slice[..name_len]);
+                
+                // Remove .exe extension if present
+                let clean_name = process_name
+                    .strip_suffix(".exe")
+                    .or_else(|| process_name.strip_suffix(".EXE"))
+                    .unwrap_or(&process_name);
+                
+                return Ok(clean_name.to_string());
+            }
+            
+            // Get the next process
+            if Process32NextW(snapshot, &mut process_entry).is_err() {
+                break;
+            }
+        }
+        
         Err(AutomationError::PlatformError(format!(
-            "PowerShell command failed to get process name for PID {}: {}",
-            pid, err_msg
+            "Process with PID {} not found",
+            pid
         )))
+    }
+}
+
+// RAII guard to ensure handle is closed
+struct HandleGuard(HANDLE);
+
+impl Drop for HandleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
     }
 }
 
@@ -1555,6 +1595,143 @@ $latestProcess.ProcessId"#,
 
         self.get_application_by_pid(pid as i32)
     }
+
+    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
+        info!("Attempting to get FULL window tree by title: {}", title);
+        let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
+            error!("Failed to get root element: {}", e);
+            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+        })?;
+
+        // Use a more efficient approach: first find windows by control type, then filter by name
+        let window_matcher = self
+            .automation
+            .0
+            .create_matcher()
+            .from_ref(&root_ele_os)
+            .control_type(ControlType::Window)
+            .depth(3) // Limit search depth for performance
+            .timeout(3000); // Reduce timeout to 3 seconds
+
+        let windows = window_matcher.find_all().map_err(|e| {
+            error!("Failed to find windows: {}", e);
+            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+        })?;
+
+        info!("Found {} windows to search through", windows.len());
+
+        // Filter windows by title after retrieval (more efficient than filter_fn)
+        let title_lower = title.to_lowercase();
+        let mut matching_window = None;
+        let mut window_names = Vec::new(); // For debugging
+        
+        for window in windows {
+            match window.get_name() {
+                Ok(window_name) => {
+                    window_names.push(window_name.clone());
+                    if window_name.to_lowercase().contains(&title_lower) {
+                        info!("Found matching window: '{}' for title: '{}'", window_name, title);
+                        matching_window = Some(window);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to get name for window: {}", e);
+                }
+            }
+        }
+
+        let window_element_raw = matching_window.ok_or_else(|| {
+            error!("No window found with title containing: '{}'", title);
+            debug!("Available window names: {:?}", window_names);
+            AutomationError::ElementNotFound(format!(
+                "Window with title containing '{}' not found. Available windows: {:?}",
+                title, window_names
+            ))
+        })?;
+
+        info!(
+            "Found window with title '{}', ID: {:?}",
+            title,
+            window_element_raw.get_runtime_id().ok()
+        );
+
+        // Wrap the raw OS element into our UIElement
+        let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(window_element_raw)),
+        }));
+
+        // Build the FULL UI tree with optimized performance
+        info!("Building FULL UI tree with performance optimizations");
+        build_full_ui_node_tree_optimized(&window_element_wrapper)
+    }
+}
+
+
+// Optimized function to build the FULL UI tree with performance improvements
+fn build_full_ui_node_tree_optimized(element: &UIElement) -> Result<crate::UINode, AutomationError> {
+    use std::time::Instant;
+    
+    let start_time = Instant::now();
+    let attributes = element.attributes();
+    let mut children_nodes = Vec::new();
+
+    // Get children of the current element
+    match element.children() {
+        Ok(children_elements) => {
+            // info!("Processing {} children for element ID: {:?}", children_elements.len(), element.id());
+            
+            // Process children in batches to prevent memory spikes and allow yielding
+            const BATCH_SIZE: usize = 50;
+            for (batch_idx, batch) in children_elements.chunks(BATCH_SIZE).enumerate() {
+                // debug!("Processing batch {} of {} children", batch_idx + 1, (children_elements.len() + BATCH_SIZE - 1) / BATCH_SIZE);
+                
+                for child_element in batch {
+                    // Safety valve: if we're taking too long, log and continue
+                    if start_time.elapsed().as_secs() > 30 {
+                        error!("Tree building taking too long (>30s) for element, continuing with partial tree");
+                        break;
+                    }
+                    
+                    // Recursively build child nodes
+                    match build_full_ui_node_tree_optimized(child_element) {
+                        Ok(child_node) => children_nodes.push(child_node),
+                        Err(e) => {
+                            // Log the error but continue processing other children
+                            debug!(
+                                "Failed to build UINode for child (ID: {:?}): {}. Skipping this child.",
+                                child_element.id(),
+                                e
+                            );
+                        }
+                    }
+                }
+                
+                // Small yield every 10 batches to prevent UI freezing during large tree processing
+                if batch_idx % 10 == 0 && batch_idx > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }
+        }
+        Err(e) => {
+            // If getting children fails, log it and continue with an empty children list for this node
+            debug!(
+                "Failed to get children for element (ID: {:?}): {}. Proceeding with no children for this node.",
+                element.id(),
+                e
+            );
+        }
+    }
+
+    let elapsed = start_time.elapsed();
+    if elapsed.as_millis() > 100 {
+        debug!("Tree building for element took {}ms", elapsed.as_millis());
+    }
+
+    Ok(crate::UINode {
+        attributes,
+        children: children_nodes,
+    })
 }
 
 // thread-safety
@@ -1594,7 +1771,6 @@ impl UIElementImpl for WindowsUIElement {
         // there are alot of properties, including neccessary ones
         // ref: https://docs.rs/uiautomation/0.16.1/uiautomation/types/enum.UIProperty.html
         let property_list = vec![
-            UIProperty::Name,
             UIProperty::HelpText,
             UIProperty::LabeledBy,
             UIProperty::ValueValue,
@@ -1643,10 +1819,6 @@ impl UIElementImpl for WindowsUIElement {
                 cached_children
             }
             Err(cache_err) => {
-                info!(
-                    "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
-                    cache_err
-                );
                 // Fallback logic (similar to explore_element_children)
                 match uiautomation::UIAutomation::new() {
                     Ok(temp_automation) => {
@@ -2470,6 +2642,120 @@ impl UIElementImpl for WindowsUIElement {
         // If loop finishes, no element with ControlType::Window was found.
         Ok(None)
     }
+
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        use windows::Win32::Graphics::Gdi::{
+            GetDC, ReleaseDC, CreatePen, SelectObject, DeleteObject, Rectangle,
+            PS_SOLID, NULL_BRUSH, GetStockObject, HGDIOBJ
+        };
+        use windows::Win32::Foundation::{COLORREF, POINT};
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        use std::time::Instant;
+
+        self.element.0.try_focus();
+
+        // Get the element's bounding rectangle
+        let rect = self.element.0.get_bounding_rectangle().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get element bounds: {}", e))
+        })?;
+
+        // Helper function to get scale factor from cursor position
+        fn get_scale_factor_from_cursor() -> f64 {
+            let mut point = POINT { x: 0, y: 0 };
+            unsafe {
+                let _ = GetCursorPos(&mut point);
+            }
+            match xcap::Monitor::from_point(point.x, point.y) {
+                Ok(monitor) => match monitor.scale_factor() {
+                    Ok(factor) => factor as f64,
+                    Err(e) => {
+                        error!("Failed to get scale factor from cursor position: {}", e);
+                        1.0 // Fallback to default scale factor
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to get monitor from cursor position: {}", e);
+                    1.0 // Fallback to default scale factor
+                }
+            }
+        }
+
+        // Helper function to get scale factor from focused window
+        fn get_scale_factor_from_focused_window() -> Option<f64> {
+            match xcap::Window::all() {
+                Ok(windows) => {
+                    windows.iter()
+                        .find(|w| w.is_focused().unwrap_or(false))
+                        .and_then(|focused_window| {
+                            focused_window.current_monitor().ok()
+                        })
+                        .and_then(|monitor| {
+                            monitor.scale_factor().ok().map(|factor| factor as f64)
+                        })
+                },
+                Err(e) => {
+                    error!("Failed to get windows: {}", e);
+                    None
+                }
+            }
+        }
+
+        // Try to get scale factor from focused window first, fall back to cursor position
+        let scale_factor = get_scale_factor_from_focused_window()
+            .unwrap_or_else(get_scale_factor_from_cursor);
+
+        // Constants for border appearance
+        const BORDER_SIZE: i32 = 4;
+        const DEFAULT_RED_COLOR: u32 = 0x0000FF; // Pure red in BGR format
+
+        // Use provided color or default to red
+        let highlight_color = color.unwrap_or(DEFAULT_RED_COLOR);
+
+        // Scale the coordinates and dimensions
+        let x = (rect.get_left() as f64 * scale_factor) as i32;
+        let y = (rect.get_top() as f64 * scale_factor) as i32;
+        let width = (rect.get_width() as f64 * scale_factor) as i32;
+        let height = (rect.get_height() as f64 * scale_factor) as i32;
+
+        // Spawn a thread to handle the highlighting
+        thread::spawn(move || {
+            let start_time = Instant::now();
+            let duration = duration.unwrap_or(std::time::Duration::from_millis(500));
+
+            while start_time.elapsed() < duration {
+                // Get the screen DC
+                let hdc = unsafe { GetDC(None) };
+                if hdc.0.is_null() {
+                    return;
+                }
+
+                unsafe {
+                    // Create a pen for drawing with the specified color
+                    let hpen = CreatePen(PS_SOLID, BORDER_SIZE, COLORREF(highlight_color));
+                    if hpen.0.is_null() {
+                        ReleaseDC(None, hdc);
+                        return;
+                    }
+
+                    // Save current objects
+                    let old_pen = SelectObject(hdc, HGDIOBJ(hpen.0));
+                    let null_brush = GetStockObject(NULL_BRUSH);
+                    let old_brush = SelectObject(hdc, null_brush);
+
+                    // Draw the border rectangle
+                    let _ = Rectangle(hdc, x, y, x + width, y + height);
+
+                    // Restore original objects and clean up
+                    SelectObject(hdc, old_brush);
+                    SelectObject(hdc, old_pen);
+                    let _ = DeleteObject(HGDIOBJ(hpen.0));
+                    ReleaseDC(None, hdc);
+                }
+            }
+        });
+
+        Ok(())
+    }
 }
 
 // make easier to pass roles
@@ -2522,22 +2808,59 @@ fn map_generic_role_to_win_roles(role: &str) -> ControlType {
 }
 
 fn get_pid_by_name(name: &str) -> Option<i32> {
-    // window title shouldn't be empty
-    let command = format!(
-        "Get-Process | Where-Object {{ $_.MainWindowTitle -ne '' -and $_.Name -like '*{}*' }} | ForEach-Object {{ $_.Id }}",
-        name
-    );
-
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-        .expect("Failed to execute PowerShell script");
-
-    if output.status.success() {
-        // return only parent pid
-        let pid_str = String::from_utf8_lossy(&output.stdout);
-        pid_str.lines().next()?.trim().parse().ok()
-    } else {
+    unsafe {
+        // Create a snapshot of all processes
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(handle) => handle,
+            Err(_) => return None,
+        };
+        
+        if snapshot.is_invalid() {
+            return None;
+        }
+        
+        // Ensure we close the handle when done
+        let _guard = HandleGuard(snapshot);
+        
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        
+        // Get the first process
+        if Process32FirstW(snapshot, &mut process_entry).is_err() {
+            return None;
+        }
+        
+        let search_name_lower = name.to_lowercase();
+        
+        // Iterate through processes to find one with matching name
+        loop {
+            // Convert the process name from wide string to String
+            let name_slice = &process_entry.szExeFile;
+            let name_len = name_slice.iter().position(|&c| c == 0).unwrap_or(name_slice.len());
+            let process_name = String::from_utf16_lossy(&name_slice[..name_len]);
+            
+            // Remove .exe extension if present for comparison
+            let clean_name = process_name
+                .strip_suffix(".exe")
+                .or_else(|| process_name.strip_suffix(".EXE"))
+                .unwrap_or(&process_name);
+            
+            // Check if this process name contains our search term
+            if clean_name.to_lowercase().contains(&search_name_lower) {
+                // For processes with windows, we should check if they have a main window
+                // This is a simple heuristic - in a more complete implementation,
+                // you might want to use EnumWindows to check for actual windows
+                return Some(process_entry.th32ProcessID as i32);
+            }
+            
+            // Get the next process
+            if Process32NextW(snapshot, &mut process_entry).is_err() {
+                break;
+            }
+        }
+        
         None
     }
 }
@@ -2606,4 +2929,220 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
     // );
     
     Ok(hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process;
+
+    #[test]
+    fn test_get_process_name_by_pid_current_process() {
+        // Test with the current process PID
+        let current_pid = process::id() as i32;
+        let result = get_process_name_by_pid(current_pid);
+        
+        assert!(result.is_ok(), "Should be able to get current process name");
+        let process_name = result.unwrap();
+        
+        // The process name should be a valid non-empty string
+        assert!(!process_name.is_empty(), "Process name should not be empty");
+        
+        // Should not contain .exe extension
+        assert!(!process_name.ends_with(".exe"), "Process name should not contain .exe extension");
+        assert!(!process_name.ends_with(".EXE"), "Process name should not contain .EXE extension");
+        
+        // Should be a reasonable process name (alphanumeric, hyphens, underscores)
+        assert!(process_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'), 
+               "Process name should contain only alphanumeric characters, hyphens, and underscores: {}", process_name);
+        
+        println!("Current process name: {}", process_name);
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_invalid_pid() {
+        // Test with an invalid PID (very high number unlikely to exist)
+        let invalid_pid = 999999;
+        let result = get_process_name_by_pid(invalid_pid);
+        
+        assert!(result.is_err(), "Should fail for invalid PID");
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Process with PID"), "Error should mention the PID");
+    }
+
+    #[test]
+    fn test_get_process_name_by_pid_system_process() {
+        // Test with a known system process (PID 4 is usually System on Windows)
+        let system_pid = 4;
+        let result = get_process_name_by_pid(system_pid);
+        
+        // This might succeed or fail depending on permissions, but shouldn't panic
+        match result {
+            Ok(name) => {
+                assert!(!name.is_empty(), "Process name should not be empty");
+                println!("System process name: {}", name);
+            }
+            Err(e) => {
+                println!("Expected: Could not access system process: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_pid_by_name_current_process() {
+        // First get the current process name
+        let current_pid = process::id() as i32;
+        let current_name_result = get_process_name_by_pid(current_pid);
+        
+        if let Ok(current_name) = current_name_result {
+            // Now try to find a PID by that name
+            let found_pid = get_pid_by_name(&current_name);
+            
+            // Should find at least one process with this name
+            assert!(found_pid.is_some(), "Should find a PID for current process name: {}", current_name);
+            
+            let found_pid = found_pid.unwrap();
+            assert!(found_pid > 0, "PID should be positive");
+            
+            // The found PID might not be exactly the same as current PID if there are multiple
+            // processes with the same name, but it should be valid
+            println!("Current PID: {}, Found PID for '{}': {}", current_pid, current_name, found_pid);
+        }
+    }
+
+    #[test]
+    fn test_get_pid_by_name_nonexistent_process() {
+        // Test with a process name that definitely doesn't exist
+        let nonexistent_name = "definitely_nonexistent_process_12345";
+        let result = get_pid_by_name(nonexistent_name);
+        
+        assert!(result.is_none(), "Should return None for nonexistent process");
+    }
+
+    #[test]
+    fn test_get_pid_by_name_partial_match() {
+        // Test partial matching - try to find any process containing "win"
+        // This should match Windows system processes like "winlogon", "wininit", etc.
+        let partial_name = "win";
+        let result = get_pid_by_name(partial_name);
+        
+        // This might or might not find something, but shouldn't panic
+        match result {
+            Some(pid) => {
+                assert!(pid > 0, "Found PID should be positive");
+                println!("Found process with 'win' in name: PID {}", pid);
+                
+                // Verify we can get the name back
+                if let Ok(name) = get_process_name_by_pid(pid) {
+                    assert!(name.to_lowercase().contains("win"), 
+                           "Found process name '{}' should contain 'win'", name);
+                }
+            }
+            None => {
+                println!("No process found containing 'win' - this is possible but unusual on Windows");
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_guard_cleanup() {
+        // Test that HandleGuard properly cleans up handles
+        use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
+        
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
+            assert!(!snapshot.is_invalid(), "Snapshot should be valid");
+            
+            // Create and immediately drop the guard
+            {
+                let _guard = HandleGuard(snapshot);
+                // Guard should be alive here
+            }
+            // Guard should be dropped and handle closed here
+            
+            // We can't easily test that the handle was actually closed without
+            // potentially causing issues, but the test verifies the code compiles
+            // and the guard can be created/dropped without panicking
+        }
+    }
+
+    #[test]
+    fn test_process_name_extension_stripping() {
+        // Test the extension stripping logic by checking current process
+        let current_pid = process::id() as i32;
+        let result = get_process_name_by_pid(current_pid);
+        
+        if let Ok(process_name) = result {
+            // Verify no .exe extension
+            assert!(!process_name.ends_with(".exe"), "Process name should not end with .exe");
+            assert!(!process_name.ends_with(".EXE"), "Process name should not end with .EXE");
+            
+            // Verify it's not empty after stripping
+            assert!(!process_name.is_empty(), "Process name should not be empty after extension stripping");
+        }
+    }
+
+    #[test]
+    fn test_multiple_process_enumeration() {
+        // Test that we can enumerate multiple processes without issues
+        let current_pid = process::id() as i32;
+        
+        // Try to get names for a range of PIDs around the current one
+        let mut successful_lookups = 0;
+        let mut failed_lookups = 0;
+        
+        for offset in -10..=10 {
+            let test_pid = current_pid + offset;
+            if test_pid > 0 {
+                match get_process_name_by_pid(test_pid) {
+                    Ok(name) => {
+                        successful_lookups += 1;
+                        assert!(!name.is_empty(), "Process name should not be empty");
+                        println!("PID {}: {}", test_pid, name);
+                    }
+                    Err(_) => {
+                        failed_lookups += 1;
+                    }
+                }
+            }
+        }
+        
+        // We should have at least found the current process
+        assert!(successful_lookups >= 1, "Should find at least the current process");
+        println!("Successful lookups: {}, Failed lookups: {}", successful_lookups, failed_lookups);
+    }
+
+    #[cfg(test)]
+    mod integration_tests {
+        use super::*;
+
+        #[test]
+        fn test_round_trip_pid_name_lookup() {
+            // Test the round trip: PID -> Name -> PID
+            let original_pid = process::id() as i32;
+            
+            // Get the process name
+            let process_name = match get_process_name_by_pid(original_pid) {
+                Ok(name) => name,
+                Err(_) => {
+                    println!("Could not get current process name, skipping round-trip test");
+                    return;
+                }
+            };
+            
+            // Find a PID by that name
+            let found_pid = get_pid_by_name(&process_name);
+            
+            assert!(found_pid.is_some(), "Should find a PID for process name: {}", process_name);
+            let found_pid = found_pid.unwrap();
+            
+            // Verify the found PID corresponds to the same process name
+            let verified_name = get_process_name_by_pid(found_pid).unwrap();
+            assert_eq!(process_name, verified_name, 
+                      "Round-trip should yield the same process name");
+            
+            println!("Round-trip successful: {} -> {} -> {}", 
+                    original_pid, process_name, found_pid);
+        }
+    }
 }

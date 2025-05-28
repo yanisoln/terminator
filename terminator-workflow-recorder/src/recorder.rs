@@ -36,29 +36,8 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record clipboard operations
     pub record_clipboard: bool,
     
-    /// Whether to record text input events (high-level text changes)
-    pub record_text_input: bool,
-    
     /// Whether to record text selection events
     pub record_text_selection: bool,
-    
-    /// Whether to record application lifecycle events
-    pub record_applications: bool,
-    
-    /// Whether to record file system operations
-    pub record_file_operations: bool,
-    
-    /// Whether to record menu interactions
-    pub record_menu_interactions: bool,
-    
-    /// Whether to record dialog interactions
-    pub record_dialog_interactions: bool,
-    
-    /// Whether to record scroll events
-    pub record_scroll: bool,
-    
-    /// Whether to record system events
-    pub record_system_events: bool,
     
     /// Whether to record drag and drop operations
     pub record_drag_drop: bool,
@@ -66,32 +45,23 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record hotkey/shortcut events
     pub record_hotkeys: bool,
     
+    /// Whether to record UI Automation structure change events
+    pub record_ui_structure_changes: bool,
+    
+    /// Whether to record UI Automation property change events
+    pub record_ui_property_changes: bool,
+    
+    /// Whether to record UI Automation focus change events
+    pub record_ui_focus_changes: bool,
+    
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
     
     /// Maximum text selection length to record (longer selections will be truncated)
     pub max_text_selection_length: usize,
     
-    /// Whether to record window position and size changes
-    pub record_window_geometry: bool,
-    
     /// Whether to track modifier key states accurately
     pub track_modifier_states: bool,
-    
-    /// Whether to record detailed scroll information
-    pub detailed_scroll_tracking: bool,
-    
-    /// Whether to monitor file system changes in specific directories
-    pub monitor_file_system: bool,
-    
-    /// Directories to monitor for file system changes (if empty, monitors all accessible)
-    pub file_system_watch_paths: Vec<String>,
-    
-    /// Whether to record network-related events
-    pub record_network_events: bool,
-    
-    /// Whether to record audio/multimedia events
-    pub record_multimedia_events: bool,
     
     /// Minimum time between mouse move events to reduce noise (milliseconds)
     pub mouse_move_throttle_ms: u64,
@@ -108,25 +78,15 @@ impl Default for WorkflowRecorderConfig {
             record_window: true,
             capture_ui_elements: true,
             record_clipboard: true,
-            record_text_input: true,
             record_text_selection: true,
-            record_applications: true,
-            record_file_operations: false, // Can be noisy, disabled by default
-            record_menu_interactions: true,
-            record_dialog_interactions: true,
-            record_scroll: true,
-            record_system_events: false, // Can be noisy, disabled by default
             record_drag_drop: true,
             record_hotkeys: true,
+            record_ui_structure_changes: false, // Can be very noisy, disabled by default
+            record_ui_property_changes: false, // Can be very noisy, disabled by default
+            record_ui_focus_changes: false, // Can be noisy, disabled by default
             max_clipboard_content_length: 1024, // 1KB max
             max_text_selection_length: 512, // 512 chars max for selections
-            record_window_geometry: true,
             track_modifier_states: true,
-            detailed_scroll_tracking: false, // Can be noisy
-            monitor_file_system: false, // Can be very noisy
-            file_system_watch_paths: Vec::new(),
-            record_network_events: false, // Privacy concerns
-            record_multimedia_events: false, // Can be noisy
             mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves
             min_drag_distance: 5.0, // 5 pixels minimum for drag detection
         }

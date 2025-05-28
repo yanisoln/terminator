@@ -656,7 +656,7 @@ impl MacOSUIElement {
     }
 
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = self.element.0.clone();
+        let mut current_ax_element = (*self.element.0).clone();
         loop {
             match current_ax_element.role() {
                 Ok(role) => {
@@ -679,7 +679,7 @@ impl MacOSUIElement {
     }
 
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = self.element.0.clone();
+        let mut current_ax_element = (*self.element.0).clone();
         loop {
             match current_ax_element.role() {
                 Ok(role_cfstring) => {
@@ -1508,6 +1508,12 @@ impl UIElementImpl for MacOSUIElement {
     fn mouse_release(&self) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "mouse_release is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "highlight is not implemented for macOS yet".to_string(),
         ))
     }
 }
@@ -2884,5 +2890,11 @@ impl AccessibilityEngine for MacOSEngine {
         } else {
             Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
         }
+    }
+
+    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            format!("get_window_tree_by_title for '{}' not yet implemented for macOS", title)
+        ))
     }
 }
