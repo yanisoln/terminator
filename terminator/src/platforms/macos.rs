@@ -1510,6 +1510,12 @@ impl UIElementImpl for MacOSUIElement {
             "mouse_release is not implemented for macOS yet".to_string(),
         ))
     }
+
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "highlight is not implemented for macOS yet".to_string(),
+        ))
+    }
 }
 
 // Helper function to parse AXUIElement attribute values into appropriate types

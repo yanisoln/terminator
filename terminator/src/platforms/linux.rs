@@ -316,4 +316,10 @@ impl UIElementImpl for LinuxUIElement {
             "Linux implementation is not yet available".to_string(),
         ))
     }
+
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
 }
