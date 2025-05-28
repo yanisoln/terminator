@@ -17,7 +17,7 @@ pub mod selector;
 mod tests;
 pub mod utils;
 
-pub use element::{UIElement, UIElementAttributes};
+pub use element::{UIElement, UIElementAttributes, SerializableUIElement};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
