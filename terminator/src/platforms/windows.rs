@@ -27,6 +27,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use std::thread
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -2541,6 +2542,120 @@ impl UIElementImpl for WindowsUIElement {
         }
         // If loop finishes, no element with ControlType::Window was found.
         Ok(None)
+    }
+
+    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        use windows::Win32::Graphics::Gdi::{
+            GetDC, ReleaseDC, CreatePen, SelectObject, DeleteObject, Rectangle,
+            PS_SOLID, NULL_BRUSH, GetStockObject, HGDIOBJ
+        };
+        use windows::Win32::Foundation::{COLORREF, POINT};
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        use std::time::Instant;
+
+        self.element.0.try_focus();
+
+        // Get the element's bounding rectangle
+        let rect = self.element.0.get_bounding_rectangle().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get element bounds: {}", e))
+        })?;
+
+        // Helper function to get scale factor from cursor position
+        fn get_scale_factor_from_cursor() -> f64 {
+            let mut point = POINT { x: 0, y: 0 };
+            unsafe {
+                let _ = GetCursorPos(&mut point);
+            }
+            match xcap::Monitor::from_point(point.x, point.y) {
+                Ok(monitor) => match monitor.scale_factor() {
+                    Ok(factor) => factor as f64,
+                    Err(e) => {
+                        error!("Failed to get scale factor from cursor position: {}", e);
+                        1.0 // Fallback to default scale factor
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to get monitor from cursor position: {}", e);
+                    1.0 // Fallback to default scale factor
+                }
+            }
+        }
+
+        // Helper function to get scale factor from focused window
+        fn get_scale_factor_from_focused_window() -> Option<f64> {
+            match xcap::Window::all() {
+                Ok(windows) => {
+                    windows.iter()
+                        .find(|w| w.is_focused().unwrap_or(false))
+                        .and_then(|focused_window| {
+                            focused_window.current_monitor().ok()
+                        })
+                        .and_then(|monitor| {
+                            monitor.scale_factor().ok().map(|factor| factor as f64)
+                        })
+                },
+                Err(e) => {
+                    error!("Failed to get windows: {}", e);
+                    None
+                }
+            }
+        }
+
+        // Try to get scale factor from focused window first, fall back to cursor position
+        let scale_factor = get_scale_factor_from_focused_window()
+            .unwrap_or_else(get_scale_factor_from_cursor);
+
+        // Constants for border appearance
+        const BORDER_SIZE: i32 = 4;
+        const DEFAULT_RED_COLOR: u32 = 0x0000FF; // Pure red in BGR format
+
+        // Use provided color or default to red
+        let highlight_color = color.unwrap_or(DEFAULT_RED_COLOR);
+
+        // Scale the coordinates and dimensions
+        let x = (rect.get_left() as f64 * scale_factor) as i32;
+        let y = (rect.get_top() as f64 * scale_factor) as i32;
+        let width = (rect.get_width() as f64 * scale_factor) as i32;
+        let height = (rect.get_height() as f64 * scale_factor) as i32;
+
+        // Spawn a thread to handle the highlighting
+        thread::spawn(move || {
+            let start_time = Instant::now();
+            let duration = duration.unwrap_or(std::time::Duration::from_millis(500));
+
+            while start_time.elapsed() < duration {
+                // Get the screen DC
+                let hdc = unsafe { GetDC(None) };
+                if hdc.0.is_null() {
+                    return;
+                }
+
+                unsafe {
+                    // Create a pen for drawing with the specified color
+                    let hpen = CreatePen(PS_SOLID, BORDER_SIZE, COLORREF(highlight_color));
+                    if hpen.0.is_null() {
+                        ReleaseDC(None, hdc);
+                        return;
+                    }
+
+                    // Save current objects
+                    let old_pen = SelectObject(hdc, HGDIOBJ(hpen.0));
+                    let null_brush = GetStockObject(NULL_BRUSH);
+                    let old_brush = SelectObject(hdc, null_brush);
+
+                    // Draw the border rectangle
+                    let _ = Rectangle(hdc, x, y, x + width, y + height);
+
+                    // Restore original objects and clean up
+                    SelectObject(hdc, old_brush);
+                    SelectObject(hdc, old_pen);
+                    let _ = DeleteObject(HGDIOBJ(hpen.0));
+                    ReleaseDC(None, hdc);
+                }
+            }
+        });
+
+        Ok(())
     }
 }
 

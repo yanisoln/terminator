@@ -326,4 +326,15 @@ impl Element {
             })
             .map_err(map_error)
     }
+
+    /// Highlights the element with a colored border.
+    /// 
+    /// @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+    /// @param {number} [durationMs] - Optional duration in milliseconds.
+    /// @returns {void}
+    #[napi]
+    pub fn highlight(&self, color: Option<u32>, duration_ms: Option<f64>) -> napi::Result<()> {
+        let duration = duration_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+        self.inner.highlight(color, duration).map_err(map_error)
+    }
 } 
