@@ -21,6 +21,7 @@ pub struct UIElementAttributes {
     pub label: Option<String>,
     pub value: Option<String>,
     pub description: Option<String>,
+    pub native_id: Option<String>,
     pub properties: HashMap<String, Option<serde_json::Value>>,
     pub is_keyboard_focusable: Option<bool>,
 }

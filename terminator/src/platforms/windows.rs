@@ -279,7 +279,7 @@ impl AccessibilityEngine for WindowsEngine {
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
                     // wheather we should use `name` or `contains_name`
-                    matcher = matcher.contains_name(name);
+                    matcher_builder = matcher_builder.contains_name(name);
                 }
                 
                 let elements = matcher_builder.find_all().map_err(|e| {
@@ -598,7 +598,7 @@ impl AccessibilityEngine for WindowsEngine {
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
                     // wheather we should use `name` or `contains_name`
-                    matcher = matcher.contains_name(name);
+                    matcher_builder = matcher_builder.contains_name(name);
                 }
 
                 let element = matcher_builder.find_first().map_err(|e| {
@@ -1599,7 +1599,6 @@ impl UIElementImpl for WindowsUIElement {
             UIProperty::LabeledBy,
             UIProperty::ValueValue,
             UIProperty::ControlType,
-            UIProperty::AutomationId,
             UIProperty::FullDescription,
             UIProperty::IsKeyboardFocusable, // Added for attributes
         ];
@@ -1628,6 +1627,7 @@ impl UIElementImpl for WindowsUIElement {
                 .ok()
                 .and_then(|v| v.get_string().ok()),
             description: self.element.0.get_help_text().ok(),
+            native_id: self.element.0.get_automation_id().ok(),
             properties,
             is_keyboard_focusable: self.is_keyboard_focusable().ok(), // Added field
         }
