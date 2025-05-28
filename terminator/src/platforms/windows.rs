@@ -1704,7 +1704,7 @@ impl UIElementImpl for WindowsUIElement {
                 .get_property_value(UIProperty::ValueValue)
                 .ok()
                 .and_then(|v| v.get_string().ok()),
-            description: self.element.0.get_help_text().ok(),
+            description: self.element.0.get_help_text().ok(), // TODO this is not description?
             properties,
             is_keyboard_focusable: self.is_keyboard_focusable().ok(), // Added field
         }
@@ -2012,16 +2012,6 @@ impl UIElementImpl for WindowsUIElement {
                 return Ok(());
             }
 
-            // Check Name property 
-            // TOdo: i dont think we should include the name in text
-            // if let Ok(name) = element.get_property_value(UIProperty::Name) {
-            //     if let Ok(name_text) = name.get_string() {
-            //         if !name_text.is_empty() {
-            //             debug!("found text in name property: {:?}", &name_text);
-            //             texts.push(name_text);
-            //         }
-            //     }
-            // }
 
             // Check Value property
             if let Ok(value) = element.get_property_value(UIProperty::ValueValue) {
@@ -2252,101 +2242,6 @@ impl UIElementImpl for WindowsUIElement {
                 "Only 'up' and 'down' scroll directions are supported".to_string(),
             )),
         }
-
-        /* Original implementation commented out
-        // Try to get the scroll pattern first
-        let scroll_pattern = self.element.0.get_pattern::<patterns::UIScrollPattern>();
-        let scroll_item_pattern = self.element.0.get_pattern::<patterns::UIScrollItemPattern>();
-        
-        if let Ok(scroll_pattern) = scroll_pattern {
-            // If we have a scroll pattern, use it
-            let scroll_amount = if amount > 0.0 {
-                ScrollAmount::SmallIncrement
-            } else if amount < 0.0 {
-                ScrollAmount::SmallDecrement
-            } else {
-                ScrollAmount::NoAmount
-            };
-
-            let times = amount.abs() as usize;
-            for _ in 0..times {
-                match direction {
-                    "up" => scroll_pattern
-                        .scroll(ScrollAmount::NoAmount, scroll_amount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll up: {:?}", e))),
-                    "down" => scroll_pattern
-                        .scroll(ScrollAmount::NoAmount, scroll_amount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll down: {:?}", e))),
-                    "left" => scroll_pattern
-                        .scroll(scroll_amount, ScrollAmount::NoAmount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll left: {:?}", e))),
-                    "right" => scroll_pattern
-                        .scroll(scroll_amount, ScrollAmount::NoAmount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll right: {:?}", e))),
-                    _ => Err(AutomationError::UnsupportedOperation(
-                        "Invalid scroll direction".to_string(),
-                    )),
-                }?;
-            }
-        } else if let Ok(scroll_item_pattern) = scroll_item_pattern {
-            // If we have a scroll item pattern, use it
-            let times = amount.abs() as usize;
-            for _ in 0..times {
-                match direction {
-                    "up" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item up: {:?}", e))),
-                    "down" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item down: {:?}", e))),
-                    "left" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item left: {:?}", e))),
-                    "right" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item right: {:?}", e))),
-                    _ => Err(AutomationError::UnsupportedOperation(
-                        "Invalid scroll direction".to_string(),
-                    )),
-                }?;
-            }
-        } else {
-            // If no scroll patterns available, fall back to mouse wheel simulation
-            use windows::Win32::UI::Input::KeyboardAndMouse::{
-                INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
-            };
-            use std::thread::sleep;
-            use std::time::Duration;
-
-            // Get the element's bounds to calculate center point
-            let rect = self.element.0.get_bounding_rectangle()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to get element bounds: {:?}", e)))?;
-            
-            let center_x = rect.get_left() + rect.get_width() / 2;
-            let center_y = rect.get_top() + rect.get_height() / 2;
-
-            // Move mouse to center of element
-            let mi = MOUSEINPUT {
-                dx: center_x,
-                dy: center_y,
-                mouseData: if amount > 0.0 { 120u32 } else { 0xFFFF_FF88u32 }, // 120 for up, -120 (as unsigned) for down
-                dwFlags: MOUSEEVENTF_WHEEL,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            let input = INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi },
-            };
-
-            let times = amount.abs() as usize;
-            // Simulate wheel clicks
-            for _ in 0..times {
-                unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
-                sleep(Duration::from_millis(50)); // Small delay between wheel events
-            }
-        }
-        */
         Ok(())
     }
 
@@ -2815,23 +2710,19 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
     id_string.hash(&mut hasher);
     let hash = hasher.finish() as usize;
     
-    // debug!(
-    //     "Generated element ID: hash={}, control_type={}, name={}, automation_id={}, class_name={}, bounds=({},{},{},{}), help_text={}",
-    //     hash,
-    //     control_type,
-    //     name,
-    //     automation_id,
-    //     class_name,
-    //     bounds.get_left(),
-    //     bounds.get_top(),
-    //     bounds.get_width(),
-    //     bounds.get_height(),
-    //     help_text
-    // );
-    
     Ok(hash)
 }
 
+// Add this function after the generate_element_id function and before the tests module
+/// Converts a raw uiautomation::UIElement to a terminator UIElement
+pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
+    let arc_element = ThreadSafeWinUIElement(Arc::new(element));
+    UIElement::new(Box::new(WindowsUIElement {
+        element: arc_element,
+    }))
+}
+
+    
 #[cfg(test)]
 mod tests {
     use super::*;

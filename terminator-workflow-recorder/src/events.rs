@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use terminator::UIElement;
 use std::time::SystemTime;
+
 
 /// Represents a position on the screen
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -8,45 +10,6 @@ pub struct Position {
     pub y: i32,
 }
 
-/// Represents a UI element
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiElement {
-    /// The name of the UI element
-    pub name: Option<String>,
-    
-    /// The automation ID of the UI element
-    pub automation_id: Option<String>,
-    
-    /// The class name of the UI element
-    pub class_name: Option<String>,
-    
-    /// The control type of the UI element
-    pub control_type: Option<String>,
-    
-    /// The process ID of the application that owns the UI element
-    pub process_id: Option<u32>,
-    
-    /// The application name
-    pub application_name: Option<String>,
-    
-    /// The window title
-    pub window_title: Option<String>,
-    
-    /// The bounding rectangle of the UI element
-    pub bounding_rect: Option<Rect>,
-    
-    /// Whether the UI element is enabled
-    pub is_enabled: Option<bool>,
-    
-    /// Whether the UI element has keyboard focus
-    pub has_keyboard_focus: Option<bool>,
-    
-    /// The hierarchy path to this element (from root)
-    pub hierarchy_path: Option<String>,
-    
-    /// The value of the UI element (for input fields, etc.)
-    pub value: Option<String>,
-}
 
 /// Represents a rectangle
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +44,7 @@ pub enum MouseEventType {
 }
 
 /// Represents a keyboard event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct KeyboardEvent {
     /// The key code
     pub key_code: u32,
@@ -112,7 +75,7 @@ pub struct KeyboardEvent {
 }
 
 /// Represents a mouse event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct MouseEvent {
     /// The type of mouse event
     pub event_type: MouseEventType,
@@ -143,7 +106,7 @@ pub enum ClipboardAction {
 }
 
 /// Represents a clipboard event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ClipboardEvent {
     /// The clipboard action
     pub action: ClipboardAction,
@@ -165,7 +128,7 @@ pub struct ClipboardEvent {
 }
 
 /// Represents text selection events
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TextSelectionEvent {
     /// The selected text content
     pub selected_text: String,
@@ -200,7 +163,7 @@ pub enum SelectionMethod {
 }
 
 /// Represents drag and drop operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct DragDropEvent {
     /// The start position of the drag
     pub start_position: Position,
@@ -209,7 +172,7 @@ pub struct DragDropEvent {
     pub end_position: Position,
     
     /// The UI element being dragged (source)
-    pub source_element: Option<UiElement>,
+    pub source_element: Option<UIElement>,
     
     /// The type of data being dragged
     pub data_type: Option<String>,
@@ -225,7 +188,7 @@ pub struct DragDropEvent {
 }
 
 /// Represents hotkey/shortcut events
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HotkeyEvent {
     /// The key combination (e.g., "Ctrl+C", "Alt+Tab")
     pub combination: String,
@@ -241,7 +204,7 @@ pub struct HotkeyEvent {
 }
 
 /// Represents a workflow event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum WorkflowEvent {
     /// A mouse event
     Mouse(MouseEvent),
@@ -269,7 +232,7 @@ pub enum WorkflowEvent {
 }
 
 /// Represents a recorded event with timestamp
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RecordedEvent {
     /// The timestamp of the event (milliseconds since epoch)
     pub timestamp: u64,
@@ -279,7 +242,7 @@ pub struct RecordedEvent {
 }
 
 /// Represents a recorded workflow
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RecordedWorkflow {
     /// The name of the workflow
     pub name: String,
@@ -332,6 +295,50 @@ impl RecordedWorkflow {
         
         self.end_time = Some(now);
     }
+
+    /// Serialize the workflow to JSON string
+    /// This converts UIElement instances to serializable form
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        let serializable: SerializableRecordedWorkflow = self.into();
+        serde_json::to_string_pretty(&serializable)
+    }
+
+    /// Serialize the workflow to JSON bytes
+    /// This converts UIElement instances to serializable form
+    pub fn to_json_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        let serializable: SerializableRecordedWorkflow = self.into();
+        serde_json::to_vec_pretty(&serializable)
+    }
+
+    /// Deserialize a workflow from JSON string
+    /// Note: This creates a workflow with serializable UI elements,
+    /// not the original UIElement instances
+    pub fn from_json(json: &str) -> Result<SerializableRecordedWorkflow, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+
+    /// Deserialize a workflow from JSON bytes
+    /// Note: This creates a workflow with serializable UI elements,
+    /// not the original UIElement instances
+    pub fn from_json_bytes(bytes: &[u8]) -> Result<SerializableRecordedWorkflow, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    /// Save the workflow to a JSON file
+    pub fn save_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+        let json = self.to_json()?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    /// Load a workflow from a JSON file
+    /// Note: This creates a workflow with serializable UI elements,
+    /// not the original UIElement instances
+    pub fn load_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<SerializableRecordedWorkflow, Box<dyn std::error::Error>> {
+        let json = std::fs::read_to_string(path)?;
+        let workflow = Self::from_json(&json)?;
+        Ok(workflow)
+    }
 }
 
 /// Represents UI Automation structure change types
@@ -346,13 +353,13 @@ pub enum StructureChangeType {
 }
 
 /// Represents a UI Automation structure change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct UiStructureChangedEvent {
     /// The type of structure change
     pub change_type: StructureChangeType,
     
     /// The element where the structure change occurred
-    pub element: Option<UiElement>,
+    pub element: Option<UIElement>,
     
     /// Runtime IDs of affected children (if applicable)
     pub runtime_ids: Option<Vec<i32>>,
@@ -365,7 +372,7 @@ pub struct UiStructureChangedEvent {
 }
 
 /// Represents a UI Automation property change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct UiPropertyChangedEvent {
     /// The property that changed (as string for serialization)
     pub property_name: String,
@@ -384,20 +391,20 @@ pub struct UiPropertyChangedEvent {
 }
 
 /// Represents a UI Automation focus change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct UiFocusChangedEvent {
     /// The previous element that had focus (if available)
-    pub previous_element: Option<UiElement>,
+    pub previous_element: Option<UIElement>,
     
     /// Event metadata (current focused UI element, application, etc.)
     pub metadata: EventMetadata,
 }
 
 /// Unified metadata for all workflow events
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct EventMetadata {
     /// The UI element associated with this event (if available)
-    pub ui_element: Option<UiElement>,
+    pub ui_element: Option<UIElement>,
     
     /// The application where this event occurred
     pub application: Option<String>,
@@ -411,12 +418,12 @@ pub struct EventMetadata {
 
 impl EventMetadata {
     /// Create new metadata from a UI element
-    pub fn from_ui_element(ui_element: Option<UiElement>) -> Self {
+    pub fn from_ui_element(ui_element: Option<UIElement>) -> Self {
         let (application, window_title, process_id) = if let Some(ref elem) = ui_element {
             (
-                elem.application_name.clone(),
-                elem.window_title.clone(),
-                elem.process_id,
+                Some(elem.application_name()).filter(|s| !s.is_empty()),
+                Some(elem.window_title()).filter(|s| !s.is_empty()),
+                None,
             )
         } else {
             (None, None, None)
@@ -439,4 +446,314 @@ impl EventMetadata {
             process_id: None,
         }
     }
-} 
+}
+
+/// Serializable version of UIElement for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableUIElement {
+    pub id: Option<String>,
+    pub role: String,
+    pub name: Option<String>,
+    pub bounds: Option<(f64, f64, f64, f64)>,
+    pub value: Option<String>,
+    pub description: Option<String>,
+    pub application: Option<String>,
+    pub window_title: Option<String>,
+}
+
+impl From<&UIElement> for SerializableUIElement {
+    fn from(element: &UIElement) -> Self {
+        let attrs = element.attributes();
+        let bounds = element.bounds().ok();
+        
+        Self {
+            id: element.id(),
+            role: element.role(),
+            name: attrs.name,
+            bounds,
+            value: attrs.value,
+            description: attrs.description,
+            application: Some(element.application_name()).filter(|s| !s.is_empty()),
+            window_title: Some(element.window_title()).filter(|s| !s.is_empty()),
+        }
+    }
+}
+
+/// Serializable version of EventMetadata for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableEventMetadata {
+    /// The UI element associated with this event (if available)
+    pub ui_element: Option<SerializableUIElement>,
+    
+    /// The application where this event occurred
+    pub application: Option<String>,
+    
+    /// The window title where this event occurred
+    pub window_title: Option<String>,
+    
+    /// The process ID of the application
+    pub process_id: Option<u32>,
+}
+
+impl From<&EventMetadata> for SerializableEventMetadata {
+    fn from(metadata: &EventMetadata) -> Self {
+        Self {
+            ui_element: metadata.ui_element.as_ref().map(|elem| elem.into()),
+            application: metadata.application.clone(),
+            window_title: metadata.window_title.clone(),
+            process_id: metadata.process_id,
+        }
+    }
+}
+
+/// Serializable version of KeyboardEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableKeyboardEvent {
+    pub key_code: u32,
+    pub is_key_down: bool,
+    pub ctrl_pressed: bool,
+    pub alt_pressed: bool,
+    pub shift_pressed: bool,
+    pub win_pressed: bool,
+    pub character: Option<char>,
+    pub scan_code: Option<u32>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&KeyboardEvent> for SerializableKeyboardEvent {
+    fn from(event: &KeyboardEvent) -> Self {
+        Self {
+            key_code: event.key_code,
+            is_key_down: event.is_key_down,
+            ctrl_pressed: event.ctrl_pressed,
+            alt_pressed: event.alt_pressed,
+            shift_pressed: event.shift_pressed,
+            win_pressed: event.win_pressed,
+            character: event.character,
+            scan_code: event.scan_code,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of MouseEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableMouseEvent {
+    pub event_type: MouseEventType,
+    pub button: MouseButton,
+    pub position: Position,
+    pub scroll_delta: Option<(i32, i32)>,
+    pub drag_start: Option<Position>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&MouseEvent> for SerializableMouseEvent {
+    fn from(event: &MouseEvent) -> Self {
+        Self {
+            event_type: event.event_type,
+            button: event.button,
+            position: event.position,
+            scroll_delta: event.scroll_delta,
+            drag_start: event.drag_start,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of ClipboardEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableClipboardEvent {
+    pub action: ClipboardAction,
+    pub content: Option<String>,
+    pub content_size: Option<usize>,
+    pub format: Option<String>,
+    pub truncated: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&ClipboardEvent> for SerializableClipboardEvent {
+    fn from(event: &ClipboardEvent) -> Self {
+        Self {
+            action: event.action.clone(),
+            content: event.content.clone(),
+            content_size: event.content_size,
+            format: event.format.clone(),
+            truncated: event.truncated,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of TextSelectionEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableTextSelectionEvent {
+    pub selected_text: String,
+    pub start_position: Position,
+    pub end_position: Position,
+    pub selection_method: SelectionMethod,
+    pub selection_length: usize,
+    pub is_partial_selection: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&TextSelectionEvent> for SerializableTextSelectionEvent {
+    fn from(event: &TextSelectionEvent) -> Self {
+        Self {
+            selected_text: event.selected_text.clone(),
+            start_position: event.start_position,
+            end_position: event.end_position,
+            selection_method: event.selection_method.clone(),
+            selection_length: event.selection_length,
+            is_partial_selection: event.is_partial_selection,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of DragDropEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableDragDropEvent {
+    pub start_position: Position,
+    pub end_position: Position,
+    pub source_element: Option<SerializableUIElement>,
+    pub data_type: Option<String>,
+    pub content: Option<String>,
+    pub success: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&DragDropEvent> for SerializableDragDropEvent {
+    fn from(event: &DragDropEvent) -> Self {
+        Self {
+            start_position: event.start_position,
+            end_position: event.end_position,
+            source_element: event.source_element.as_ref().map(|elem| elem.into()),
+            data_type: event.data_type.clone(),
+            content: event.content.clone(),
+            success: event.success,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of HotkeyEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableHotkeyEvent {
+    pub combination: String,
+    pub action: Option<String>,
+    pub is_global: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&HotkeyEvent> for SerializableHotkeyEvent {
+    fn from(event: &HotkeyEvent) -> Self {
+        Self {
+            combination: event.combination.clone(),
+            action: event.action.clone(),
+            is_global: event.is_global,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of UiPropertyChangedEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableUiPropertyChangedEvent {
+    pub property_name: String,
+    pub property_id: u32,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&UiPropertyChangedEvent> for SerializableUiPropertyChangedEvent {
+    fn from(event: &UiPropertyChangedEvent) -> Self {
+        Self {
+            property_name: event.property_name.clone(),
+            property_id: event.property_id,
+            old_value: event.old_value.clone(),
+            new_value: event.new_value.clone(),
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of UiFocusChangedEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableUiFocusChangedEvent {
+    pub previous_element: Option<SerializableUIElement>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&UiFocusChangedEvent> for SerializableUiFocusChangedEvent {
+    fn from(event: &UiFocusChangedEvent) -> Self {
+        Self {
+            previous_element: event.previous_element.as_ref().map(|elem| elem.into()),
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of WorkflowEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SerializableWorkflowEvent {
+    Mouse(SerializableMouseEvent),
+    Keyboard(SerializableKeyboardEvent),
+    Clipboard(SerializableClipboardEvent),
+    TextSelection(SerializableTextSelectionEvent),
+    DragDrop(SerializableDragDropEvent),
+    Hotkey(SerializableHotkeyEvent),
+    UiPropertyChanged(SerializableUiPropertyChangedEvent),
+    UiFocusChanged(SerializableUiFocusChangedEvent),
+}
+
+impl From<&WorkflowEvent> for SerializableWorkflowEvent {
+    fn from(event: &WorkflowEvent) -> Self {
+        match event {
+            WorkflowEvent::Mouse(e) => SerializableWorkflowEvent::Mouse(e.into()),
+            WorkflowEvent::Keyboard(e) => SerializableWorkflowEvent::Keyboard(e.into()),
+            WorkflowEvent::Clipboard(e) => SerializableWorkflowEvent::Clipboard(e.into()),
+            WorkflowEvent::TextSelection(e) => SerializableWorkflowEvent::TextSelection(e.into()),
+            WorkflowEvent::DragDrop(e) => SerializableWorkflowEvent::DragDrop(e.into()),
+            WorkflowEvent::Hotkey(e) => SerializableWorkflowEvent::Hotkey(e.into()),
+            WorkflowEvent::UiPropertyChanged(e) => SerializableWorkflowEvent::UiPropertyChanged(e.into()),
+            WorkflowEvent::UiFocusChanged(e) => SerializableWorkflowEvent::UiFocusChanged(e.into()),
+        }
+    }
+}
+
+/// Serializable version of RecordedEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableRecordedEvent {
+    pub timestamp: u64,
+    pub event: SerializableWorkflowEvent,
+}
+
+impl From<&RecordedEvent> for SerializableRecordedEvent {
+    fn from(event: &RecordedEvent) -> Self {
+        Self {
+            timestamp: event.timestamp,
+            event: (&event.event).into(),
+        }
+    }
+}
+
+/// Serializable version of RecordedWorkflow for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableRecordedWorkflow {
+    pub name: String,
+    pub start_time: u64,
+    pub end_time: Option<u64>,
+    pub events: Vec<SerializableRecordedEvent>,
+}
+
+impl From<&RecordedWorkflow> for SerializableRecordedWorkflow {
+    fn from(workflow: &RecordedWorkflow) -> Self {
+        Self {
+            name: workflow.name.clone(),
+            start_time: workflow.start_time,
+            end_time: workflow.end_time,
+            events: workflow.events.iter().map(|e| e.into()).collect(),
+        }
+    }
+}

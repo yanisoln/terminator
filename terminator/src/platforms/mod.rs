@@ -96,13 +96,13 @@ pub trait AccessibilityEngine: Send + Sync {
 }
 
 #[cfg(target_os = "linux")]
-mod linux;
+pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "macos")]
 pub mod tree_search;
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 /// Create the appropriate engine for the current platform
 pub fn create_engine(

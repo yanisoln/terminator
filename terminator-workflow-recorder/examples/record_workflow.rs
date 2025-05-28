@@ -10,9 +10,9 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[EARLY] Comprehensive workflow recorder started");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .with_target(true)
-        .with_thread_ids(false)
+        .with_thread_ids(true)
         .with_file(true)
         .with_line_number(true)
         .finish();
@@ -104,10 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref ui_element) = kb_event.metadata.ui_element {
                             if let Some(ref app) = kb_event.metadata.application {
                                 println!("     └─ Target: {} in {}", 
-                                    ui_element.control_type.as_ref().unwrap_or(&"Unknown".to_string()),
+                                    ui_element.role(),
                                     app);
                             }
-                            if let Some(ref name) = ui_element.name {
+                            if let Some(ref name) = ui_element.name() {
                                 if !name.is_empty() {
                                     println!("     └─ Element: \"{}\"", name);
                                 }
@@ -158,12 +158,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         drag_event.end_position.y);
                 }
                 terminator_workflow_recorder::WorkflowEvent::UiFocusChanged(focus_event) => {
-                    println!("🎯 Focus changed to: {:?}", focus_event.metadata.ui_element.as_ref().map(|e| &e.name));
+                    println!("🎯 Focus changed to: {:?}", focus_event.metadata.ui_element.as_ref().unwrap().text(1).unwrap());
                 }
                 terminator_workflow_recorder::WorkflowEvent::UiPropertyChanged(property_event) => {
-                    println!("🔧 Property changed: {} = {:?}", 
-                        property_event.property_name, 
-                        property_event.new_value);
+                    println!("🔧 Property changed: {:?}", 
+                        property_event.metadata.ui_element.as_ref().unwrap().text(1).unwrap());
                 }
                 _ => {
                     // Display other event types more briefly

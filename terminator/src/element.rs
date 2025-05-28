@@ -2,14 +2,13 @@ use crate::errors::AutomationError;
 use crate::selector::Selector;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::time::Instant;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::{instrument, warn};
 
 use super::{ClickResult, Locator};
 
 /// Response structure for exploration result
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExploredElementDetail {
     pub role: String,
     pub name: Option<String>, // Use 'name' consistently for the primary label/text
@@ -21,6 +20,25 @@ pub struct ExploredElementDetail {
     pub parent_id: Option<String>,
     pub children_ids: Vec<String>,
     pub suggested_selector: String,
+}
+
+impl ExploredElementDetail {
+    /// Create a new ExploredElementDetail from a UIElement
+    pub fn from_element(element: &UIElement, parent_id: Option<String>) -> Result<Self, AutomationError> {
+        let id = element.id_or_empty();
+        Ok(Self {
+            role: element.role(),
+            name: element.name(),
+            id: if id.is_empty() { None } else { Some(id.clone()) },
+            bounds: element.bounds().ok(),
+            value: element.attributes().value,
+            description: element.attributes().description,
+            text: element.text(1).ok(),
+            parent_id,
+            children_ids: Vec::new(),
+            suggested_selector: format!("#{}", id),
+        })
+    }
 }
 
 /// Response structure for exploration result
@@ -37,14 +55,21 @@ pub struct UIElement {
 }
 
 /// Attributes associated with a UI element
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UIElementAttributes {
+    #[serde(default)]
     pub role: String,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
     pub label: Option<String>,
+    #[serde(default)]
     pub value: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub properties: HashMap<String, Option<serde_json::Value>>,
+    #[serde(default)]
     pub is_keyboard_focusable: Option<bool>,
 }
 
@@ -111,17 +136,10 @@ impl UIElement {
     /// Get the element's ID
     #[instrument(skip(self))]
     pub fn id(&self) -> Option<String> {
-        let start = Instant::now();
-        info!("Getting element ID");
         
         let id = self.inner.id();
         
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_id = id.as_deref().unwrap_or_default(),
-            "Element ID retrieved"
-        );
+
         
         id
     }
@@ -154,16 +172,10 @@ impl UIElement {
     /// Click on this element
     #[instrument(skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
-        let start = Instant::now();
-        info!("Clicking element");
         
         let result = self.inner.click();
         
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element clicked"
-        );
+
         
         result
     }
@@ -171,16 +183,10 @@ impl UIElement {
     /// Double-click on this element
     #[instrument(skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
-        let start = Instant::now();
-        info!("Double clicking element");
         
         let result = self.inner.double_click();
         
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element double clicked"
-        );
+   
         
         result
     }
@@ -188,17 +194,10 @@ impl UIElement {
     /// Right-click on this element
     #[instrument(skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!("Right clicking element");
         
         let result = self.inner.right_click();
         
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element right clicked"
-        );
-        
+
         result
     }
 
@@ -235,18 +234,8 @@ impl UIElement {
     /// Check if element is enabled
     #[instrument(skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
-        let start = Instant::now();
-        info!("Checking if element is enabled");
-        
         let is_enabled = self.inner.is_enabled()?;
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            is_enabled,
-            "Element enabled status checked"
-        );
-        
+     
         Ok(is_enabled)
     }
 
@@ -289,18 +278,7 @@ impl UIElement {
     /// Get the element's name
     #[instrument(skip(self))]
     pub fn name(&self) -> Option<String> {
-        let start = Instant::now();
-        info!("Getting element name");
-        
         let name = self.inner.name();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_name = name.as_deref().unwrap_or_default(),
-            "Element name retrieved"
-        );
-        
         name
     }
 
@@ -348,29 +326,58 @@ impl UIElement {
         self.inner.highlight(color, duration)
     }
 
+    /// Convenience methods to reduce verbosity with optional properties
+    
+    /// Get element ID or empty string if not available
+    pub fn id_or_empty(&self) -> String {
+        self.id().unwrap_or_default()
+    }
+
+    /// Get element name or empty string if not available  
+    pub fn name_or_empty(&self) -> String {
+        self.name().unwrap_or_default()
+    }
+
+    /// Get element name or fallback string if not available
+    pub fn name_or(&self, fallback: &str) -> String {
+        self.name().unwrap_or_else(|| fallback.to_string())
+    }
+
+    /// Get element value or empty string if not available
+    pub fn value_or_empty(&self) -> String {
+        self.attributes().value.unwrap_or_default()
+    }
+
+    /// Get element description or empty string if not available
+    pub fn description_or_empty(&self) -> String {
+        self.attributes().description.unwrap_or_default()
+    }
+
+    /// Get application name safely
+    pub fn application_name(&self) -> String {
+        self.application()
+            .ok()
+            .flatten()
+            .and_then(|app| app.name())
+            .unwrap_or_default()
+    }
+
+    /// Get window title safely
+    pub fn window_title(&self) -> String {
+        self.window()
+            .ok()
+            .flatten()
+            .and_then(|win| win.name())
+            .unwrap_or_default()
+    }
+
     /// Explore this element and its direct children
+    /// // mark deprecated
+    #[deprecated(since = "0.3.5")]
     pub fn explore(&self) -> Result<ExploreResponse, AutomationError> {
         let mut children = Vec::new();
         for child in self.children()? {
-            let child_id = child.id().unwrap_or_default();
-            let child_bounds = child.bounds().ok();
-            let child_attrs = child.attributes();
-            let child_text = child.text(1).ok();
-
-            let suggested_selector = format!("#{}", child_id);
-
-            children.push(ExploredElementDetail {
-                role: child_attrs.role,
-                name: child_attrs.name,
-                id: Some(child_id),
-                bounds: child_bounds,
-                value: child_attrs.value,
-                description: child_attrs.description,
-                text: child_text,
-                parent_id: self.id(),
-                children_ids: Vec::new(),
-                suggested_selector,
-            });
+            children.push(ExploredElementDetail::from_element(&child, self.id())?);
         }
 
         Ok(ExploreResponse {
@@ -401,6 +408,46 @@ impl Clone for UIElement {
         // that will behave the same way
         Self {
             inner: self.inner.clone_box(),
+        }
+    }
+}
+
+/// Utility functions for working with UI elements
+pub mod utils {
+    use super::*;
+
+    /// Get the display text for an element (name, value, or role as fallback)
+    pub fn display_text(element: &UIElement) -> String {
+        element.name()
+            .or_else(|| element.attributes().value)
+            .unwrap_or_else(|| element.role())
+    }
+
+    /// Check if element has any text content
+    pub fn has_text_content(element: &UIElement) -> bool {
+        element.name().is_some() 
+            || element.attributes().value.is_some()
+            || element.text(1).unwrap_or_default().trim().len() > 0
+    }
+
+    /// Get a human-readable identifier for the element
+    pub fn element_identifier(element: &UIElement) -> String {
+        if let Some(name) = element.name() {
+            format!("{} ({})", name, element.role())
+        } else if let Some(id) = element.id() {
+            format!("#{} ({})", id, element.role())
+        } else {
+            element.role()
+        }
+    }
+
+    /// Create a minimal attributes struct with just the essentials
+    pub fn essential_attributes(element: &UIElement) -> UIElementAttributes {
+        UIElementAttributes {
+            role: element.role(),
+            name: element.name(),
+            value: element.attributes().value,
+            ..Default::default()
         }
     }
 }

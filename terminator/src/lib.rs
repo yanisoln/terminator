@@ -22,6 +22,9 @@ pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
 
+#[cfg(target_os = "windows")]
+pub use platforms::windows::convert_uiautomation_element_to_terminator;
+
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {
     pub method: String,

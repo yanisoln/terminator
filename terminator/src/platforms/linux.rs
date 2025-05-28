@@ -4,6 +4,7 @@ use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use std::fmt::Debug;
 use std::time::Duration;
+use std::default::Default;
 
 pub struct LinuxEngine;
 
@@ -177,11 +178,7 @@ impl UIElementImpl for LinuxUIElement {
     fn attributes(&self) -> UIElementAttributes {
         UIElementAttributes {
             role: "".to_string(),
-            name: None,
-            label: None,
-            value: None,
-            description: None,
-            properties: std::collections::HashMap::new(),
+            ..Default::default()
         }
     }
 

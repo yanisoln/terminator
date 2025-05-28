@@ -3,8 +3,6 @@ use crate::{
     WorkflowEvent, WorkflowRecorderError, Result
 };
 use std::{
-    fs::File,
-    io::Write,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -144,7 +142,7 @@ impl WorkflowRecorder {
             let event_tx = self.event_tx.clone();
             
             // Start the Windows recorder
-            let windows_recorder = WindowsRecorder::new(self.config.clone(), event_tx)?;
+            let windows_recorder = WindowsRecorder::new(self.config.clone(), event_tx).await?;
             self.windows_recorder = Some(windows_recorder);
             
             // Start the event processing task
@@ -191,9 +189,9 @@ impl WorkflowRecorder {
             WorkflowRecorderError::SaveError(format!("Failed to lock workflow: {}", e))
         })?;
         
-        let json = serde_json::to_string_pretty(&*workflow)?;
-        let mut file = File::create(path)?;
-        file.write_all(json.as_bytes())?;
+        workflow.save_to_file(path).map_err(|e| {
+            WorkflowRecorderError::SaveError(format!("Failed to save workflow: {}", e))
+        })?;
         
         Ok(())
     }

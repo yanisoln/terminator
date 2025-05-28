@@ -47,11 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         
                         if let Some(ref ui_element) = kb_event.metadata.ui_element {
                             println!("  ✅ UI Element captured!");
-                            println!("     App: {:?}", ui_element.application_name);
-                            println!("     Window: {:?}", ui_element.window_title);
-                            println!("     Control: {:?}", ui_element.control_type);
-                            println!("     Name: {:?}", ui_element.name);
-                            println!("     Has Focus: {:?}", ui_element.has_keyboard_focus);
+                            println!("     App: {:?}", ui_element.application_name());
+                            println!("     Window: {:?}", ui_element.window_title());
+                            println!("     Control: {:?}", ui_element.role());
+                            println!("     Name: {:?}", ui_element.name());
+                            println!("     Has Focus: {:?}", ui_element.is_focused());
                         } else {
                             println!("  ❌ No UI Element captured");
                         }
