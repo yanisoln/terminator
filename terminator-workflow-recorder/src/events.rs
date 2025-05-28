@@ -44,7 +44,7 @@ pub enum MouseEventType {
 }
 
 /// Represents a keyboard event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyboardEvent {
     /// The key code
     pub key_code: u32,
@@ -75,7 +75,7 @@ pub struct KeyboardEvent {
 }
 
 /// Represents a mouse event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MouseEvent {
     /// The type of mouse event
     pub event_type: MouseEventType,
@@ -106,7 +106,7 @@ pub enum ClipboardAction {
 }
 
 /// Represents a clipboard event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardEvent {
     /// The clipboard action
     pub action: ClipboardAction,
@@ -128,7 +128,7 @@ pub struct ClipboardEvent {
 }
 
 /// Represents text selection events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextSelectionEvent {
     /// The selected text content
     pub selected_text: String,
@@ -163,7 +163,7 @@ pub enum SelectionMethod {
 }
 
 /// Represents drag and drop operations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DragDropEvent {
     /// The start position of the drag
     pub start_position: Position,
@@ -188,7 +188,7 @@ pub struct DragDropEvent {
 }
 
 /// Represents hotkey/shortcut events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotkeyEvent {
     /// The key combination (e.g., "Ctrl+C", "Alt+Tab")
     pub combination: String,
@@ -204,7 +204,7 @@ pub struct HotkeyEvent {
 }
 
 /// Represents a workflow event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowEvent {
     /// A mouse event
     Mouse(MouseEvent),
@@ -232,7 +232,7 @@ pub enum WorkflowEvent {
 }
 
 /// Represents a recorded event with timestamp
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordedEvent {
     /// The timestamp of the event (milliseconds since epoch)
     pub timestamp: u64,
@@ -242,7 +242,7 @@ pub struct RecordedEvent {
 }
 
 /// Represents a recorded workflow
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordedWorkflow {
     /// The name of the workflow
     pub name: String,
@@ -353,7 +353,7 @@ pub enum StructureChangeType {
 }
 
 /// Represents a UI Automation structure change event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiStructureChangedEvent {
     /// The type of structure change
     pub change_type: StructureChangeType,
@@ -372,7 +372,7 @@ pub struct UiStructureChangedEvent {
 }
 
 /// Represents a UI Automation property change event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiPropertyChangedEvent {
     /// The property that changed (as string for serialization)
     pub property_name: String,
@@ -391,7 +391,7 @@ pub struct UiPropertyChangedEvent {
 }
 
 /// Represents a UI Automation focus change event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiFocusChangedEvent {
     /// The previous element that had focus (if available)
     pub previous_element: Option<UIElement>,
@@ -401,7 +401,7 @@ pub struct UiFocusChangedEvent {
 }
 
 /// Unified metadata for all workflow events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventMetadata {
     /// The UI element associated with this event (if available)
     pub ui_element: Option<UIElement>,
