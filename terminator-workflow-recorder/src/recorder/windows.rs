@@ -831,7 +831,6 @@ impl WindowsRecorder {
                 let hierarchy_path = get_element_hierarchy_path(&element);
                 
                 let (window_title, application_name) = if let Some(pid) = process_id {
-                    debug!("Getting window info for focused element process {}", pid);
                     get_window_info_for_process(pid, Arc::clone(&process_info_cache))
                 } else {
                     (None, None)
@@ -962,7 +961,6 @@ fn get_ui_element_at_point(
     
     match automation.element_from_point(Point::from(POINT { x, y })) {
         Ok(element) => {
-            debug!("Found UI element, gathering properties...");
             
             let name = element.get_name().ok();
             let automation_id = element.get_automation_id().ok();
@@ -986,16 +984,10 @@ fn get_ui_element_at_point(
             let hierarchy_path = get_element_hierarchy_path(&element);
             
             let (window_title, application_name) = if let Some(pid) = process_id {
-                debug!("Getting window info for process {}", pid);
                 get_window_info_for_process(pid, Arc::clone(&process_info_cache))
             } else {
                 (None, None)
             };
-            
-            debug!(
-                "UI element properties: name={:?}, automation_id={:?}, class={:?}, type={:?}, process={:?}, app={:?}, window={:?}",
-                name, automation_id, class_name, control_type, process_id, application_name, window_title
-            );
             
             Some(UiElement {
                 name,
@@ -1060,10 +1052,8 @@ fn get_window_info_for_process(
 ) -> (Option<String>, Option<String>) {
     // Check cache first
     if let Some(cached_info) = cache.get(&process_id) {
-        debug!("Cache hit for PID {}: ({:?}, {:?})", process_id, cached_info.0, cached_info.1);
         return cached_info.clone();
     }
-    debug!("Cache miss for PID {}", process_id);
 
     let (tx, rx) = mpsc::channel();
     let pid_clone = process_id;
