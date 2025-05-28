@@ -1,6 +1,6 @@
 [package]
 name = "terminator-workflow-recorder"
-version = "0.1.0"
+version = { workspace = true }
 edition = "2021"
 description = "A crate for recording user workflows on Windows"
 authors = ["Terminator Contributors"]
