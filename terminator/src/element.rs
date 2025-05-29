@@ -357,6 +357,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // New method to highlight the element
     fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError>;
+
+    // New method to get the process ID of the element
+    fn process_id(&self) -> Result<u32, AutomationError>;
 }
 
 impl UIElement {
@@ -574,11 +577,10 @@ impl UIElement {
 
     /// Get window title safely
     pub fn window_title(&self) -> String {
-        self.window()
-            .ok()
-            .flatten()
-            .and_then(|win| win.name())
-            .unwrap_or_default()
+        match self.window() {
+            Ok(Some(window)) => window.name_or_empty(),
+            _ => String::new(),
+        }
     }
 
     /// Convert this UIElement to a SerializableUIElement
@@ -602,6 +604,11 @@ impl UIElement {
             parent: self.clone(),
             children,
         })
+    }
+
+    /// Get the process ID of the application containing this element
+    pub fn process_id(&self) -> Result<u32, AutomationError> {
+        self.inner.process_id()
     }
 }
 

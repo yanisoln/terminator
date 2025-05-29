@@ -15,6 +15,7 @@ use tokio::runtime::Runtime;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
@@ -2821,6 +2822,11 @@ impl UIElementImpl for WindowsUIElement {
         });
 
         Ok(())
+    }
+    fn process_id(&self) -> Result<u32, AutomationError> {
+        self.element.0.get_process_id().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+        })
     }
 }
 

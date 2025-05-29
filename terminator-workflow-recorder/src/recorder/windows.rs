@@ -482,9 +482,15 @@ impl WindowsRecorder {
                         };
                         
                         // Capture UI element if enabled
-                        let ui_element  = if capture_ui_elements {
-                            // Self::get_focused_element_sync()
-                            None
+                        let ui_element = if capture_ui_elements {
+                            // Create a temporary UIAutomation instance for this thread
+                            match UIAutomation::new() {
+                                Ok(automation) => Self::get_focused_ui_element(&automation),
+                                Err(e) => {
+                                    debug!("Failed to create UIAutomation instance for clipboard: {}", e);
+                                    None
+                                }
+                            }
                         } else {
                             None
                         };
@@ -694,12 +700,7 @@ impl WindowsRecorder {
                         // Create a minimal UI element representation
                         let focus_event = UiFocusChangedEvent {
                             previous_element: None,
-                            metadata: EventMetadata {
-                                ui_element: ui_element,
-                                application: None,
-                                window_title: Some(element_name),
-                                process_id: None,
-                            },
+                            metadata: EventMetadata::from_ui_element(ui_element.clone()),
                         };
                         
                         if let Err(e) = focus_event_tx_clone.send(WorkflowEvent::UiFocusChanged(focus_event)) {
@@ -825,15 +826,9 @@ impl WindowsRecorder {
                         
                         let property_event = UiPropertyChangedEvent {
                             property_name: property_name.clone(),
-                            property_id: 0, // We don't have access to the raw property ID in this approach
                             old_value: None, 
                             new_value: Some(value_string),
-                            metadata: EventMetadata {
-                                ui_element: ui_element,
-                                application: None,
-                                window_title: Some(element_name),
-                                process_id: None,
-                            },
+                            metadata: EventMetadata::from_ui_element(ui_element.clone()),
                         };
                         
                         if let Err(e) = property_event_tx_clone.send(WorkflowEvent::UiPropertyChanged(property_event)) {

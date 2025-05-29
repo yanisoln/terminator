@@ -194,9 +194,6 @@ pub struct TextSelectionEvent {
     /// The length of the selection in characters
     pub selection_length: usize,
     
-    /// Whether this is a partial selection within a larger text block
-    pub is_partial_selection: bool,
-    
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -435,9 +432,6 @@ pub struct UiPropertyChangedEvent {
     /// The property that changed (as string for serialization)
     pub property_name: String,
     
-    /// The property ID
-    pub property_id: u32,
-    
     /// The old value (if available)
     #[serde(skip_serializing_if = "is_empty_string")]
     pub old_value: Option<String>,
@@ -488,7 +482,7 @@ impl EventMetadata {
             (
                 Some(elem.application_name()).filter(|s| !s.is_empty()),
                 Some(elem.window_title()).filter(|s| !s.is_empty()),
-                None,
+                elem.process_id().ok(),
             )
         } else {
             (None, None, None)
@@ -680,7 +674,6 @@ pub struct SerializableTextSelectionEvent {
     pub end_position: Position,
     pub selection_method: SelectionMethod,
     pub selection_length: usize,
-    pub is_partial_selection: bool,
     pub metadata: SerializableEventMetadata,
 }
 
@@ -692,7 +685,6 @@ impl From<&TextSelectionEvent> for SerializableTextSelectionEvent {
             end_position: event.end_position,
             selection_method: event.selection_method.clone(),
             selection_length: event.selection_length,
-            is_partial_selection: event.is_partial_selection,
             metadata: (&event.metadata).into(),
         }
     }
@@ -752,7 +744,6 @@ impl From<&HotkeyEvent> for SerializableHotkeyEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUiPropertyChangedEvent {
     pub property_name: String,
-    pub property_id: u32,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub old_value: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
@@ -764,7 +755,6 @@ impl From<&UiPropertyChangedEvent> for SerializableUiPropertyChangedEvent {
     fn from(event: &UiPropertyChangedEvent) -> Self {
         Self {
             property_name: event.property_name.clone(),
-            property_id: event.property_id,
             old_value: event.old_value.clone(),
             new_value: event.new_value.clone(),
             metadata: (&event.metadata).into(),
