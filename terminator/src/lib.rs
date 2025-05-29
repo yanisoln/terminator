@@ -17,10 +17,13 @@ pub mod selector;
 mod tests;
 pub mod utils;
 
-pub use element::{UIElement, UIElementAttributes};
+pub use element::{UIElement, UIElementAttributes, SerializableUIElement};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+
+#[cfg(target_os = "windows")]
+pub use platforms::windows::convert_uiautomation_element_to_terminator;
 
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {
@@ -40,6 +43,7 @@ pub struct CommandOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
 }
 

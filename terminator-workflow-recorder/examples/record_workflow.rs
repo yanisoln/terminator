@@ -10,9 +10,9 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[EARLY] Comprehensive workflow recorder started");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .with_target(true)
-        .with_thread_ids(false)
+        .with_thread_ids(true)
         .with_file(true)
         .with_line_number(true)
         .finish();
@@ -46,6 +46,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         track_modifier_states: true,
         mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves to reduce noise
         min_drag_distance: 5.0, // 5 pixels minimum for drag detection
+        
+        // Filtering options to reduce noise from system UI elements
+        ignore_focus_patterns: vec![
+            // Add custom patterns to ignore specific UI elements
+            "popup".to_string(),
+            "tooltip".to_string(),
+        ],
+        ignore_property_patterns: vec![
+            // Ignore property changes for specific elements
+            "clock".to_string(),
+            "time".to_string(),
+        ],
+        ignore_window_titles: vec![
+            // Ignore events from windows with these titles
+            "Windows Security".to_string(),
+            "Action Center".to_string(),
+        ],
+        ignore_applications: vec![
+            // Ignore events from these applications
+            "explorer.exe".to_string(),
+            "dwm.exe".to_string(),
+        ],
     };
     
     debug!("Comprehensive recorder config: {:?}", config);
@@ -104,10 +126,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref ui_element) = kb_event.metadata.ui_element {
                             if let Some(ref app) = kb_event.metadata.application {
                                 println!("     └─ Target: {} in {}", 
-                                    ui_element.control_type.as_ref().unwrap_or(&"Unknown".to_string()),
+                                    ui_element.role(),
                                     app);
                             }
-                            if let Some(ref name) = ui_element.name {
+                            if let Some(ref name) = ui_element.name() {
                                 if !name.is_empty() {
                                     println!("     └─ Element: \"{}\"", name);
                                 }
@@ -158,12 +180,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         drag_event.end_position.y);
                 }
                 terminator_workflow_recorder::WorkflowEvent::UiFocusChanged(focus_event) => {
-                    println!("🎯 Focus changed to: {:?}", focus_event.metadata.ui_element.as_ref().map(|e| &e.name));
+                    println!("🎯 Focus changed to: {:?}", focus_event.metadata.ui_element.as_ref().unwrap().text(1).unwrap());
                 }
                 terminator_workflow_recorder::WorkflowEvent::UiPropertyChanged(property_event) => {
-                    println!("🔧 Property changed: {} = {:?}", 
-                        property_event.property_name, 
-                        property_event.new_value);
+                    println!("🔧 Property changed: {:?}", 
+                        property_event.metadata.ui_element.as_ref().unwrap().text(1).unwrap());
                 }
                 _ => {
                     // Display other event types more briefly

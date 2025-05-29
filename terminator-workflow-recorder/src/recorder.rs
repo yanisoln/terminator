@@ -3,8 +3,6 @@ use crate::{
     WorkflowEvent, WorkflowRecorderError, Result
 };
 use std::{
-    fs::File,
-    io::Write,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -68,6 +66,18 @@ pub struct WorkflowRecorderConfig {
     
     /// Minimum drag distance to distinguish between click and drag (pixels)
     pub min_drag_distance: f64,
+    
+    /// Patterns to ignore for UI focus change events (case-insensitive)
+    pub ignore_focus_patterns: Vec<String>,
+    
+    /// Patterns to ignore for UI property change events (case-insensitive)
+    pub ignore_property_patterns: Vec<String>,
+    
+    /// Window titles to ignore for UI events (case-insensitive)
+    pub ignore_window_titles: Vec<String>,
+    
+    /// Application/process names to ignore for UI events (case-insensitive)
+    pub ignore_applications: Vec<String>,
 }
 
 impl Default for WorkflowRecorderConfig {
@@ -89,6 +99,26 @@ impl Default for WorkflowRecorderConfig {
             track_modifier_states: true,
             mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves
             min_drag_distance: 5.0, // 5 pixels minimum for drag detection
+            ignore_focus_patterns: vec![
+                // Common system UI patterns to ignore by default
+                "notification".to_string(),
+                "tooltip".to_string(),
+                "popup".to_string(),
+            ],
+            ignore_property_patterns: vec![
+                // Common property change patterns to ignore by default
+                "clock".to_string(),
+                "time".to_string(),
+            ],
+            ignore_window_titles: vec![
+                // Common window titles to ignore by default
+                "Windows Security".to_string(),
+                "Action Center".to_string(),
+            ],
+            ignore_applications: vec![
+                // Common applications to ignore by default
+                "dwm.exe".to_string(),
+            ],
         }
     }
 }
@@ -144,7 +174,7 @@ impl WorkflowRecorder {
             let event_tx = self.event_tx.clone();
             
             // Start the Windows recorder
-            let windows_recorder = WindowsRecorder::new(self.config.clone(), event_tx)?;
+            let windows_recorder = WindowsRecorder::new(self.config.clone(), event_tx).await?;
             self.windows_recorder = Some(windows_recorder);
             
             // Start the event processing task
@@ -191,9 +221,9 @@ impl WorkflowRecorder {
             WorkflowRecorderError::SaveError(format!("Failed to lock workflow: {}", e))
         })?;
         
-        let json = serde_json::to_string_pretty(&*workflow)?;
-        let mut file = File::create(path)?;
-        file.write_all(json.as_bytes())?;
+        workflow.save_to_file(path).map_err(|e| {
+            WorkflowRecorderError::SaveError(format!("Failed to save workflow: {}", e))
+        })?;
         
         Ok(())
     }

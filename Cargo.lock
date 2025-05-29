@@ -5386,7 +5386,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "uiautomation 0.18.4",
+ "uiautomation",
  "uni-ocr",
  "windows 0.61.1",
  "xcap",
@@ -5421,7 +5421,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.1.0"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5436,12 +5436,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "terminator",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tracing",
  "tracing-subscriber",
- "uiautomation 0.19.2",
+ "uiautomation",
  "windows 0.61.1",
 ]
 
@@ -5812,39 +5813,15 @@ dependencies = [
 
 [[package]]
 name = "uiautomation"
-version = "0.18.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ffddb3702498a7969469312ec8ba1573523cc71c78e837b9148b708aaf666c4"
-dependencies = [
- "arboard",
- "chrono",
- "uiautomation_derive 0.5.3",
- "windows 0.61.1",
- "windows-core 0.61.2",
-]
-
-[[package]]
-name = "uiautomation"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3379780cb40c35ca95daaaf75a6085006fa5c4b6d5320971ed58906e74a52a39"
 dependencies = [
  "arboard",
  "chrono",
- "uiautomation_derive 0.6.0",
+ "uiautomation_derive",
  "windows 0.61.1",
  "windows-core 0.61.2",
-]
-
-[[package]]
-name = "uiautomation_derive"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ebb901a46e0ab28127f0649198ec8e97a3fe5b19d430d40f35333bf0d10a762"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.101",
 ]
 
 [[package]]

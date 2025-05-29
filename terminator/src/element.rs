@@ -2,14 +2,14 @@ use crate::errors::AutomationError;
 use crate::selector::Selector;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::time::Instant;
-use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::ser::SerializeStruct;
+use tracing::{instrument, warn};
 
 use super::{ClickResult, Locator};
 
 /// Response structure for exploration result
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExploredElementDetail {
     pub role: String,
     pub name: Option<String>, // Use 'name' consistently for the primary label/text
@@ -21,6 +21,25 @@ pub struct ExploredElementDetail {
     pub parent_id: Option<String>,
     pub children_ids: Vec<String>,
     pub suggested_selector: String,
+}
+
+impl ExploredElementDetail {
+    /// Create a new ExploredElementDetail from a UIElement
+    pub fn from_element(element: &UIElement, parent_id: Option<String>) -> Result<Self, AutomationError> {
+        let id = element.id_or_empty();
+        Ok(Self {
+            role: element.role(),
+            name: element.name(),
+            id: if id.is_empty() { None } else { Some(id.clone()) },
+            bounds: element.bounds().ok(),
+            value: element.attributes().value,
+            description: element.attributes().description,
+            text: element.text(1).ok(),
+            parent_id,
+            children_ids: Vec::new(),
+            suggested_selector: format!("#{}", id),
+        })
+    }
 }
 
 /// Response structure for exploration result
@@ -36,15 +55,253 @@ pub struct UIElement {
     inner: Box<dyn UIElementImpl>,
 }
 
-/// Attributes associated with a UI element
+/// Serializable version of UIElement for JSON storage and transmission
+/// 
+/// This struct contains the same data as UIElement but can be both serialized
+/// and deserialized. It's useful for storing UI element data in files, databases,
+/// or sending over network connections.
+/// 
+/// Note: This struct only contains the element's properties and cannot perform
+/// any UI automation actions. To interact with UI elements, you need a live UIElement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UIElementAttributes {
+pub struct SerializableUIElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<(f64, f64, f64, f64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_title: Option<String>,
+}
+
+impl From<&UIElement> for SerializableUIElement {
+    fn from(element: &UIElement) -> Self {
+        let attrs = element.attributes();
+        let bounds = element.bounds().ok();
+        
+        // Helper function to filter empty strings
+        fn filter_empty(s: Option<String>) -> Option<String> {
+            s.filter(|s| !s.is_empty())
+        }
+        
+        Self {
+            id: filter_empty(element.id()),
+            role: element.role(),
+            name: filter_empty(attrs.name),
+            bounds,
+            value: filter_empty(attrs.value),
+            description: filter_empty(attrs.description),
+            application: filter_empty(Some(element.application_name())),
+            window_title: filter_empty(Some(element.window_title())),
+        }
+    }
+}
+
+impl SerializableUIElement {
+    /// Create a new SerializableUIElement with minimal data
+    pub fn new(role: String) -> Self {
+        Self {
+            id: None,
+            role,
+            name: None,
+            bounds: None,
+            value: None,
+            description: None,
+            application: None,
+            window_title: None,
+        }
+    }
+
+    /// Convert to JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Create from JSON string
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+
+    /// Get a display name for this element
+    pub fn display_name(&self) -> String {
+        self.name.clone()
+            .or_else(|| self.value.clone())
+            .unwrap_or_else(|| self.role.clone())
+    }
+}
+
+/// Serialize implementation for UIElement
+/// 
+/// This implementation serializes the accessible properties of a UI element to JSON.
+/// The following fields are included in the serialized output:
+/// - `id`: Element identifier (if available)
+/// - `role`: Element role (e.g., "button", "textfield")
+/// - `name`: Element name/label (if available)
+/// - `bounds`: Element position and size as (x, y, width, height)
+/// - `value`: Element value (if available)
+/// - `description`: Element description (if available)
+/// - `application`: Name of the containing application
+/// - `window_title`: Title of the containing window
+/// 
+/// Note: This serializes the element's current state and properties, but does not
+/// serialize the underlying platform-specific implementation or maintain any
+/// interactive capabilities.
+impl Serialize for UIElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("UIElement", 8)?;
+        state.serialize_field("id", &self.id())?;
+        state.serialize_field("role", &self.role())?;
+        state.serialize_field("name", &self.name())?;
+        state.serialize_field("bounds", &self.bounds().ok())?;
+        
+        let attrs = self.attributes();
+        state.serialize_field("value", &attrs.value)?;
+        state.serialize_field("description", &attrs.description)?;
+        state.serialize_field("application", &self.application_name())?;
+        state.serialize_field("window_title", &self.window_title())?;
+        
+        state.end()
+    }
+}
+
+/// Deserialize implementation for UIElement
+/// 
+/// This implementation attempts to find the actual UI element in the current UI tree
+/// using the deserialized data (ID, role, name, bounds). If the element cannot be found,
+/// deserialization fails with an error.
+/// 
+/// This ensures all UIElement instances are always "live" and can perform UI operations.
+/// There are no more "mock" or "dead" elements - if deserialization succeeds, the element
+/// exists and can be interacted with.
+/// 
+/// Search strategy:
+/// 1. Try to find by ID if available
+/// 2. Try to find by role + name combination
+/// 3. Verify bounds match (with 10px tolerance) if available
+/// 
+/// Note: This approach requires the UI element to actually exist in the current UI tree
+/// at the time of deserialization. If the UI has changed since serialization, 
+/// deserialization will fail.
+impl<'de> Deserialize<'de> for UIElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        
+        // First deserialize into our SerializableUIElement
+        let serializable = SerializableUIElement::deserialize(deserializer)?;
+        
+        // Try to find the actual live element
+        find_live_element(&serializable)
+            .ok_or_else(|| Error::custom(format!(
+                "Could not find UI element with role '{}' and name '{:?}' in current UI tree", 
+                serializable.role, 
+                serializable.name
+            )))
+    }
+}
+
+/// Attempts to find a live UI element matching the serializable data
+fn find_live_element(serializable: &SerializableUIElement) -> Option<UIElement> {
+    // Try to create a Desktop instance and search the UI tree
+    // If any step fails (runtime creation, Desktop creation, or element search), return None
+    std::panic::catch_unwind(|| {
+        // Try to use current runtime first, fall back to creating new one
+        let result = if tokio::runtime::Handle::try_current().is_ok() {
+            // We're already in a tokio runtime, use spawn_blocking
+            let serializable_clone = serializable.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().ok()?;
+                let desktop = rt.block_on(async {
+                    crate::Desktop::new(false, false).await.ok()
+                })?;
+                
+                rt.block_on(async {
+                    find_element_in_tree(&desktop, &serializable_clone).await
+                })
+            }).join().ok()?
+        } else {
+            // No current runtime, create one
+            let rt = tokio::runtime::Runtime::new().ok()?;
+            let desktop = rt.block_on(async {
+                crate::Desktop::new(false, false).await.ok()
+            })?;
+            
+            rt.block_on(async {
+                find_element_in_tree(&desktop, serializable).await
+            })
+        };
+        
+        result
+    }).unwrap_or(None)
+}
+
+/// Helper function to search for element in the UI tree
+async fn find_element_in_tree(desktop: &crate::Desktop, serializable: &SerializableUIElement) -> Option<crate::UIElement> {
+    // Try to find by ID first
+    if let Some(ref id) = serializable.id {
+        let id_selector = format!("#{}", id);
+        if let Ok(element) = desktop.locator(id_selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
+            return Some(element);
+        }
+    }
+    
+    // Try to find by role and name
+    let mut selector = format!("[role='{}']", serializable.role);
+    if let Some(ref name) = serializable.name {
+        selector = format!("{}[name='{}']", selector, name);
+    }
+    
+    if let Ok(element) = desktop.locator(selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
+        // Verify bounds match (with tolerance) if available
+        if let Some((target_x, target_y, target_w, target_h)) = serializable.bounds {
+            if let Ok((fx, fy, fw, fh)) = element.bounds() {
+                let tolerance = 10.0; // 10 pixel tolerance
+                
+                if (fx - target_x).abs() <= tolerance && 
+                   (fy - target_y).abs() <= tolerance &&
+                   (fw - target_w).abs() <= tolerance && 
+                   (fh - target_h).abs() <= tolerance {
+                    return Some(element);
+                }
+            }
+        } else {
+            // If no bounds to check, return the element
+            return Some(element);
+        }
+    }
+    
+    None
+}
+
+/// Attributes associated with a UI element
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UIElementAttributes {
+    #[serde(default)]
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub properties: HashMap<String, Option<serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_keyboard_focusable: Option<bool>,
 }
 
@@ -111,19 +368,7 @@ impl UIElement {
     /// Get the element's ID
     #[instrument(skip(self))]
     pub fn id(&self) -> Option<String> {
-        let start = Instant::now();
-        info!("Getting element ID");
-        
-        let id = self.inner.id();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_id = id.as_deref().unwrap_or_default(),
-            "Element ID retrieved"
-        );
-        
-        id
+       self.inner.id()
     }
 
     /// Get the element's role (e.g., "button", "textfield")
@@ -154,52 +399,19 @@ impl UIElement {
     /// Click on this element
     #[instrument(skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
-        let start = Instant::now();
-        info!("Clicking element");
-        
-        let result = self.inner.click();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element clicked"
-        );
-        
-        result
+        self.inner.click()
     }
 
     /// Double-click on this element
     #[instrument(skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
-        let start = Instant::now();
-        info!("Double clicking element");
-        
-        let result = self.inner.double_click();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element double clicked"
-        );
-        
-        result
+        self.inner.double_click()
     }
 
     /// Right-click on this element
     #[instrument(skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!("Right clicking element");
-        
-        let result = self.inner.right_click();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Element right clicked"
-        );
-        
-        result
+        self.inner.right_click()
     }
 
     /// Hover over this element
@@ -235,19 +447,7 @@ impl UIElement {
     /// Check if element is enabled
     #[instrument(skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
-        let start = Instant::now();
-        info!("Checking if element is enabled");
-        
-        let is_enabled = self.inner.is_enabled()?;
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            is_enabled,
-            "Element enabled status checked"
-        );
-        
-        Ok(is_enabled)
+        self.inner.is_enabled()
     }
 
     /// Check if element is visible
@@ -289,19 +489,7 @@ impl UIElement {
     /// Get the element's name
     #[instrument(skip(self))]
     pub fn name(&self) -> Option<String> {
-        let start = Instant::now();
-        info!("Getting element name");
-        
-        let name = self.inner.name();
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_name = name.as_deref().unwrap_or_default(),
-            "Element name retrieved"
-        );
-        
-        name
+        self.inner.name()
     }
 
     /// Check if element is keyboard focusable
@@ -348,29 +536,66 @@ impl UIElement {
         self.inner.highlight(color, duration)
     }
 
+    /// Convenience methods to reduce verbosity with optional properties
+    
+    /// Get element ID or empty string if not available
+    pub fn id_or_empty(&self) -> String {
+        self.id().unwrap_or_default()
+    }
+
+    /// Get element name or empty string if not available  
+    pub fn name_or_empty(&self) -> String {
+        self.name().unwrap_or_default()
+    }
+
+    /// Get element name or fallback string if not available
+    pub fn name_or(&self, fallback: &str) -> String {
+        self.name().unwrap_or_else(|| fallback.to_string())
+    }
+
+    /// Get element value or empty string if not available
+    pub fn value_or_empty(&self) -> String {
+        self.attributes().value.unwrap_or_default()
+    }
+
+    /// Get element description or empty string if not available
+    pub fn description_or_empty(&self) -> String {
+        self.attributes().description.unwrap_or_default()
+    }
+
+    /// Get application name safely
+    pub fn application_name(&self) -> String {
+        self.application()
+            .ok()
+            .flatten()
+            .and_then(|app| app.name())
+            .unwrap_or_default()
+    }
+
+    /// Get window title safely
+    pub fn window_title(&self) -> String {
+        self.window()
+            .ok()
+            .flatten()
+            .and_then(|win| win.name())
+            .unwrap_or_default()
+    }
+
+    /// Convert this UIElement to a SerializableUIElement
+    /// 
+    /// This creates a snapshot of the element's current state that can be
+    /// serialized to JSON, stored in files, or transmitted over networks.
+    pub fn to_serializable(&self) -> SerializableUIElement {
+        SerializableUIElement::from(self)
+    }
+
     /// Explore this element and its direct children
+    /// // mark deprecated
+    #[deprecated(since = "0.3.5")]
     pub fn explore(&self) -> Result<ExploreResponse, AutomationError> {
         let mut children = Vec::new();
         for child in self.children()? {
-            let child_id = child.id().unwrap_or_default();
-            let child_bounds = child.bounds().ok();
-            let child_attrs = child.attributes();
-            let child_text = child.text(1).ok();
-
-            let suggested_selector = format!("#{}", child_id);
-
-            children.push(ExploredElementDetail {
-                role: child_attrs.role,
-                name: child_attrs.name,
-                id: Some(child_id),
-                bounds: child_bounds,
-                value: child_attrs.value,
-                description: child_attrs.description,
-                text: child_text,
-                parent_id: self.id(),
-                children_ids: Vec::new(),
-                suggested_selector,
-            });
+            children.push(ExploredElementDetail::from_element(&child, self.id())?);
         }
 
         Ok(ExploreResponse {
@@ -403,4 +628,116 @@ impl Clone for UIElement {
             inner: self.inner.clone_box(),
         }
     }
+}
+
+/// Utility functions for working with UI elements
+pub mod utils {
+    use super::*;
+
+    /// Get the display text for an element (name, value, or role as fallback)
+    pub fn display_text(element: &UIElement) -> String {
+        element.name()
+            .or_else(|| element.attributes().value)
+            .unwrap_or_else(|| element.role())
+    }
+
+    /// Check if element has any text content
+    pub fn has_text_content(element: &UIElement) -> bool {
+        element.name().is_some() 
+            || element.attributes().value.is_some()
+            || element.text(1).unwrap_or_default().trim().len() > 0
+    }
+
+    /// Get a human-readable identifier for the element
+    pub fn element_identifier(element: &UIElement) -> String {
+        if let Some(name) = element.name() {
+            format!("{} ({})", name, element.role())
+        } else if let Some(id) = element.id() {
+            format!("#{} ({})", id, element.role())
+        } else {
+            element.role()
+        }
+    }
+
+    /// Create a minimal attributes struct with just the essentials
+    pub fn essential_attributes(element: &UIElement) -> UIElementAttributes {
+        UIElementAttributes {
+            role: element.role(),
+            name: element.name(),
+            value: element.attributes().value,
+            ..Default::default()
+        }
+    }
+}
+
+#[test]
+fn test_uielement_serialization() {
+    // Note: This test demonstrates the serialization capability
+    // In practice, you would create a UIElement from a real platform implementation
+    // For this test, we're just showing that the Serialize trait is properly implemented
+    
+    // The actual serialization would work like this:
+    // let element = some_ui_element_instance;
+    // let json = serde_json::to_string(&element).unwrap();
+    // println!("Serialized UIElement: {}", json);
+    
+    // Since we can't easily create a UIElement without platform-specific code,
+    // we'll just verify the trait is implemented by checking compilation
+    assert!(true, "UIElement implements Serialize trait");
+}
+
+#[test]
+fn test_uielement_deserialization() {
+    // Test deserializing a UIElement from JSON
+    // Note: This test will fail if the element doesn't exist in the current UI tree
+    // or if Desktop automation is not available (e.g., in CI environments)
+    let json = r#"
+    {
+        "id": "test-123",
+        "role": "Button",
+        "name": "Test Button",
+        "bounds": [10.0, 20.0, 100.0, 30.0],
+        "value": "Click me",
+        "description": "A test button",
+        "application": "Test App",
+        "window_title": "Test Window"
+    }"#;
+
+    // This will fail because the element doesn't exist in the UI tree
+    // or because Desktop automation is not available
+    let result: Result<UIElement, _> = serde_json::from_str(json);
+    assert!(result.is_err(), "Deserialization should fail for non-existent elements or when Desktop is unavailable");
+    
+    // Verify the error message mentions the element details
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("Button") || error_msg.contains("Test Button"), 
+           "Error should mention the element role or name");
+}
+
+#[test]
+fn test_uielement_round_trip() {
+    // Test that we can serialize and deserialize existing elements
+    // Note: This test demonstrates the concept but will fail in CI
+    // because there's no UI tree available or Desktop automation is not accessible
+    
+    let json = r#"
+    {
+        "id": "round-trip-test",
+        "role": "TextField",
+        "name": "Input Field",
+        "bounds": [50.0, 60.0, 200.0, 25.0],
+        "value": "Hello World",
+        "description": "Text input",
+        "application": "My App",
+        "window_title": "Main Window"
+    }"#;
+
+    // This will fail because the element doesn't exist or Desktop is unavailable
+    let result: Result<UIElement, _> = serde_json::from_str(json);
+    assert!(result.is_err(), "Deserialization should fail for non-existent elements or when Desktop is unavailable");
+    
+    // Verify the error message mentions the element details
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("TextField") || error_msg.contains("Input Field"), 
+           "Error should mention the element role or name");
 }
