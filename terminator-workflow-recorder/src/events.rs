@@ -1,7 +1,49 @@
 use serde::{Deserialize, Serialize};
 use terminator::UIElement;
 use std::time::SystemTime;
+use std::collections::HashSet;
+use std::sync::LazyLock;
 
+// Precomputed set of null-like values for efficient O(1) lookups
+static NULL_LIKE_VALUES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        // Standard null representations
+        "null", "nil", "undefined", "(null)", "<null>", "n/a", "na", "",
+        // Windows-specific null patterns  
+        "unknown", "<unknown>", "(unknown)", "none", "<none>", "(none)",
+        "empty", "<empty>", "(empty)",
+        // COM/Windows API specific
+        "bstr()", "variant()", "variant(empty)",
+    ].into_iter().collect()
+});
+
+// Helper function to filter empty strings and null-like values for serde skip_serializing_if
+fn is_empty_string(s: &Option<String>) -> bool {
+    match s {
+        Some(s) => {
+            // Fast path for completely empty strings
+            if s.is_empty() {
+                return true;
+            }
+            
+            // Fast path for whitespace-only strings
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return true;
+            }
+            
+            // Check against precomputed set (case-insensitive)
+            // Only allocate lowercase string if we have a reasonable candidate
+            if trimmed.len() <= 20 { // Reasonable max length for null-like values
+                let lower = trimmed.to_lowercase();
+                NULL_LIKE_VALUES.contains(lower.as_str())
+            } else {
+                false // Long strings are unlikely to be null-like values
+            }
+        },
+        None => true,
+    }
+}
 
 /// Represents a position on the screen
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -65,9 +107,11 @@ pub struct KeyboardEvent {
     pub win_pressed: bool,
     
     /// Character representation of the key (if printable)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub character: Option<char>,
     
     /// Raw scan code
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scan_code: Option<u32>,
     
     /// Event metadata (UI element, application, etc.)
@@ -87,9 +131,11 @@ pub struct MouseEvent {
     pub position: Position,
     
     /// Scroll delta for wheel events
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scroll_delta: Option<(i32, i32)>,
     
     /// Drag start position (for drag events)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub drag_start: Option<Position>,
     
     /// Event metadata (UI element, application, etc.)
@@ -112,12 +158,15 @@ pub struct ClipboardEvent {
     pub action: ClipboardAction,
     
     /// The content that was copied/cut/pasted (truncated if too long)
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
     
     /// The size of the content in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_size: Option<usize>,
     
     /// The format of the clipboard data
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub format: Option<String>,
     
     /// Whether the content was truncated due to size
@@ -172,12 +221,15 @@ pub struct DragDropEvent {
     pub end_position: Position,
     
     /// The UI element being dragged (source)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_element: Option<UIElement>,
     
     /// The type of data being dragged
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub data_type: Option<String>,
     
     /// The dragged content (if text)
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
     
     /// Whether the drag was successful
@@ -194,6 +246,7 @@ pub struct HotkeyEvent {
     pub combination: String,
     
     /// The action performed by the hotkey
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub action: Option<String>,
     
     /// Whether this was a global or application-specific hotkey
@@ -251,6 +304,7 @@ pub struct RecordedWorkflow {
     pub start_time: u64,
     
     /// The timestamp when the recording ended
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time: Option<u64>,
     
     /// The recorded events
@@ -359,15 +413,19 @@ pub struct UiStructureChangedEvent {
     pub change_type: StructureChangeType,
     
     /// The element where the structure change occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub element: Option<UIElement>,
     
     /// Runtime IDs of affected children (if applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_ids: Option<Vec<i32>>,
     
     /// The application where the change occurred
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
     
     /// Additional details about the change
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub details: Option<String>,
 }
 
@@ -381,9 +439,11 @@ pub struct UiPropertyChangedEvent {
     pub property_id: u32,
     
     /// The old value (if available)
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub old_value: Option<String>,
     
     /// The new value
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub new_value: Option<String>,
     
     /// Event metadata (UI element, application, etc.)
@@ -394,6 +454,7 @@ pub struct UiPropertyChangedEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiFocusChangedEvent {
     /// The previous element that had focus (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_element: Option<UIElement>,
     
     /// Event metadata (current focused UI element, application, etc.)
@@ -404,15 +465,19 @@ pub struct UiFocusChangedEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventMetadata {
     /// The UI element associated with this event (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_element: Option<UIElement>,
     
     /// The application where this event occurred
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
     
     /// The window title where this event occurred
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
     
     /// The process ID of the application
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
 }
 
@@ -451,20 +516,20 @@ impl EventMetadata {
 /// Serializable version of UIElement for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUIElement {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub id: Option<String>,
     pub role: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub value: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
 }
 
@@ -499,11 +564,11 @@ pub struct SerializableEventMetadata {
     pub ui_element: Option<SerializableUIElement>,
     
     /// The application where this event occurred
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
     
     /// The window title where this event occurred
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
     
     /// The process ID of the application
@@ -584,11 +649,11 @@ impl From<&MouseEvent> for SerializableMouseEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableClipboardEvent {
     pub action: ClipboardAction,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_size: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub format: Option<String>,
     pub truncated: bool,
     pub metadata: SerializableEventMetadata,
@@ -640,9 +705,9 @@ pub struct SerializableDragDropEvent {
     pub end_position: Position,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_element: Option<SerializableUIElement>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub data_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
     pub success: bool,
     pub metadata: SerializableEventMetadata,
@@ -666,7 +731,7 @@ impl From<&DragDropEvent> for SerializableDragDropEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableHotkeyEvent {
     pub combination: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub action: Option<String>,
     pub is_global: bool,
     pub metadata: SerializableEventMetadata,
@@ -688,9 +753,9 @@ impl From<&HotkeyEvent> for SerializableHotkeyEvent {
 pub struct SerializableUiPropertyChangedEvent {
     pub property_name: String,
     pub property_id: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub old_value: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub new_value: Option<String>,
     pub metadata: SerializableEventMetadata,
 }
@@ -786,5 +851,245 @@ impl From<&RecordedWorkflow> for SerializableRecordedWorkflow {
             end_time: workflow.end_time,
             events: workflow.events.iter().map(|e| e.into()).collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_null_values_not_serialized() {
+        // Test EventMetadata with empty/null values
+        let metadata = EventMetadata {
+            ui_element: None,
+            application: None,
+            window_title: Some("".to_string()),
+            process_id: None,
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        println!("EventMetadata JSON: {}", json);
+        
+        // Should not contain null values for optional fields
+        assert!(!json.contains("null"));
+        assert!(!json.contains("\"ui_element\""));
+        assert!(!json.contains("\"application\""));
+        assert!(!json.contains("\"window_title\"")); // Empty string should be skipped
+        assert!(!json.contains("\"process_id\""));
+
+        // Test SerializableUIElement with empty values
+        let ui_element = SerializableUIElement {
+            id: None,
+            role: "Button".to_string(),
+            name: Some("".to_string()), // Empty string
+            bounds: None,
+            value: None,
+            description: Some("Test".to_string()), // Non-empty string
+            application: None,
+            window_title: None,
+        };
+
+        let json = serde_json::to_string(&ui_element).unwrap();
+        println!("SerializableUIElement JSON: {}", json);
+        
+        // Should not contain null values or empty strings
+        assert!(!json.contains("null"));
+        assert!(!json.contains("\"id\""));
+        assert!(!json.contains("\"name\"")); // Empty string should be skipped
+        assert!(!json.contains("\"bounds\""));
+        assert!(!json.contains("\"value\""));
+        assert!(json.contains("\"description\"")); // Non-empty string should be included
+        assert!(!json.contains("\"application\""));
+        assert!(!json.contains("\"window_title\""));
+    }
+
+    #[test]
+    fn test_empty_string_helper() {
+        // Test None values
+        assert!(is_empty_string(&None));
+        
+        // Test empty strings
+        assert!(is_empty_string(&Some("".to_string())));
+        assert!(is_empty_string(&Some(" ".to_string())));
+        assert!(is_empty_string(&Some("   ".to_string())));
+        assert!(is_empty_string(&Some("\t\n".to_string())));
+        
+        // Test various null representations that might come from Windows APIs
+        assert!(is_empty_string(&Some("null".to_string())));
+        assert!(is_empty_string(&Some("NULL".to_string())));
+        assert!(is_empty_string(&Some("Null".to_string())));
+        assert!(is_empty_string(&Some("nil".to_string())));
+        assert!(is_empty_string(&Some("NIL".to_string())));
+        assert!(is_empty_string(&Some("undefined".to_string())));
+        assert!(is_empty_string(&Some("UNDEFINED".to_string())));
+        assert!(is_empty_string(&Some("(null)".to_string())));
+        assert!(is_empty_string(&Some("<null>".to_string())));
+        assert!(is_empty_string(&Some("n/a".to_string())));
+        assert!(is_empty_string(&Some("N/A".to_string())));
+        assert!(is_empty_string(&Some("na".to_string())));
+        assert!(is_empty_string(&Some("NA".to_string())));
+        
+        // Test Windows-specific null patterns
+        assert!(is_empty_string(&Some("unknown".to_string())));
+        assert!(is_empty_string(&Some("UNKNOWN".to_string())));
+        assert!(is_empty_string(&Some("<unknown>".to_string())));
+        assert!(is_empty_string(&Some("(unknown)".to_string())));
+        assert!(is_empty_string(&Some("none".to_string())));
+        assert!(is_empty_string(&Some("NONE".to_string())));
+        assert!(is_empty_string(&Some("<none>".to_string())));
+        assert!(is_empty_string(&Some("(none)".to_string())));
+        assert!(is_empty_string(&Some("empty".to_string())));
+        assert!(is_empty_string(&Some("EMPTY".to_string())));
+        assert!(is_empty_string(&Some("<empty>".to_string())));
+        assert!(is_empty_string(&Some("(empty)".to_string())));
+        
+        // Test COM/Windows API specific patterns
+        assert!(is_empty_string(&Some("BSTR()".to_string())));
+        assert!(is_empty_string(&Some("variant()".to_string())));
+        assert!(is_empty_string(&Some("VARIANT(EMPTY)".to_string())));
+        assert!(is_empty_string(&Some("Variant(Empty)".to_string())));
+        
+        // Test with surrounding whitespace
+        assert!(is_empty_string(&Some(" null ".to_string())));
+        assert!(is_empty_string(&Some("\t(null)\n".to_string())));
+        assert!(is_empty_string(&Some("  UNKNOWN  ".to_string())));
+        
+        // Test valid strings that should NOT be filtered
+        assert!(!is_empty_string(&Some("test".to_string())));
+        assert!(!is_empty_string(&Some("valid content".to_string())));
+        assert!(!is_empty_string(&Some("0".to_string())));
+        assert!(!is_empty_string(&Some("false".to_string())));
+        assert!(!is_empty_string(&Some("Button".to_string())));
+        
+        // Test edge cases that might look like null but aren't
+        assert!(!is_empty_string(&Some("not null".to_string())));
+        assert!(!is_empty_string(&Some("nullify".to_string())));
+        assert!(!is_empty_string(&Some("nullable".to_string())));
+        assert!(!is_empty_string(&Some("unknown value".to_string())));
+        assert!(!is_empty_string(&Some("something empty".to_string())));
+        assert!(!is_empty_string(&Some("none selected".to_string())));
+    }
+
+    #[test]
+    fn test_windows_api_null_scenarios() {
+        // Test what might happen when Windows APIs return "null" strings
+        let ui_element_with_api_nulls = SerializableUIElement {
+            id: Some("null".to_string()), // Windows API returns "null" as string
+            role: "Button".to_string(),
+            name: Some("NULL".to_string()), // Case variation
+            bounds: None,
+            value: Some("(null)".to_string()), // Formatted null from API
+            description: Some("  undefined  ".to_string()), // With whitespace
+            application: Some("n/a".to_string()), // Common API placeholder
+            window_title: Some("<null>".to_string()), // Another common format
+        };
+
+        let json = serde_json::to_string(&ui_element_with_api_nulls).unwrap();
+        println!("Windows API nulls JSON: {}", json);
+        
+        // All the null-like values should be filtered out
+        assert!(!json.contains("\"id\""));
+        assert!(!json.contains("\"name\""));
+        assert!(!json.contains("\"value\""));
+        assert!(!json.contains("\"description\""));
+        assert!(!json.contains("\"application\""));
+        assert!(!json.contains("\"window_title\""));
+        assert!(!json.contains("null"));
+        assert!(!json.contains("NULL"));
+        assert!(!json.contains("undefined"));
+        assert!(!json.contains("n/a"));
+        
+        // Only role should remain
+        assert!(json.contains("\"role\":\"Button\""));
+
+        // Test Windows-specific API patterns
+        let ui_element_with_windows_nulls = SerializableUIElement {
+            id: Some("unknown".to_string()), // Common Windows API response
+            role: "TextBox".to_string(),
+            name: Some("(empty)".to_string()), // UI Automation empty indication
+            bounds: None,
+            value: Some("VARIANT(EMPTY)".to_string()), // COM variant empty
+            description: Some("<unknown>".to_string()), // Bracketed unknown
+            application: Some("  NONE  ".to_string()), // With whitespace
+            window_title: Some("BSTR()".to_string()), // Empty BSTR from COM
+        };
+
+        let json = serde_json::to_string(&ui_element_with_windows_nulls).unwrap();
+        println!("Windows-specific API nulls JSON: {}", json);
+        
+        // All Windows-specific null patterns should be filtered out
+        assert!(!json.contains("\"id\""));
+        assert!(!json.contains("\"name\""));
+        assert!(!json.contains("\"value\""));
+        assert!(!json.contains("\"description\""));
+        assert!(!json.contains("\"application\""));
+        assert!(!json.contains("\"window_title\""));
+        assert!(!json.contains("unknown"));
+        assert!(!json.contains("empty"));
+        assert!(!json.contains("VARIANT"));
+        assert!(!json.contains("BSTR"));
+        assert!(!json.contains("NONE"));
+        
+        // Only role should remain
+        assert!(json.contains("\"role\":\"TextBox\""));
+
+        // Test EventMetadata with API null strings
+        let metadata_with_api_nulls = EventMetadata {
+            ui_element: None,
+            application: Some("NULL".to_string()),
+            window_title: Some("  (null)  ".to_string()),
+            process_id: None,
+        };
+
+        let json = serde_json::to_string(&metadata_with_api_nulls).unwrap();
+        println!("EventMetadata with API nulls JSON: {}", json);
+        
+        // Should serialize to empty object since all values are filtered
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_performance_characteristics() {
+        use std::time::Instant;
+        
+        // Test cases representing real-world scenarios
+        let test_cases = vec![
+            Some("".to_string()),
+            Some("null".to_string()),
+            Some("  NULL  ".to_string()),
+            Some("undefined".to_string()),
+            Some("(unknown)".to_string()),
+            Some("VARIANT(EMPTY)".to_string()),
+            Some("valid button name".to_string()),
+            Some("Microsoft Excel - Workbook1".to_string()),
+            None,
+        ];
+        
+        // Warm up
+        for _ in 0..100 {
+            for case in &test_cases {
+                let _ = is_empty_string(case);
+            }
+        }
+        
+        // Benchmark
+        let start = Instant::now();
+        let iterations = 10_000usize;
+        
+        for _ in 0..iterations {
+            for case in &test_cases {
+                let _ = is_empty_string(case);
+            }
+        }
+        
+        let duration = start.elapsed();
+        let ns_per_call = duration.as_nanos() / (iterations * test_cases.len()) as u128;
+        
+        println!("Performance: {} ns per call ({} total calls)", ns_per_call, iterations * test_cases.len());
+        
+        // Should be very fast - under 100ns per call on modern hardware
+        assert!(ns_per_call < 500, "Performance regression: {} ns per call is too slow", ns_per_call);
     }
 }
