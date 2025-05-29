@@ -46,6 +46,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         track_modifier_states: true,
         mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves to reduce noise
         min_drag_distance: 5.0, // 5 pixels minimum for drag detection
+        
+        // Filtering options to reduce noise from system UI elements
+        ignore_focus_patterns: vec![
+            // Add custom patterns to ignore specific UI elements
+            "popup".to_string(),
+            "tooltip".to_string(),
+        ],
+        ignore_property_patterns: vec![
+            // Ignore property changes for specific elements
+            "clock".to_string(),
+            "time".to_string(),
+        ],
+        ignore_window_titles: vec![
+            // Ignore events from windows with these titles
+            "Windows Security".to_string(),
+            "Action Center".to_string(),
+        ],
+        ignore_applications: vec![
+            // Ignore events from these applications
+            "explorer.exe".to_string(),
+            "dwm.exe".to_string(),
+        ],
     };
     
     debug!("Comprehensive recorder config: {:?}", config);

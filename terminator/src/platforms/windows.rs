@@ -1669,7 +1669,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn role(&self) -> String {
-        self.element.0.get_control_type().unwrap().to_string()
+        self.element.0.get_control_type().unwrap_or(ControlType::Custom).to_string()
     }
 
     fn attributes(&self) -> UIElementAttributes {

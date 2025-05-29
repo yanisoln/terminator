@@ -518,6 +518,12 @@ impl WindowsRecorder {
         let record_property_changes = self.config.record_ui_property_changes;
         let record_focus_changes = self.config.record_ui_focus_changes;
         
+        // Clone filtering configuration
+        let ignore_focus_patterns = self.config.ignore_focus_patterns.clone();
+        let ignore_property_patterns = self.config.ignore_property_patterns.clone();
+        let ignore_window_titles = self.config.ignore_window_titles.clone();
+        let ignore_applications = self.config.ignore_applications.clone();
+        
         if !record_structure_changes && !record_property_changes && !record_focus_changes {
             debug!("No UI Automation events enabled, skipping setup");
             return Ok(());
@@ -577,6 +583,9 @@ impl WindowsRecorder {
             if record_focus_changes {
                 info!("Setting up focus change event handler");
                 let focus_event_tx = event_tx.clone();
+                let focus_ignore_patterns = ignore_focus_patterns.clone();
+                let focus_ignore_window_titles = ignore_window_titles.clone();
+                let focus_ignore_applications = ignore_applications.clone();
                 
                 // Create a channel for thread-safe communication
                 let (focus_tx, focus_rx) = std::sync::mpsc::channel::<(String, Option<UIElement>)>();
@@ -649,6 +658,15 @@ impl WindowsRecorder {
                 let focus_event_tx_clone = focus_event_tx.clone();
                 std::thread::spawn(move || {
                     while let Ok((element_name, ui_element)) = focus_rx.recv() {
+                        // Apply filtering
+                        if WindowsRecorder::should_ignore_focus_event(&element_name, &ui_element, 
+                                                           &focus_ignore_patterns, 
+                                                           &focus_ignore_window_titles, 
+                                                           &focus_ignore_applications) {
+                            debug!("Ignoring focus change event for: {}", element_name);
+                            continue;
+                        }
+                        
                         // Create a minimal UI element representation
                         let focus_event = UiFocusChangedEvent {
                             previous_element: None,
@@ -672,6 +690,9 @@ impl WindowsRecorder {
             if record_property_changes {
                 info!("Setting up property change event handler");
                 let property_event_tx = event_tx.clone();
+                let property_ignore_patterns = ignore_property_patterns.clone();
+                let property_ignore_window_titles = ignore_window_titles.clone();
+                let property_ignore_applications = ignore_applications.clone();
                 
                 // Create a channel for thread-safe communication
                 let (property_tx, property_rx) = std::sync::mpsc::channel::<(String, String, String, Option<UIElement>)>();
@@ -765,6 +786,15 @@ impl WindowsRecorder {
                 let property_event_tx_clone = property_event_tx.clone();
                 std::thread::spawn(move || {
                     while let Ok((element_name, property_name, value_string, ui_element)) = property_rx.recv() {
+                        // Apply filtering
+                        if WindowsRecorder::should_ignore_property_event(&element_name, &property_name, &ui_element,
+                                                              &property_ignore_patterns,
+                                                              &property_ignore_window_titles,
+                                                              &property_ignore_applications) {
+                            debug!("Ignoring property change event for: {} ({})", element_name, property_name);
+                            continue;
+                        }
+                        
                         let property_event = UiPropertyChangedEvent {
                             property_name: property_name.clone(),
                             property_id: 0, // We don't have access to the raw property ID in this approach
@@ -810,9 +840,6 @@ impl WindowsRecorder {
         Ok(())
     }
     
-    
-
-
     /// Run the Windows message pump for UI Automation events
     fn run_message_pump(stop_indicator: &Arc<AtomicBool>) {
         info!("Starting Windows message pump for UI Automation events");
@@ -852,6 +879,141 @@ impl WindowsRecorder {
             }
         }
         info!("Windows message pump stopped");
+    }
+    
+    /// Check if a focus change event should be ignored based on filtering patterns
+    fn should_ignore_focus_event(
+        element_name: &str,
+        ui_element: &Option<UIElement>,
+        ignore_patterns: &[String],
+        ignore_window_titles: &[String],
+        ignore_applications: &[String],
+    ) -> bool {
+        let element_name_lower = element_name.to_lowercase();
+        
+        // Check against focus-specific ignore patterns
+        for pattern in ignore_patterns {
+            if element_name_lower.contains(&pattern.to_lowercase()) {
+                return true;
+            }
+        }
+        
+        // Check against window title patterns
+        for title in ignore_window_titles {
+            if element_name_lower.contains(&title.to_lowercase()) {
+                return true;
+            }
+        }
+        
+        // Check against application patterns
+        if let Some(ui_elem) = ui_element {
+            let app_name = ui_elem.application_name();
+            if !app_name.is_empty() {
+                let app_name_lower = app_name.to_lowercase();
+                for app in ignore_applications {
+                    if app_name_lower.contains(&app.to_lowercase()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        // Check for common system UI elements that are typically noise
+        let common_ignore_patterns = [
+            "clock",
+            "notification",
+            "taskbar",
+            "start button",
+            "system tray",
+            "search",
+            "cortana",
+            "action center",
+            "windows security",
+            "microsoft edge webview2",
+        ];
+        
+        for pattern in &common_ignore_patterns {
+            if element_name_lower.contains(pattern) {
+                return true;
+            }
+        }
+        
+        false
+    }
+    
+    /// Check if a property change event should be ignored based on filtering patterns
+    fn should_ignore_property_event(
+        element_name: &str,
+        property_name: &str,
+        ui_element: &Option<UIElement>,
+        ignore_patterns: &[String],
+        ignore_window_titles: &[String],
+        ignore_applications: &[String],
+    ) -> bool {
+        let element_name_lower = element_name.to_lowercase();
+        let property_name_lower = property_name.to_lowercase();
+        
+        // Check against property-specific ignore patterns
+        for pattern in ignore_patterns {
+            if element_name_lower.contains(&pattern.to_lowercase()) || 
+               property_name_lower.contains(&pattern.to_lowercase()) {
+                return true;
+            }
+        }
+        
+        // Check against window title patterns
+        for title in ignore_window_titles {
+            if element_name_lower.contains(&title.to_lowercase()) {
+                return true;
+            }
+        }
+        
+        // Check against application patterns
+        if let Some(ui_elem) = ui_element {
+            let app_name = ui_elem.application_name();
+            if !app_name.is_empty() {
+                let app_name_lower = app_name.to_lowercase();
+                for app in ignore_applications {
+                    if app_name_lower.contains(&app.to_lowercase()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        // Check for common system UI elements that are typically noise
+        let common_ignore_patterns = [
+            "clock",
+            "notification",
+            "taskbar",
+            "start button",
+            "system tray",
+            "search",
+            "cortana",
+            "action center",
+            "windows security",
+            "microsoft edge webview2",
+        ];
+        
+        for pattern in &common_ignore_patterns {
+            if element_name_lower.contains(pattern) {
+                return true;
+            }
+        }
+        
+        // Ignore frequent time-based property changes that are just noise
+        if property_name_lower == "name" && (
+            element_name_lower.contains("clock") ||
+            element_name_lower.contains("time") ||
+            element_name_lower.contains("pm") ||
+            element_name_lower.contains("am") ||
+            // Check for date patterns like "5/28/2025"
+            element_name.matches('/').count() >= 2
+        ) {
+            return true;
+        }
+        
+        false
     }
     
     /// Stop recording
