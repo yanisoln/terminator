@@ -65,13 +65,20 @@ pub struct UIElement {
 /// any UI automation actions. To interact with UI elements, you need a live UIElement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUIElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub window_title: Option<String>,
 }
 
@@ -80,15 +87,20 @@ impl From<&UIElement> for SerializableUIElement {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
         
+        // Helper function to filter empty strings
+        fn filter_empty(s: Option<String>) -> Option<String> {
+            s.filter(|s| !s.is_empty())
+        }
+        
         Self {
-            id: element.id(),
+            id: filter_empty(element.id()),
             role: element.role(),
-            name: attrs.name,
+            name: filter_empty(attrs.name),
             bounds,
-            value: attrs.value,
-            description: attrs.description,
-            application: Some(element.application_name()).filter(|s| !s.is_empty()),
-            window_title: Some(element.window_title()).filter(|s| !s.is_empty()),
+            value: filter_empty(attrs.value),
+            description: filter_empty(attrs.description),
+            application: filter_empty(Some(element.application_name())),
+            window_title: filter_empty(Some(element.window_title())),
         }
     }
 }
@@ -279,17 +291,17 @@ async fn find_element_in_tree(desktop: &crate::Desktop, serializable: &Serializa
 pub struct UIElementAttributes {
     #[serde(default)]
     pub role: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub properties: HashMap<String, Option<serde_json::Value>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_keyboard_focusable: Option<bool>,
 }
 

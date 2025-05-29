@@ -107,6 +107,30 @@ impl WindowsRecorder {
         Ok(recorder)
     }
     
+    /// Format UI Automation property values properly for JSON output
+    fn format_property_value(value: &uiautomation::variants::Variant) -> Option<String> {
+        // First try to get as string
+        if let Ok(s) = value.get_string() {
+            if !s.is_empty() {
+                return Some(s);
+            } else {
+                return None; // Empty string - don't include
+            }
+        }
+        
+        // Try to handle other important types without using debug format
+        // Note: We avoid using try_into or debug format to prevent artifacts like "BOOL(false)"
+        
+        // For boolean values, we'll skip them for now to avoid clutter
+        // since most boolean property changes (like HasKeyboardFocus) create noise
+        
+        // For numeric values, we could add handling here if needed in the future
+        // but for now we'll keep it simple and only include meaningful strings
+        
+        // If we can't get a meaningful string value, skip this property
+        None
+    }
+    
     /// Initialize common hotkey patterns
     fn initialize_hotkey_patterns() -> Vec<HotkeyPattern> {
         vec![
@@ -718,40 +742,44 @@ impl WindowsRecorder {
                     // Extract basic data that's safe to send across threads
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
                     let property_name = format!("{:?}", property);
-                    let value_string = value.to_string();
                     
-                    // SAFELY extract UI element information while we're on the correct COM thread
-                    let ui_element = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        convert_uiautomation_element_to_terminator(sender.clone())
-                    })) {
-                        Ok(element) => {
-                            // Additional safety: verify we can access basic properties
-                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                let attrs = element.attributes();
-                                let name = attrs.name.as_deref().unwrap_or("N/A").to_string();
-                                let role = element.role();
-                                (name, role)
-                            })) {
-                                Ok((name, role)) => {
-                                    debug!("Successfully converted property UI element: name='{}', role='{}'", name, role);
-                                    Some(element)
-                                }
-                                Err(e) => {
-                                    debug!("UI element converted but properties inaccessible: {:?}", e);
-                                    // Return the element anyway since basic conversion worked
-                                    Some(element)
+                    // Only proceed if we can extract a meaningful value
+                    if let Some(value_string) = Self::format_property_value(&value) {
+                        // SAFELY extract UI element information while we're on the correct COM thread
+                        let ui_element = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            convert_uiautomation_element_to_terminator(sender.clone())
+                        })) {
+                            Ok(element) => {
+                                // Additional safety: verify we can access basic properties
+                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let attrs = element.attributes();
+                                    let name = attrs.name.as_deref().unwrap_or("N/A").to_string();
+                                    let role = element.role();
+                                    (name, role)
+                                })) {
+                                    Ok((name, role)) => {
+                                        debug!("Successfully converted property UI element: name='{}', role='{}'", name, role);
+                                        Some(element)
+                                    }
+                                    Err(e) => {
+                                        debug!("UI element converted but properties inaccessible: {:?}", e);
+                                        // Return the element anyway since basic conversion worked
+                                        Some(element)
+                                    }
                                 }
                             }
+                            Err(e) => {
+                                debug!("Failed to convert UI element safely: {:?}", e);
+                                None
+                            }
+                        };
+                        
+                        // Send the extracted data through the channel
+                        if let Err(e) = property_tx.send((element_name, property_name, value_string, ui_element)) {
+                            debug!("Failed to send property change data through channel: {}", e);
                         }
-                        Err(e) => {
-                            debug!("Failed to convert UI element safely: {:?}", e);
-                            None
-                        }
-                    };
-                    
-                    // Send the extracted data through the channel
-                    if let Err(e) = property_tx.send((element_name, property_name, value_string, ui_element)) {
-                        debug!("Failed to send property change data through channel: {}", e);
+                    } else {
+                        debug!("Skipping property change with empty/null value: {} on {}", property_name, element_name);
                     }
                     
                     Ok(())
@@ -1116,3 +1144,4 @@ fn key_to_u32(key: &Key) -> u32 {
         _ => 0,
     }
 }
+

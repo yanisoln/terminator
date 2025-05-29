@@ -23,6 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         record_ui_structure_changes: false,
         record_ui_property_changes: false,
         record_ui_focus_changes: false,
+        ..Default::default()
     };
     
     let mut recorder = WorkflowRecorder::new("UI Element Test".to_string(), config);

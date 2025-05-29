@@ -43,6 +43,7 @@ pub struct CommandOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
 }
 

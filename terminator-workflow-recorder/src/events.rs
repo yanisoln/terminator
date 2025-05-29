@@ -451,13 +451,20 @@ impl EventMetadata {
 /// Serializable version of UIElement for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUIElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub window_title: Option<String>,
 }
 
@@ -466,15 +473,20 @@ impl From<&UIElement> for SerializableUIElement {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
         
+        // Helper function to filter empty strings
+        fn filter_empty(s: Option<String>) -> Option<String> {
+            s.filter(|s| !s.is_empty())
+        }
+        
         Self {
-            id: element.id(),
+            id: filter_empty(element.id()),
             role: element.role(),
-            name: attrs.name,
+            name: filter_empty(attrs.name),
             bounds,
-            value: attrs.value,
-            description: attrs.description,
-            application: Some(element.application_name()).filter(|s| !s.is_empty()),
-            window_title: Some(element.window_title()).filter(|s| !s.is_empty()),
+            value: filter_empty(attrs.value),
+            description: filter_empty(attrs.description),
+            application: filter_empty(Some(element.application_name())),
+            window_title: filter_empty(Some(element.window_title())),
         }
     }
 }
@@ -483,15 +495,19 @@ impl From<&UIElement> for SerializableUIElement {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableEventMetadata {
     /// The UI element associated with this event (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_element: Option<SerializableUIElement>,
     
     /// The application where this event occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
     
     /// The window title where this event occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub window_title: Option<String>,
     
     /// The process ID of the application
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
 }
 
@@ -515,7 +531,9 @@ pub struct SerializableKeyboardEvent {
     pub alt_pressed: bool,
     pub shift_pressed: bool,
     pub win_pressed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub character: Option<char>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scan_code: Option<u32>,
     pub metadata: SerializableEventMetadata,
 }
@@ -542,7 +560,9 @@ pub struct SerializableMouseEvent {
     pub event_type: MouseEventType,
     pub button: MouseButton,
     pub position: Position,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scroll_delta: Option<(i32, i32)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub drag_start: Option<Position>,
     pub metadata: SerializableEventMetadata,
 }
@@ -564,8 +584,11 @@ impl From<&MouseEvent> for SerializableMouseEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableClipboardEvent {
     pub action: ClipboardAction,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
     pub truncated: bool,
     pub metadata: SerializableEventMetadata,
@@ -615,8 +638,11 @@ impl From<&TextSelectionEvent> for SerializableTextSelectionEvent {
 pub struct SerializableDragDropEvent {
     pub start_position: Position,
     pub end_position: Position,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_element: Option<SerializableUIElement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     pub success: bool,
     pub metadata: SerializableEventMetadata,
@@ -640,6 +666,7 @@ impl From<&DragDropEvent> for SerializableDragDropEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableHotkeyEvent {
     pub combination: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
     pub is_global: bool,
     pub metadata: SerializableEventMetadata,
@@ -661,7 +688,9 @@ impl From<&HotkeyEvent> for SerializableHotkeyEvent {
 pub struct SerializableUiPropertyChangedEvent {
     pub property_name: String,
     pub property_id: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub old_value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_value: Option<String>,
     pub metadata: SerializableEventMetadata,
 }
@@ -681,6 +710,7 @@ impl From<&UiPropertyChangedEvent> for SerializableUiPropertyChangedEvent {
 /// Serializable version of UiFocusChangedEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUiFocusChangedEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_element: Option<SerializableUIElement>,
     pub metadata: SerializableEventMetadata,
 }
@@ -743,6 +773,7 @@ impl From<&RecordedEvent> for SerializableRecordedEvent {
 pub struct SerializableRecordedWorkflow {
     pub name: String,
     pub start_time: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time: Option<u64>,
     pub events: Vec<SerializableRecordedEvent>,
 }

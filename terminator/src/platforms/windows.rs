@@ -1680,33 +1680,55 @@ impl UIElementImpl for WindowsUIElement {
             UIProperty::HelpText,
             UIProperty::AutomationId,
         ];
+        
+        // Helper function to format property values properly
+        fn format_property_value(value: &Variant) -> Option<serde_json::Value> {
+            // First try to get as string
+            if let Ok(s) = value.get_string() {
+                if !s.is_empty() {
+                    return Some(serde_json::Value::String(s));
+                } else {
+                    return None; // Empty string - don't include
+                }
+            }
+            
+            // If string conversion fails, we'll just skip this property
+            // to avoid the STRING() issue
+            None
+        }
+        
         for property in property_list {
             if let Ok(value) = self.element.0.get_property_value(property) {
-                properties.insert(
-                    format!("{:?}", property),
-                    Some(serde_json::to_value(value.to_string()).unwrap_or_default()),
-                );
-            } else {
-                properties.insert(format!("{:?}", property), None);
+                if let Some(formatted_value) = format_property_value(&value) {
+                    properties.insert(format!("{:?}", property), Some(formatted_value));
+                }
+                // If format_property_value returns None, we don't insert anything
             }
         }
+        
+        // Helper function to filter empty strings
+        fn filter_empty_string(s: Option<String>) -> Option<String> {
+            s.filter(|s| !s.is_empty())
+        }
+        
         UIElementAttributes {
             role: self.role(),
-            name: self.element.0.get_name().ok(),
+            name: filter_empty_string(self.element.0.get_name().ok()),
             label: self
                 .element
                 .0
                 .get_labeled_by()
-                .ok().map(|e| e.get_name().unwrap_or_default()),
+                .ok()
+                .and_then(|e| filter_empty_string(e.get_name().ok())),
             value: self
                 .element
                 .0
                 .get_property_value(UIProperty::ValueValue)
                 .ok()
-                .and_then(|v| v.get_string().ok()),
-            description: self.element.0.get_help_text().ok(), // TODO this is not description?
+                .and_then(|v| filter_empty_string(v.get_string().ok())),
+            description: filter_empty_string(self.element.0.get_help_text().ok()),
             properties,
-            is_keyboard_focusable: self.is_keyboard_focusable().ok(), // Added field
+            is_keyboard_focusable: self.is_keyboard_focusable().ok(),
         }
     }
 
