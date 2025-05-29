@@ -443,6 +443,24 @@ impl Desktop {
 
         Ok(window_tree_root)
     }
+
+    #[instrument(skip(self, pid, title))]
+    pub fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<UINode, AutomationError> {
+        let start = Instant::now();
+        info!(pid, ?title, "Getting window tree by PID and title");
+
+        let window_tree_root = self.engine.get_window_tree_by_pid_and_title(pid, title)?;
+
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            pid = pid,
+            ?title,
+            "Window tree retrieved by PID and title"
+        );
+
+        Ok(window_tree_root)
+    }
 }
 
 impl Clone for Desktop {

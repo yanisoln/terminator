@@ -39,7 +39,7 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
 ];
 
 // Helper function to get process name by PID using native Windows API
-fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
+pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
     unsafe {
         // Create a snapshot of all processes
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
@@ -1570,6 +1570,105 @@ $latestProcess.ProcessId"#,
 
         // Build the FULL UI tree with optimized performance
         info!("Building FULL UI tree with performance optimizations");
+        build_full_ui_node_tree_optimized(&window_element_wrapper)
+    }
+
+    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+        info!("Attempting to get FULL window tree by PID: {} and title: {:?}", pid, title);
+        let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
+            error!("Failed to get root element: {}", e);
+            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+        })?;
+
+        // First, find all windows for the given process ID
+        let window_matcher = self
+            .automation
+            .0
+            .create_matcher()
+            .from_ref(&root_ele_os)
+            .control_type(ControlType::Window)
+            .depth(3)
+            .timeout(3000);
+
+        let windows = window_matcher.find_all().map_err(|e| {
+            error!("Failed to find windows: {}", e);
+            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+        })?;
+
+        info!("Found {} total windows, filtering by PID: {}", windows.len(), pid);
+
+        // Filter windows by process ID first
+        let mut pid_matching_windows = Vec::new();
+        let mut window_debug_info = Vec::new(); // For debugging
+
+        for window in windows {
+            match window.get_process_id() {
+                Ok(window_pid) => {
+                    let window_name = window.get_name().unwrap_or_else(|_| "Unknown".to_string());
+                    window_debug_info.push(format!("PID: {}, Name: {}", window_pid, window_name));
+                    
+                    if window_pid == pid {
+                        pid_matching_windows.push((window, window_name));
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to get process ID for window: {}", e);
+                }
+            }
+        }
+
+        if pid_matching_windows.is_empty() {
+            error!("No windows found for PID: {}", pid);
+            debug!("Available windows: {:?}", window_debug_info);
+            return Err(AutomationError::ElementNotFound(format!(
+                "No windows found for process ID {}. Available windows: {:?}",
+                pid, window_debug_info
+            )));
+        }
+
+        info!("Found {} windows for PID: {}", pid_matching_windows.len(), pid);
+
+        // Now filter by title if provided
+        let selected_window = if let Some(title) = title {
+            let title_lower = title.to_lowercase();
+            let mut title_matching_window = None;
+            
+            info!("Filtering by title: '{}'", title);
+            for (window, window_name) in &pid_matching_windows {
+                if window_name.to_lowercase().contains(&title_lower) {
+                    info!("Found title match: '{}' contains '{}'", window_name, title);
+                    title_matching_window = Some(window.clone());
+                    break;
+                }
+            }
+
+            // If title match found, use it; otherwise fall back to first window with matching PID
+            match title_matching_window {
+                Some(window) => {
+                    info!("Using title-matched window");
+                    window
+                }
+                None => {
+                    warn!("No title match found for '{}', falling back to first window with PID {}", title, pid);
+                    pid_matching_windows[0].0.clone()
+                }
+            }
+        } else {
+            info!("No title filter provided, using first window with PID {}", pid);
+            pid_matching_windows[0].0.clone()
+        };
+
+        let selected_window_name = selected_window.get_name().unwrap_or_else(|_| "Unknown".to_string());
+        info!("Selected window: '{}' for PID: {} (title filter: {:?})", 
+              selected_window_name, pid, title);
+
+        // Wrap the raw OS element into our UIElement
+        let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(selected_window)),
+        }));
+
+        // Build the FULL UI tree with optimized performance
+        info!("Building FULL UI tree with performance optimizations for PID: {}", pid);
         build_full_ui_node_tree_optimized(&window_element_wrapper)
     }
 }

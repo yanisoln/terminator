@@ -2901,4 +2901,10 @@ impl AccessibilityEngine for MacOSEngine {
             format!("get_window_tree_by_title for '{}' not yet implemented for macOS", title)
         ))
     }
+
+    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            format!("get_window_tree_by_pid_and_title for PID {} and title {:?} not yet implemented for macOS", pid, title)
+        ))
+    }
 }

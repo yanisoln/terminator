@@ -10,7 +10,7 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 
     // Try to find the Firefox window by title. 
     // This might need adjustment based on the actual window title.
-    let firefox_window_title_contains = "Book1"; 
+    let firefox_window_title_contains = "We"; 
     
 
     // Now get the tree for the found/active Firefox window.
