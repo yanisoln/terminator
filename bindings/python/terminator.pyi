@@ -759,7 +759,7 @@ class UIElement:
         Returns:
             None
         """
-    def text(self, max_depth:typing.Optional[builtins.int]) -> builtins.str:
+    def text(self, max_depth:typing.Optional[builtins.int]=None) -> builtins.str:
         r"""
         Get text content of this element.
         
@@ -769,7 +769,7 @@ class UIElement:
         Returns:
             str: The element's text content.
         """
-    def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool]) -> None:
+    def type_text(self, text:builtins.str, use_clipboard:typing.Optional[builtins.bool]=None) -> None:
         r"""
         Type text into this element.
         
@@ -915,7 +915,7 @@ class UIElement:
         Returns:
             ExploreResponse: Details about the element and its children.
         """
-    def highlight(self, color:typing.Optional[builtins.int], duration_ms:typing.Optional[builtins.int]) -> None:
+    def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None) -> None:
         r"""
         Highlights the element with a colored border.
         
