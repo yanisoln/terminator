@@ -27,14 +27,36 @@ use uni_ocr::{OcrEngine, OcrProvider};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::{
-    core::{HSTRING, Error, HRESULT},
-    Win32::{
-        System::Com::{CoInitializeEx, CoCreateInstance, CLSCTX_ALL, COINIT_APARTMENTTHREADED},
-        UI::Shell::{IApplicationActivationManager, ApplicationActivationManager, ACTIVATEOPTIONS},
-    },
-};
+
+// Windows API imports
+use windows::core::Error;
+use windows::core::HSTRING;
+use windows::core::HRESULT;
+use windows::core::PWSTR;
+
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::HANDLE;
+
+use windows::Win32::System::Com::CLSCTX_ALL;
+use windows::Win32::System::Com::CoCreateInstance;
+use windows::Win32::System::Com::CoInitializeEx;
+use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+
+use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
+use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
+use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
+use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
+use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
+
+use windows::Win32::System::Threading::CREATE_NEW_CONSOLE;
+use windows::Win32::System::Threading::CreateProcessW;
+use windows::Win32::System::Threading::PROCESS_INFORMATION;
+use windows::Win32::System::Threading::STARTUPINFOW;
+
+use windows::Win32::UI::Shell::ACTIVATEOPTIONS;
+use windows::Win32::UI::Shell::ApplicationActivationManager;
+use windows::Win32::UI::Shell::IApplicationActivationManager;
+
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -2734,20 +2756,7 @@ fn launch_uwp_app(engine: &WindowsEngine, uwp_app_name: &str) -> Result<UIElemen
     };
 
     if pid > 0 {
-        // Get the application using the PID
-        match engine.get_application_by_pid(pid as i32, Some(DEFAULT_FIND_TIMEOUT)) {
-            Ok(app) => {
-                app.activate_window()?;
-                Ok(app)
-            }
-            Err(_) => {
-                // try to get by name
-                debug!("Failed to get application by PID, trying by name: {}", display_name);
-                let app = engine.get_application_by_name(&display_name)?;
-                app.activate_window()?;
-                Ok(app)
-            }
-        }
+        get_application_pid(engine, pid as i32, &display_name)
     } else {
         Err(Error::new(
             HRESULT(0x80004005u32 as i32),
@@ -2926,59 +2935,153 @@ fn get_package_info(package: &Value) -> Result<(String, String), AutomationError
     Ok((package_full_name.to_string(), package_family_name.to_string()))
 }
 
-// Launches a regular (non-UWP) Windows application
-fn launch_regular_application(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-WindowStyle",
-            "hidden",
-            "-Command",
-            &format!(
-                "Start-Process '{}' -PassThru | Select-Object -ExpandProperty Id",
-                app_name
-            ),
-        ])
-        .output()
-        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
 
-    if !output.status.success() {
-        return Err(AutomationError::PlatformError(
-            "Failed to open application".to_string(),
-        ));
-    }
+// Helper function to get application by PID with fallback to child process and name
+fn get_application_pid(engine: &WindowsEngine, pid: i32, app_name: &str) -> Result<UIElement, AutomationError> {
+    unsafe {
+        // Check if the process with this PID exists
+        let mut pid_exists = false;
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(handle) => handle,
+            Err(_) => {
+                debug!("Failed to create process snapshot for PID existence check, falling back to name");
+                let app = engine.get_application_by_name(app_name)?;
+                app.activate_window()?;
+                return Ok(app);
+            }
+        };
+        if !snapshot.is_invalid() {
+            let _guard = HandleGuard(snapshot);
+            let mut process_entry = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                ..Default::default()
+            };
+            if Process32FirstW(snapshot, &mut process_entry).is_ok() {
+                loop {
+                    if process_entry.th32ProcessID == pid as u32 {
+                        pid_exists = true;
+                        break;
+                    }
+                    if Process32NextW(snapshot, &mut process_entry).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
 
-    let pid_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if pid_str.is_empty() {
-        // Fallback to finding by name when no PID is returned
-        let app = engine.get_application_by_name(app_name)?;
-        app.activate_window()?;
-        return Ok(app);
-    }
+        if pid_exists {
+            match engine.get_application_by_pid(pid, Some(DEFAULT_FIND_TIMEOUT)) {
+                Ok(app) => {
+                    app.activate_window()?;
+                    return Ok(app);
+                }
+                Err(_) => {
+                    debug!("Failed to get application by PID, will try child PID logic");
+                }
+            }
+        }
 
-    let pid = match pid_str.parse::<i32>() {
-        Ok(pid) => pid,
-        Err(_) => {
-            // Fallback to finding by name when PID parsing fails
+        // If PID does not exist or get_application_by_pid failed, try to find a child process with this as parent
+        let parent_pid = pid as u32;
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(handle) => handle,
+            Err(_) => {
+                debug!("Failed to create process snapshot for child search, falling back to name");
+                let app = engine.get_application_by_name(app_name)?;
+                app.activate_window()?;
+                return Ok(app);
+            }
+        };
+        if snapshot.is_invalid() {
+            debug!("Invalid snapshot handle for child search, falling back to name");
             let app = engine.get_application_by_name(app_name)?;
             app.activate_window()?;
             return Ok(app);
         }
-    };
-
-    // Wait a bit for the application to start
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Get the application using the PID, with fallback to name
-    let app = match engine.get_application_by_pid(pid, Some(DEFAULT_FIND_TIMEOUT)) {
-        Ok(app) => app,
-        Err(_) => {
-            // Fallback to finding by name
-            engine.get_application_by_name(app_name)?
+        let _guard = HandleGuard(snapshot);
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut found_child_pid: Option<u32> = None;
+        if Process32FirstW(snapshot, &mut process_entry).is_ok() {
+            loop {
+                if process_entry.th32ParentProcessID == parent_pid {
+                    found_child_pid = Some(process_entry.th32ProcessID);
+                    break;
+                }
+                if Process32NextW(snapshot, &mut process_entry).is_err() {
+                    break;
+                }
+            }
         }
-    };
-    app.activate_window()?;
-    Ok(app)
+        if let Some(child_pid) = found_child_pid {
+            match engine.get_application_by_pid(child_pid as i32, Some(DEFAULT_FIND_TIMEOUT)) {
+                Ok(app) => {
+                    app.activate_window()?;
+                    return Ok(app);
+                }
+                Err(_) => {
+                    debug!("Failed to get application by child PID, falling back to name");
+                }
+            }
+        }
+        // If all else fails, try to find the application by name
+        debug!("Failed to get application by PID and child PID, trying by name: {}", app_name);
+        let app = engine.get_application_by_name(app_name)?;
+        app.activate_window()?;
+        Ok(app)
+    }
+}
+
+
+// Launches a regular (non-UWP) Windows application
+fn launch_regular_application(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
+    unsafe {
+        // Convert app_name to wide string
+        let mut app_name_wide: Vec<u16> = app_name.encode_utf16().chain(std::iter::once(0)).collect();
+        
+        // Prepare process startup info
+        let mut startup_info = STARTUPINFOW::default();
+        startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        
+        // Prepare process info
+        let mut process_info = PROCESS_INFORMATION::default();
+        
+        // Create the process
+        let result = CreateProcessW(
+            None, // Application name (null means use command line)
+            Some(PWSTR::from_raw(app_name_wide.as_mut_ptr())), // Command line
+            None, // Process security attributes
+            None, // Thread security attributes
+            false, // Inherit handles
+            CREATE_NEW_CONSOLE, // Creation flags
+            None, // Environment
+            None, // Current directory
+            &startup_info,
+            &mut process_info,
+        );
+
+        if result.is_err() {
+            return Err(AutomationError::PlatformError(
+                format!("Failed to launch application '{}'", app_name)
+            ));
+        }
+
+        // Close thread handle as we don't need it
+        let _ = CloseHandle(process_info.hThread);
+        
+        // Store process handle in a guard to ensure it's closed
+        let _process_handle = HandleGuard(process_info.hProcess);
+        
+        // Get the PID
+        let pid = process_info.dwProcessId as i32;
+
+        // Wait a bit for the application to start
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        get_application_pid(engine, pid, app_name)
+    }
 }
 
 // make easier to pass roles
