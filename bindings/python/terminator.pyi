@@ -84,7 +84,7 @@ class Desktop:
         Returns:
             UIElement: The application UI element.
         """
-    def open_application(self, name:builtins.str) -> None:
+    def open_application(self, name:builtins.str) -> UIElement:
         r"""
         Open an application by name.
         

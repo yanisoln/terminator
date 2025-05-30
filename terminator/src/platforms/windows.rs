@@ -3788,4 +3788,141 @@ mod tests {
                     original_pid, process_name, found_pid);
         }
     }
+
+    #[test]
+    fn test_open_regular_application() {
+        // Test opening a regular Windows application (Notepad)
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test successful case
+        let result = engine.open_application("notepad.exe");
+        assert!(result.is_ok(), "Should be able to open Notepad");
+        let app = result.unwrap();
+        assert_eq!(app.role(), "Window", "Opened application should be a window");
+        
+        // Test error case with non-existent application
+        let result = engine.open_application("nonexistent_app.exe");
+        assert!(result.is_err(), "Should fail to open non-existent application");
+        if let Err(AutomationError::PlatformError(_)) = result {
+            // Expected error type
+        } else {
+            panic!("Expected PlatformError for non-existent application");
+        }
+    }
+
+    #[test]
+    fn test_open_uwp_application() {
+        // Test opening a UWP application (Calculator)
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test successful case
+        let result = engine.open_application("uwp:Microsoft.WindowsCalculator");
+        assert!(result.is_ok(), "Should be able to open Calculator");
+        let app = result.unwrap();
+        assert_eq!(app.role(), "Window", "Opened UWP application should be a window");
+        
+        // Test error case with non-existent UWP app
+        let result = engine.open_application("uwp:NonexistentUWPApp");
+        assert!(result.is_err(), "Should fail to open non-existent UWP application");
+        if let Err(AutomationError::PlatformError(_)) = result {
+            // Expected error type
+        } else {
+            panic!("Expected PlatformError for non-existent UWP application");
+        }
+    }
+
+    #[test]
+    fn test_open_application_edge_cases() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test empty application name
+        let result = engine.open_application("");
+        assert!(result.is_err(), "Should fail with empty application name");
+        
+        // Test application name with only whitespace
+        let result = engine.open_application("   ");
+        assert!(result.is_err(), "Should fail with whitespace-only application name");
+        
+        // Test application name with invalid characters
+        let result = engine.open_application("app<with>invalid:chars");
+        assert!(result.is_err(), "Should fail with invalid characters in application name");
+    }
+
+    #[test]
+    fn test_open_application_with_path() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test opening application with full path
+        let result = engine.open_application("C:\\Windows\\System32\\notepad.exe");
+        assert!(result.is_ok(), "Should be able to open Notepad with full path");
+        let app = result.unwrap();
+        assert_eq!(app.role(), "Window", "Opened application should be a window");
+        
+        // Test opening application with relative path
+        let result = engine.open_application(".\\notepad.exe");
+        assert!(result.is_err(), "Should fail with relative path");
+    }
+
+    #[test]
+    fn test_open_application_with_arguments() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test opening application with arguments
+        let result = engine.open_application("notepad.exe test.txt");
+        assert!(result.is_ok(), "Should be able to open Notepad with arguments");
+        let app = result.unwrap();
+        assert_eq!(app.role(), "Window", "Opened application should be a window");
+    }
+
+    #[test]
+    fn test_open_application_with_special_characters() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test with spaces in path
+        let result = engine.open_application("C:\\Program Files\\Windows NT\\Accessories\\wordpad.exe");
+        assert!(result.is_ok(), "Should handle paths with spaces");
+        
+        // Test with quotes
+        let result = engine.open_application("\"C:\\Program Files\\Windows NT\\Accessories\\wordpad.exe\"");
+        assert!(result.is_ok(), "Should handle paths with quotes");
+    }
+
+    #[test]
+    fn test_open_application_permissions() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test opening system application (should fail without admin rights)
+        let result = engine.open_application("C:\\Windows\\System32\\cmd.exe /k net user");
+        assert!(result.is_err(), "Should fail to open system command with restricted permissions");
+        
+        // Test opening application in protected directory
+        let result = engine.open_application("C:\\Windows\\System32\\drivers\\etc\\hosts");
+        assert!(result.is_err(), "Should fail to open file in protected directory");
+    }
+
+    #[test]
+    fn test_open_application_concurrent() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test opening multiple instances of the same application
+        let result1 = engine.open_application("notepad.exe");
+        assert!(result1.is_ok(), "Should open first instance");
+        
+        let result2 = engine.open_application("notepad.exe");
+        assert!(result2.is_ok(), "Should open second instance");
+        
+        // Verify they are different instances
+        let app1 = result1.unwrap();
+        let app2 = result2.unwrap();
+        assert_ne!(app1.id(), app2.id(), "Should be different application instances");
+    }
+
+    #[test]
+    fn test_open_application_with_environment() {
+        let engine = WindowsEngine::new(false, false).unwrap();
+        
+        // Test opening application that requires specific environment variables
+        let result = engine.open_application("powershell.exe -NoProfile -Command \"$env:TEST_VAR='test'; notepad.exe\"");
+        assert!(result.is_ok(), "Should handle applications with environment variables");
+    }
 }
