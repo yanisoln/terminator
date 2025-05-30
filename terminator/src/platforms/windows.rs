@@ -1359,12 +1359,20 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         // Use a more efficient approach: first find windows by control type, then filter by name
+        // Search for both Window and Pane control types since some applications use panes as main containers
         let window_matcher = self
             .automation
             .0
             .create_matcher()
             .from_ref(&root_ele_os)
-            .control_type(ControlType::Window)
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
             .depth(3) // Limit search depth for performance
             .timeout(3000); // Reduce timeout to 3 seconds
 
@@ -1429,12 +1437,20 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         // First, find all windows for the given process ID
+        // Search for both Window and Pane control types since some applications use panes as main containers
         let window_matcher = self
             .automation
             .0
             .create_matcher()
             .from_ref(&root_ele_os)
-            .control_type(ControlType::Window)
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
             .depth(3)
             .timeout(3000);
 
