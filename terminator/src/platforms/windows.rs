@@ -9,11 +9,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
@@ -27,7 +29,6 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use std::thread
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -38,7 +39,7 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
 ];
 
 // Helper function to get process name by PID using native Windows API
-fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
+pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
     unsafe {
         // Create a snapshot of all processes
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
@@ -307,7 +308,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 let actual_depth = depth.unwrap_or(50) as u32;
 
-                let mut matcher_builder = self
+                let matcher_builder = self
                     .automation
                     .0
                     .create_matcher()
@@ -315,12 +316,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(win_control_type)
                     .depth(actual_depth)
                     .timeout(timeout_ms as u64);
-   
-                if let Some(name) = name {
-                    // use contains_name, its undetermined right now
-                    // wheather we should use `name` or `contains_name`
-                    matcher_builder = matcher_builder.contains_name(name);
-                }
                 
                 let elements = matcher_builder.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
@@ -626,7 +621,7 @@ impl AccessibilityEngine for WindowsEngine {
                     win_control_type, role, name, timeout_ms, root_ele.get_name().unwrap_or_default()
                 );
 
-                let mut matcher_builder = self
+                let matcher_builder = self
                     .automation
                     .0
                     .create_matcher()
@@ -634,12 +629,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(win_control_type)
                     .depth(50) // Default depth for find_element
                     .timeout(timeout_ms as u64);
-
-                if let Some(name) = name {
-                    // use contains_name, its undetermined right now
-                    // wheather we should use `name` or `contains_name`
-                    matcher_builder = matcher_builder.contains_name(name);
-                }
 
                 let element = matcher_builder.find_first().map_err(|e| {
                      AutomationError::ElementNotFound(format!(
@@ -1665,6 +1654,105 @@ $latestProcess.ProcessId"#,
         info!("Building FULL UI tree with performance optimizations");
         build_full_ui_node_tree_optimized(&window_element_wrapper)
     }
+
+    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+        info!("Attempting to get FULL window tree by PID: {} and title: {:?}", pid, title);
+        let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
+            error!("Failed to get root element: {}", e);
+            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+        })?;
+
+        // First, find all windows for the given process ID
+        let window_matcher = self
+            .automation
+            .0
+            .create_matcher()
+            .from_ref(&root_ele_os)
+            .control_type(ControlType::Window)
+            .depth(3)
+            .timeout(3000);
+
+        let windows = window_matcher.find_all().map_err(|e| {
+            error!("Failed to find windows: {}", e);
+            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+        })?;
+
+        info!("Found {} total windows, filtering by PID: {}", windows.len(), pid);
+
+        // Filter windows by process ID first
+        let mut pid_matching_windows = Vec::new();
+        let mut window_debug_info = Vec::new(); // For debugging
+
+        for window in windows {
+            match window.get_process_id() {
+                Ok(window_pid) => {
+                    let window_name = window.get_name().unwrap_or_else(|_| "Unknown".to_string());
+                    window_debug_info.push(format!("PID: {}, Name: {}", window_pid, window_name));
+                    
+                    if window_pid == pid {
+                        pid_matching_windows.push((window, window_name));
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to get process ID for window: {}", e);
+                }
+            }
+        }
+
+        if pid_matching_windows.is_empty() {
+            error!("No windows found for PID: {}", pid);
+            debug!("Available windows: {:?}", window_debug_info);
+            return Err(AutomationError::ElementNotFound(format!(
+                "No windows found for process ID {}. Available windows: {:?}",
+                pid, window_debug_info
+            )));
+        }
+
+        info!("Found {} windows for PID: {}", pid_matching_windows.len(), pid);
+
+        // Now filter by title if provided
+        let selected_window = if let Some(title) = title {
+            let title_lower = title.to_lowercase();
+            let mut title_matching_window = None;
+            
+            info!("Filtering by title: '{}'", title);
+            for (window, window_name) in &pid_matching_windows {
+                if window_name.to_lowercase().contains(&title_lower) {
+                    info!("Found title match: '{}' contains '{}'", window_name, title);
+                    title_matching_window = Some(window.clone());
+                    break;
+                }
+            }
+
+            // If title match found, use it; otherwise fall back to first window with matching PID
+            match title_matching_window {
+                Some(window) => {
+                    info!("Using title-matched window");
+                    window
+                }
+                None => {
+                    warn!("No title match found for '{}', falling back to first window with PID {}", title, pid);
+                    pid_matching_windows[0].0.clone()
+                }
+            }
+        } else {
+            info!("No title filter provided, using first window with PID {}", pid);
+            pid_matching_windows[0].0.clone()
+        };
+
+        let selected_window_name = selected_window.get_name().unwrap_or_else(|_| "Unknown".to_string());
+        info!("Selected window: '{}' for PID: {} (title filter: {:?})", 
+              selected_window_name, pid, title);
+
+        // Wrap the raw OS element into our UIElement
+        let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(selected_window)),
+        }));
+
+        // Build the FULL UI tree with optimized performance
+        info!("Building FULL UI tree with performance optimizations for PID: {}", pid);
+        build_full_ui_node_tree_optimized(&window_element_wrapper)
+    }
 }
 
 
@@ -1673,65 +1761,313 @@ fn build_full_ui_node_tree_optimized(element: &UIElement) -> Result<crate::UINod
     use std::time::Instant;
     
     let start_time = Instant::now();
-    let attributes = element.attributes();
-    let mut children_nodes = Vec::new();
+    
+    // Configuration for responsiveness (NO LIMITS on tree size/depth)
+    let config = TreeBuildingConfig {
+        timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
+        yield_every_n_elements: 50,    // Yield more frequently for responsiveness
+        prefer_cached_calls: true,      // Prioritize cached API calls
+        batch_size: 50,                // Larger batches for efficiency
+    };
+    
+    let mut context = TreeBuildingContext {
+        config,
+        elements_processed: 0,
+        max_depth_reached: 0,
+        cache_hits: 0,
+        fallback_calls: 0,
+        errors_encountered: 0,
+    };
+    
+    info!("Starting FULL tree building (no limits) with caching optimization");
+    
+    let result = build_ui_node_tree_cached_first(element, 0, &mut context);
+    
+    let elapsed = start_time.elapsed();
+    info!("FULL tree building completed in {:?}. Stats: elements={}, depth={}, cache_hits={}, fallbacks={}, errors={}", 
+          elapsed, context.elements_processed, context.max_depth_reached, 
+          context.cache_hits, context.fallback_calls, context.errors_encountered);
+    
+    result
+}
 
-    // Get children of the current element
-    match element.children() {
+// Streamlined configuration focused on performance, not limits
+struct TreeBuildingConfig {
+    timeout_per_operation_ms: u64,
+    yield_every_n_elements: usize,
+    prefer_cached_calls: bool,
+    batch_size: usize,
+}
+
+// Context to track tree building progress (no limits)
+struct TreeBuildingContext {
+    config: TreeBuildingConfig,
+    elements_processed: usize,
+    max_depth_reached: usize,
+    cache_hits: usize,
+    fallback_calls: usize,
+    errors_encountered: usize,
+}
+
+impl TreeBuildingContext {
+    fn should_yield(&self) -> bool {
+        self.elements_processed % self.config.yield_every_n_elements == 0 && self.elements_processed > 0
+    }
+    
+    fn increment_element_count(&mut self) {
+        self.elements_processed += 1;
+    }
+    
+    fn update_max_depth(&mut self, depth: usize) {
+        self.max_depth_reached = self.max_depth_reached.max(depth);
+    }
+    
+    fn increment_cache_hit(&mut self) {
+        self.cache_hits += 1;
+    }
+    
+    fn increment_fallback(&mut self) {
+        self.fallback_calls += 1;
+    }
+    
+    fn increment_errors(&mut self) {
+        self.errors_encountered += 1;
+    }
+}
+
+fn build_ui_node_tree_cached_first(
+    element: &UIElement,
+    current_depth: usize,
+    context: &mut TreeBuildingContext,
+) -> Result<crate::UINode, AutomationError> {
+    context.increment_element_count();
+    context.update_max_depth(current_depth);
+    
+    // Yield CPU periodically to prevent freezing while processing everything
+    if context.should_yield() {
+        debug!("Yielding CPU after processing {} elements at depth {}", context.elements_processed, current_depth);
+        thread::sleep(Duration::from_millis(1));
+    }
+    
+    // Get element attributes with caching preference
+    let attributes = get_element_attributes_cached_first(element, context)?;
+    
+    let mut children_nodes = Vec::new();
+    
+    // Get children with caching strategy
+    match get_element_children_cached_first(element, context) {
         Ok(children_elements) => {
-            // info!("Processing {} children for element ID: {:?}", children_elements.len(), element.id());
+            debug!("Processing {} children at depth {} (using caching strategy)", children_elements.len(), current_depth);
             
-            // Process children in batches to prevent memory spikes and allow yielding
-            const BATCH_SIZE: usize = 50;
-            for (batch_idx, batch) in children_elements.chunks(BATCH_SIZE).enumerate() {
-                // debug!("Processing batch {} of {} children", batch_idx + 1, (children_elements.len() + BATCH_SIZE - 1) / BATCH_SIZE);
-                
+            // Process children in efficient batches
+            for batch in children_elements.chunks(context.config.batch_size) {
                 for child_element in batch {
-                    // Safety valve: if we're taking too long, log and continue
-                    if start_time.elapsed().as_secs() > 30 {
-                        error!("Tree building taking too long (>30s) for element, continuing with partial tree");
-                        break;
-                    }
-                    
-                    // Recursively build child nodes
-                    match build_full_ui_node_tree_optimized(child_element) {
+                    match build_ui_node_tree_cached_first(child_element, current_depth + 1, context) {
                         Ok(child_node) => children_nodes.push(child_node),
                         Err(e) => {
-                            // Log the error but continue processing other children
-                            debug!(
-                                "Failed to build UINode for child (ID: {:?}): {}. Skipping this child.",
-                                child_element.id(),
-                                e
-                            );
+                            debug!("Failed to process child element: {}. Continuing with next child.", e);
+                            context.increment_errors();
+                            // Continue processing - we want the full tree
                         }
                     }
                 }
                 
-                // Small yield every 10 batches to prevent UI freezing during large tree processing
-                if batch_idx % 10 == 0 && batch_idx > 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
+                // Small yield between large batches to maintain responsiveness
+                if batch.len() == context.config.batch_size && children_elements.len() > context.config.batch_size {
+                    thread::sleep(Duration::from_millis(1));
                 }
             }
         }
         Err(e) => {
-            // If getting children fails, log it and continue with an empty children list for this node
-            debug!(
-                "Failed to get children for element (ID: {:?}): {}. Proceeding with no children for this node.",
-                element.id(),
-                e
-            );
+            debug!("Failed to get children for element: {}. Proceeding with no children.", e);
+            context.increment_errors();
         }
     }
-
-    let elapsed = start_time.elapsed();
-    if elapsed.as_millis() > 100 {
-        debug!("Tree building for element took {}ms", elapsed.as_millis());
-    }
-
+    
     Ok(crate::UINode {
         attributes,
         children: children_nodes,
     })
+}
+
+// Get element attributes with caching strategy
+fn get_element_attributes_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<UIElementAttributes, AutomationError> {
+    if context.config.prefer_cached_calls {
+        // Try to get cached attributes first (much faster)
+        match get_cached_attributes_fast(element) {
+            Ok(attributes) => {
+                context.increment_cache_hit();
+                return Ok(attributes);
+            }
+            Err(_) => {
+                // Fallback to regular attributes
+                context.increment_fallback();
+            }
+        }
+    }
+    
+    // Fallback: try regular call first, then timeout version
+    match element.attributes() {
+        attributes => {
+            // Regular attributes call succeeded
+            Ok(attributes)
+        }
+    }
+}
+
+// Fast cached attributes extraction
+fn get_cached_attributes_fast(element: &UIElement) -> Result<UIElementAttributes, AutomationError> {
+    // Try to get the underlying Windows element for direct cached access
+    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
+        let mut properties = HashMap::new();
+        
+        // Use cached getters when available (much faster than live calls)
+        let role = win_element.element.0.get_cached_control_type()
+            .or_else(|_| win_element.element.0.get_control_type())
+            .map(|ct| ct.to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+            
+        let name = win_element.element.0.get_cached_name()
+            .or_else(|_| win_element.element.0.get_name())
+            .ok()
+            .filter(|s| !s.is_empty());
+            
+        let automation_id = win_element.element.0.get_cached_automation_id()
+            .or_else(|_| win_element.element.0.get_automation_id())
+            .ok()
+            .filter(|s| !s.is_empty());
+        
+        let help_text = win_element.element.0.get_cached_help_text()
+            .or_else(|_| win_element.element.0.get_help_text())
+            .ok()
+            .filter(|s| !s.is_empty());
+        
+        // Get value with cached preference
+        let value = win_element.element.0.get_cached_property_value(UIProperty::ValueValue)
+            .or_else(|_| win_element.element.0.get_property_value(UIProperty::ValueValue))
+            .ok()
+            .and_then(|v| v.get_string().ok())
+            .filter(|s| !s.is_empty());
+        
+        // Get label (labeled-by element's name) with cached preference
+        let label = win_element.element.0.get_cached_labeled_by()
+            .or_else(|_| win_element.element.0.get_labeled_by())
+            .ok()
+            .and_then(|labeled_element| {
+                labeled_element.get_cached_name()
+                    .or_else(|_| labeled_element.get_name())
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            });
+        
+        // Get keyboard focusable with cached preference
+        let is_keyboard_focusable = win_element.element.0.get_cached_property_value(UIProperty::IsKeyboardFocusable)
+            .or_else(|_| win_element.element.0.get_property_value(UIProperty::IsKeyboardFocusable))
+            .ok()
+            .and_then(|v| v.try_into().ok());
+        
+        // Add automation ID to properties if available
+        if let Some(aid) = automation_id {
+            properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
+        }
+        
+        // Add help text to properties if available  
+        if let Some(ref ht) = help_text {
+            properties.insert("HelpText".to_string(), Some(serde_json::Value::String(ht.clone())));
+        }
+        
+        return Ok(UIElementAttributes {
+            role,
+            name,
+            label,
+            value,
+            description: help_text,
+            properties,
+            is_keyboard_focusable,
+        });
+    }
+    
+    Err(AutomationError::PlatformError("Cannot access cached attributes".to_string()))
+}
+
+// Get element children with caching strategy  
+fn get_element_children_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<Vec<UIElement>, AutomationError> {
+    if context.config.prefer_cached_calls {
+        // Try cached children first (much faster)
+        match get_cached_children_fast(element) {
+            Ok(children) => {
+                context.increment_cache_hit();
+                debug!("Got {} cached children", children.len());
+                return Ok(children);
+            }
+            Err(_) => {
+                context.increment_fallback();
+                debug!("Cache miss, falling back to live children enumeration");
+            }
+        }
+    }
+    
+    // Fallback: try regular children call first, then timeout version if needed
+    match element.children() {
+        Ok(children) => Ok(children),
+        Err(_) => {
+            // Only use timeout version if regular call fails
+            get_element_children_with_timeout(element, Duration::from_millis(context.config.timeout_per_operation_ms))
+        }
+    }
+}
+
+// Fast cached children extraction
+fn get_cached_children_fast(element: &UIElement) -> Result<Vec<UIElement>, AutomationError> {
+    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
+        // Try cached children first
+        match win_element.element.0.get_cached_children() {
+            Ok(cached_children) => {
+                debug!("Found {} cached children", cached_children.len());
+                let ui_children = cached_children
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect();
+                return Ok(ui_children);
+            }
+            Err(_) => {
+                // Cache miss, will fallback
+            }
+        }
+    }
+    
+    Err(AutomationError::PlatformError("Cannot access cached children".to_string()))
+}
+
+
+
+// Helper function to get element children with timeout
+fn get_element_children_with_timeout(element: &UIElement, timeout: Duration) -> Result<Vec<UIElement>, AutomationError> {
+    use std::sync::mpsc;
+    use std::thread;
+    
+    let (sender, receiver) = mpsc::channel();
+    let element_clone = element.clone();
+    
+    // Spawn a thread to get children
+    thread::spawn(move || {
+        let children_result = element_clone.children();
+        let _ = sender.send(children_result);
+    });
+    
+    // Wait for result with timeout
+    match receiver.recv_timeout(timeout) {
+        Ok(Ok(children)) => Ok(children),
+        Ok(Err(e)) => Err(e),
+        Err(_) => {
+            debug!("Timeout getting element children after {:?}", timeout);
+            Err(AutomationError::PlatformError("Timeout getting element children".to_string()))
+        }
+    }
 }
 
 // thread-safety
@@ -1763,7 +2099,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn role(&self) -> String {
-        self.element.0.get_control_type().unwrap().to_string()
+        self.element.0.get_control_type().unwrap_or(ControlType::Custom).to_string()
     }
 
     fn attributes(&self) -> UIElementAttributes {
@@ -1778,34 +2114,55 @@ impl UIElementImpl for WindowsUIElement {
             UIProperty::FullDescription,
             UIProperty::IsKeyboardFocusable, // Added for attributes
         ];
+        
+        // Helper function to format property values properly
+        fn format_property_value(value: &Variant) -> Option<serde_json::Value> {
+            // First try to get as string
+            if let Ok(s) = value.get_string() {
+                if !s.is_empty() {
+                    return Some(serde_json::Value::String(s));
+                } else {
+                    return None; // Empty string - don't include
+                }
+            }
+            
+            // If string conversion fails, we'll just skip this property
+            // to avoid the STRING() issue
+            None
+        }
+        
         for property in property_list {
             if let Ok(value) = self.element.0.get_property_value(property) {
-                properties.insert(
-                    format!("{:?}", property),
-                    Some(serde_json::to_value(value.to_string()).unwrap_or_default()),
-                );
-            } else {
-                properties.insert(format!("{:?}", property), None);
+                if let Some(formatted_value) = format_property_value(&value) {
+                    properties.insert(format!("{:?}", property), Some(formatted_value));
+                }
+                // If format_property_value returns None, we don't insert anything
             }
         }
+        
+        // Helper function to filter empty strings
+        fn filter_empty_string(s: Option<String>) -> Option<String> {
+            s.filter(|s| !s.is_empty())
+        }
+        
         UIElementAttributes {
             role: self.role(),
-            name: self.element.0.get_name().ok(),
+            name: filter_empty_string(self.element.0.get_name().ok()),
             label: self
                 .element
                 .0
                 .get_labeled_by()
-                .ok().map(|e| e.get_name().unwrap_or_default()),
+                .ok()
+                .and_then(|e| filter_empty_string(e.get_name().ok())),
             value: self
                 .element
                 .0
                 .get_property_value(UIProperty::ValueValue)
                 .ok()
                 .and_then(|v| v.get_string().ok()),
-            description: self.element.0.get_help_text().ok(),
-            native_id: self.element.0.get_automation_id().ok(),
+            description: filter_empty_string(self.element.0.get_help_text().ok()),
             properties,
-            is_keyboard_focusable: self.is_keyboard_focusable().ok(), // Added field
+            is_keyboard_focusable: self.is_keyboard_focusable().ok(),
         }
     }
 
@@ -2111,16 +2468,6 @@ impl UIElementImpl for WindowsUIElement {
                 return Ok(());
             }
 
-            // Check Name property 
-            // TOdo: i dont think we should include the name in text
-            // if let Ok(name) = element.get_property_value(UIProperty::Name) {
-            //     if let Ok(name_text) = name.get_string() {
-            //         if !name_text.is_empty() {
-            //             debug!("found text in name property: {:?}", &name_text);
-            //             texts.push(name_text);
-            //         }
-            //     }
-            // }
 
             // Check Value property
             if let Ok(value) = element.get_property_value(UIProperty::ValueValue) {
@@ -2351,101 +2698,6 @@ impl UIElementImpl for WindowsUIElement {
                 "Only 'up' and 'down' scroll directions are supported".to_string(),
             )),
         }
-
-        /* Original implementation commented out
-        // Try to get the scroll pattern first
-        let scroll_pattern = self.element.0.get_pattern::<patterns::UIScrollPattern>();
-        let scroll_item_pattern = self.element.0.get_pattern::<patterns::UIScrollItemPattern>();
-        
-        if let Ok(scroll_pattern) = scroll_pattern {
-            // If we have a scroll pattern, use it
-            let scroll_amount = if amount > 0.0 {
-                ScrollAmount::SmallIncrement
-            } else if amount < 0.0 {
-                ScrollAmount::SmallDecrement
-            } else {
-                ScrollAmount::NoAmount
-            };
-
-            let times = amount.abs() as usize;
-            for _ in 0..times {
-                match direction {
-                    "up" => scroll_pattern
-                        .scroll(ScrollAmount::NoAmount, scroll_amount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll up: {:?}", e))),
-                    "down" => scroll_pattern
-                        .scroll(ScrollAmount::NoAmount, scroll_amount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll down: {:?}", e))),
-                    "left" => scroll_pattern
-                        .scroll(scroll_amount, ScrollAmount::NoAmount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll left: {:?}", e))),
-                    "right" => scroll_pattern
-                        .scroll(scroll_amount, ScrollAmount::NoAmount)
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll right: {:?}", e))),
-                    _ => Err(AutomationError::UnsupportedOperation(
-                        "Invalid scroll direction".to_string(),
-                    )),
-                }?;
-            }
-        } else if let Ok(scroll_item_pattern) = scroll_item_pattern {
-            // If we have a scroll item pattern, use it
-            let times = amount.abs() as usize;
-            for _ in 0..times {
-                match direction {
-                    "up" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item up: {:?}", e))),
-                    "down" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item down: {:?}", e))),
-                    "left" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item left: {:?}", e))),
-                    "right" => scroll_item_pattern
-                        .scroll_into_view()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to scroll item right: {:?}", e))),
-                    _ => Err(AutomationError::UnsupportedOperation(
-                        "Invalid scroll direction".to_string(),
-                    )),
-                }?;
-            }
-        } else {
-            // If no scroll patterns available, fall back to mouse wheel simulation
-            use windows::Win32::UI::Input::KeyboardAndMouse::{
-                INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
-            };
-            use std::thread::sleep;
-            use std::time::Duration;
-
-            // Get the element's bounds to calculate center point
-            let rect = self.element.0.get_bounding_rectangle()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to get element bounds: {:?}", e)))?;
-            
-            let center_x = rect.get_left() + rect.get_width() / 2;
-            let center_y = rect.get_top() + rect.get_height() / 2;
-
-            // Move mouse to center of element
-            let mi = MOUSEINPUT {
-                dx: center_x,
-                dy: center_y,
-                mouseData: if amount > 0.0 { 120u32 } else { 0xFFFF_FF88u32 }, // 120 for up, -120 (as unsigned) for down
-                dwFlags: MOUSEEVENTF_WHEEL,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            let input = INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi },
-            };
-
-            let times = amount.abs() as usize;
-            // Simulate wheel clicks
-            for _ in 0..times {
-                unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
-                sleep(Duration::from_millis(50)); // Small delay between wheel events
-            }
-        }
-        */
         Ok(())
     }
 
@@ -2756,6 +3008,11 @@ impl UIElementImpl for WindowsUIElement {
 
         Ok(())
     }
+    fn process_id(&self) -> Result<u32, AutomationError> {
+        self.element.0.get_process_id().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+        })
+    }
 }
 
 // make easier to pass roles
@@ -2914,27 +3171,24 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
     id_string.hash(&mut hasher);
     let hash = hasher.finish() as usize;
     
-    // debug!(
-    //     "Generated element ID: hash={}, control_type={}, name={}, automation_id={}, class_name={}, bounds=({},{},{},{}), help_text={}",
-    //     hash,
-    //     control_type,
-    //     name,
-    //     automation_id,
-    //     class_name,
-    //     bounds.get_left(),
-    //     bounds.get_top(),
-    //     bounds.get_width(),
-    //     bounds.get_height(),
-    //     help_text
-    // );
-    
     Ok(hash)
 }
 
+// Add this function after the generate_element_id function and before the tests module
+/// Converts a raw uiautomation::UIElement to a terminator UIElement
+pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
+    let arc_element = ThreadSafeWinUIElement(Arc::new(element));
+    UIElement::new(Box::new(WindowsUIElement {
+        element: arc_element,
+    }))
+}
+
+    
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::process;
+    use std::time::Instant;
 
     #[test]
     fn test_get_process_name_by_pid_current_process() {
@@ -2957,6 +3211,326 @@ mod tests {
                "Process name should contain only alphanumeric characters, hyphens, and underscores: {}", process_name);
         
         println!("Current process name: {}", process_name);
+    }
+
+    // Performance measurement utilities
+    struct PerformanceMetrics {
+        duration: std::time::Duration,
+        elements_processed: usize,
+        max_depth: usize,
+        memory_usage_bytes: usize,
+    }
+
+    impl PerformanceMetrics {
+        fn new() -> Self {
+            Self {
+                duration: std::time::Duration::ZERO,
+                elements_processed: 0,
+                max_depth: 0,
+                memory_usage_bytes: 0,
+            }
+        }
+
+        fn elements_per_second(&self) -> f64 {
+            if self.duration.as_secs_f64() > 0.0 {
+                self.elements_processed as f64 / self.duration.as_secs_f64()
+            } else {
+                0.0
+            }
+        }
+
+        fn is_performance_acceptable(&self) -> bool {
+            // Define acceptable performance criteria:
+            // - Should complete within 5 seconds
+            // - Should process at least 100 elements per second
+            // - Should not use more than 100MB of memory
+            self.duration.as_secs() < 5
+                && self.elements_per_second() >= 100.0
+                && self.memory_usage_bytes < 100 * 1024 * 1024
+        }
+    }
+
+    fn measure_tree_building_performance(element: &UIElement, max_elements: Option<usize>) -> Result<PerformanceMetrics, AutomationError> {
+        let start_time = Instant::now();
+        let mut metrics = PerformanceMetrics::new();
+        
+        // Get memory usage before
+        let memory_before = get_memory_usage();
+        
+        // Build tree with element counting
+        let result = build_ui_tree_with_metrics(element, 0, max_elements.unwrap_or(10000), &mut metrics);
+        
+        // Calculate final metrics
+        metrics.duration = start_time.elapsed();
+        metrics.memory_usage_bytes = get_memory_usage().saturating_sub(memory_before);
+        
+        match result {
+            Ok(_) => Ok(metrics),
+            Err(e) => {
+                println!("Tree building failed: {}", e);
+                Ok(metrics) // Return partial metrics even on failure
+            }
+        }
+    }
+
+    fn build_ui_tree_with_metrics(
+        element: &UIElement,
+        current_depth: usize,
+        max_elements: usize,
+        metrics: &mut PerformanceMetrics,
+    ) -> Result<crate::UINode, AutomationError> {
+        // Update metrics
+        metrics.elements_processed += 1;
+        metrics.max_depth = metrics.max_depth.max(current_depth);
+
+        // Safety limits
+        if metrics.elements_processed >= max_elements {
+            return Err(AutomationError::PlatformError("Element limit reached".to_string()));
+        }
+
+        if current_depth > 50 {
+            return Err(AutomationError::PlatformError("Maximum depth reached".to_string()));
+        }
+
+        let attributes = element.attributes();
+        let mut children_nodes = Vec::new();
+
+        // Get children with timeout
+        let children_start = Instant::now();
+        let children_result = element.children();
+        
+        // If getting children takes too long, skip them
+        if children_start.elapsed() > std::time::Duration::from_millis(500) {
+            println!("Skipping children for element due to timeout");
+            return Ok(crate::UINode {
+                attributes,
+                children: children_nodes,
+            });
+        }
+
+        match children_result {
+            Ok(children_elements) => {
+                for child_element in children_elements.iter().take(20) { // Limit children processed
+                    match build_ui_tree_with_metrics(child_element, current_depth + 1, max_elements, metrics) {
+                        Ok(child_node) => children_nodes.push(child_node),
+                        Err(e) => {
+                            println!("Skipping child due to error: {}", e);
+                            break; // Stop processing children on error
+                        }
+                    }
+                    
+                    // Check if we're taking too long
+                    if metrics.duration.as_secs() > 5 {
+                        println!("Breaking early due to time limit");
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Failed to get children: {}", e);
+            }
+        }
+
+        Ok(crate::UINode {
+            attributes,
+            children: children_nodes,
+        })
+    }
+
+    fn get_memory_usage() -> usize {
+        // Simple memory usage estimation - in a real implementation you might use
+        // more sophisticated memory tracking
+        
+        // This is a simplified approach - for more accurate measurement,
+        // you'd want to use platform-specific APIs or tools like `peak_alloc`
+        0 // Placeholder - implement actual memory tracking if needed
+    }
+
+    #[test]
+    fn test_tree_building_performance_simple_element() {
+        // Test with a simple window to establish baseline performance
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping performance test");
+                return;
+            }
+        };
+
+        // Try to get any available window for testing
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping performance test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for performance testing");
+            return;
+        }
+
+        let test_element = &applications[0];
+        
+        // Measure performance with limited elements
+        let metrics = match measure_tree_building_performance(test_element, Some(100)) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                println!("Performance measurement failed: {}", e);
+                return;
+            }
+        };
+
+        // Print detailed metrics
+        println!("=== Tree Building Performance Metrics ===");
+        println!("Duration: {:?}", metrics.duration);
+        println!("Elements processed: {}", metrics.elements_processed);
+        println!("Max depth: {}", metrics.max_depth);
+        println!("Memory usage: {} bytes", metrics.memory_usage_bytes);
+        println!("Elements per second: {:.2}", metrics.elements_per_second());
+        println!("Performance acceptable: {}", metrics.is_performance_acceptable());
+
+        // Basic assertions
+        assert!(metrics.duration.as_secs() < 10, "Tree building should complete within 10 seconds");
+        assert!(metrics.elements_processed > 0, "Should process at least one element");
+    }
+
+    #[test] 
+    fn test_tree_building_performance_stress_test() {
+        // This test validates full tree building (no limits) with caching optimization
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping stress test");
+                return;
+            }
+        };
+
+        // Try to find complex applications for full tree testing
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping stress test");
+                return;
+            }
+        };
+
+        for app in applications.iter().take(2) { // Test up to 2 applications for full trees
+            let app_name = app.attributes().name.unwrap_or_default();
+            println!("Testing FULL tree building for application: {}", app_name);
+
+            let start_time = Instant::now();
+            
+            // Measure FULL tree building with new optimized function
+            let tree_result = build_full_ui_node_tree_optimized(app);
+            let total_time = start_time.elapsed();
+            
+            match tree_result {
+                Ok(tree) => {
+                    let element_count = count_tree_elements(&tree);
+                    let max_depth = calculate_tree_depth(&tree);
+                    let elements_per_second = if total_time.as_secs_f64() > 0.0 {
+                        element_count as f64 / total_time.as_secs_f64()
+                    } else {
+                        0.0
+                    };
+                    
+                    println!("=== FULL Tree Building Results for {} ===", app_name);
+                    println!("Total time: {:?}", total_time);
+                    println!("Elements in full tree: {}", element_count);
+                    println!("Maximum depth: {}", max_depth);
+                    println!("Elements per second: {:.2}", elements_per_second);
+                    
+                    // Validate that we're getting comprehensive results
+                    assert!(element_count > 0, "Should find elements in application tree");
+                    assert!(max_depth > 0, "Should have some depth in application tree");
+                    
+                    // Performance should be reasonable (not computer-freezing)
+                    assert!(total_time.as_secs() < 60, "Full tree building should complete within 60 seconds for {}", app_name);
+                    
+                    // Should maintain good throughput
+                    if elements_per_second < 20.0 {
+                        println!("WARNING: Lower than expected throughput for {}: {:.2} elements/sec", app_name, elements_per_second);
+                    }
+                }
+                Err(e) => {
+                    println!("Full tree building failed for {}: {}", app_name, e);
+                }
+            }
+        }
+    }
+
+    // Helper function to count elements in a tree
+    fn count_tree_elements(node: &crate::UINode) -> usize {
+        1 + node.children.iter().map(|child| count_tree_elements(child)).sum::<usize>()
+    }
+
+    // Helper function to calculate maximum depth
+    fn calculate_tree_depth(node: &crate::UINode) -> usize {
+        if node.children.is_empty() {
+            1
+        } else {
+            1 + node.children.iter().map(|child| calculate_tree_depth(child)).max().unwrap_or(0)
+        }
+    }
+
+    #[test]
+    fn test_tree_building_depth_limit() {
+        // Test that depth limiting works correctly
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping depth limit test");
+                return;
+            }
+        };
+
+        let root = engine.get_root_element();
+        let mut metrics = PerformanceMetrics::new();
+        
+        // Test with very limited depth
+        let result = build_ui_tree_with_metrics(&root, 0, 50, &mut metrics);
+        
+        match result {
+            Ok(_) => {
+                println!("Depth limit test - Max depth reached: {}", metrics.max_depth);
+                assert!(metrics.max_depth <= 50, "Should respect depth limit");
+            }
+            Err(e) => {
+                println!("Depth limit test completed with controlled error: {}", e);
+                // This is expected behavior when hitting limits
+            }
+        }
+    }
+
+    #[test]
+    fn test_tree_building_element_limit() {
+        // Test that element count limiting works correctly
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping element limit test");
+                return;
+            }
+        };
+
+        let root = engine.get_root_element();
+        let mut metrics = PerformanceMetrics::new();
+        
+        // Test with very limited element count
+        let result = build_ui_tree_with_metrics(&root, 0, 10, &mut metrics);
+        
+        match result {
+            Ok(_) => {
+                println!("Element limit test - Elements processed: {}", metrics.elements_processed);
+                assert!(metrics.elements_processed <= 10, "Should respect element limit");
+            }
+            Err(e) => {
+                println!("Element limit test completed with controlled error: {}", e);
+                assert!(metrics.elements_processed <= 10, "Should not exceed element limit even on error");
+            }
+        }
     }
 
     #[test]

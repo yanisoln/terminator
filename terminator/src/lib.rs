@@ -17,10 +17,13 @@ pub mod selector;
 mod tests;
 pub mod utils;
 
-pub use element::{UIElement, UIElementAttributes};
+pub use element::{UIElement, UIElementAttributes, SerializableUIElement};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+
+#[cfg(target_os = "windows")]
+pub use platforms::windows::convert_uiautomation_element_to_terminator;
 
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {
@@ -40,6 +43,7 @@ pub struct CommandOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
 }
 
@@ -435,6 +439,24 @@ impl Desktop {
             duration_ms = duration.as_millis(),
             title = title,
             "Window tree retrieved"
+        );
+
+        Ok(window_tree_root)
+    }
+
+    #[instrument(skip(self, pid, title))]
+    pub fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<UINode, AutomationError> {
+        let start = Instant::now();
+        info!(pid, ?title, "Getting window tree by PID and title");
+
+        let window_tree_root = self.engine.get_window_tree_by_pid_and_title(pid, title)?;
+
+        let duration = start.elapsed();
+        info!(
+            duration_ms = duration.as_millis(),
+            pid = pid,
+            ?title,
+            "Window tree retrieved by PID and title"
         );
 
         Ok(window_tree_root)

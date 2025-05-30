@@ -1512,9 +1512,19 @@ impl UIElementImpl for MacOSUIElement {
     }
 
     fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        // TODO: Implement highlighting for macOS (could use accessibility highlighting)
         Err(AutomationError::UnsupportedOperation(
             "highlight is not implemented for macOS yet".to_string(),
         ))
+    }
+
+    fn process_id(&self) -> Result<u32, AutomationError> {
+        let pid = get_pid_for_element(&self.element);
+        if pid != -1 {
+            Ok(pid as u32)
+        } else {
+            Err(AutomationError::PlatformError("Failed to get process ID for element".to_string()))
+        }
     }
 }
 
@@ -2895,6 +2905,12 @@ impl AccessibilityEngine for MacOSEngine {
     fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             format!("get_window_tree_by_title for '{}' not yet implemented for macOS", title)
+        ))
+    }
+
+    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            format!("get_window_tree_by_pid_and_title for PID {} and title {:?} not yet implemented for macOS", pid, title)
         ))
     }
 }

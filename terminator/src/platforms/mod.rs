@@ -93,16 +93,22 @@ pub trait AccessibilityEngine: Send + Sync {
 
     /// Get the UI tree for a window by its title
     fn get_window_tree_by_title(&self, title: &str) -> Result<UINode, AutomationError>;
+
+    /// Get the UI tree for a window by process ID and optional title
+    /// If title is provided and matches, use that window
+    /// If title is provided but no match found, fall back to any window from the process ID
+    /// If title is None, use any window from the process ID
+    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<UINode, AutomationError>;
 }
 
 #[cfg(target_os = "linux")]
-mod linux;
+pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "macos")]
 pub mod tree_search;
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 /// Create the appropriate engine for the current platform
 pub fn create_engine(
