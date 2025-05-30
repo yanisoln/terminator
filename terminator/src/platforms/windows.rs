@@ -2025,6 +2025,7 @@ impl UIElementImpl for WindowsUIElement {
         // ref: https://docs.rs/uiautomation/0.16.1/uiautomation/types/enum.UIProperty.html
         let property_list = vec![
             UIProperty::HelpText,
+            UIProperty::AutomationId,
         ];
         
         // Helper function to format property values properly

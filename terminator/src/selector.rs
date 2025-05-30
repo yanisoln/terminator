@@ -29,28 +29,21 @@ impl From<&str> for Selector {
         // instead of Name selectors
         match s {
             // if role:button 
-            _ if s.starts_with("role:") => {
-                let parts: Vec<&str> = s[5..].splitn(2, ':').collect();
-                Selector::Role {
-                    role: parts[0].to_string(),
-                    name: parts.get(1).map(|name| name.to_string()), // optional
-                }
+            _ if s.starts_with("role:") => Selector::Role {
+                role: s[5..].to_string(),
+                name: None,
             },
             "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem" | "menubar" | "textfield"
-            | "input" => {
-                let parts: Vec<&str> = s[5..].splitn(2, ':').collect();
-                Selector::Role {
-                    role: s.to_string(),
-                    name: parts.get(1).map(|name| name.to_string()), // optional
-                }
+            | "input" => Selector::Role {
+                role: s.to_string(),
+                name: None,
             },
             // starts with AX
             _ if s.starts_with("AX") => Selector::Role {
                 role: s.to_string(),
                 name: None,
             },
-            _ if s.starts_with("Text:") || s.contains("text:") => Selector::Text(s[5..].to_string()),
-            _ if s.contains("Name:") || s.contains("name:") => {
+            _ if s.starts_with("Name:") || s.starts_with("name:") => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Name(parts[1].to_string())
             }
@@ -62,12 +55,13 @@ impl From<&str> for Selector {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {
                     role: parts[0].to_string(),
-                    name: parts.get(1).map(|name| name.to_string()), // optional
+                    name: Some(parts[1].to_string()),
                 }
             }
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
+            _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ => Selector::Name(s.to_string()),
         }
     }
