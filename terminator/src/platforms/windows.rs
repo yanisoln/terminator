@@ -24,7 +24,6 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
-use arboard::Clipboard;
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
@@ -2309,42 +2308,10 @@ impl UIElementImpl for WindowsUIElement {
         debug!("typing text with control_type: {:#?}, use_clipboard: {}", control_type, use_clipboard);
 
         if use_clipboard {
-            // Save current clipboard content
-            let original_clipboard = match Clipboard::new()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                .get_text()
-            {
-                Ok(text) => Some(text),
-                Err(_) => None, // Handle case where clipboard is empty or contains non-text content
-            };
-
-            // Set new text to clipboard
-            Clipboard::new()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                .set_text(text)
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to set clipboard content: {}", e)))?;
-
-            // Focus the element
-            self.focus()?;
-
-            // Send Ctrl+V to paste
-            self.press_key("{ctrl}v")?;
-
-            // Restore original clipboard content if we had any
-            if let Some(original) = original_clipboard {
-                Clipboard::new()
-                    .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                    .set_text(&original)
-                    .map_err(|e| AutomationError::PlatformError(format!("Failed to restore clipboard content: {}", e)))?;
-            } else {
-                // Clear clipboard if it was empty originally
-                Clipboard::new()
-                    .map_err(|e| AutomationError::PlatformError(format!("Failed to access clipboard: {}", e)))?
-                    .clear()
-                    .map_err(|e| AutomationError::PlatformError(format!("Failed to clear clipboard: {}", e)))?;
-            }
-
-            Ok(())
+            self.element
+                .0
+                .send_text_by_clipboard(text)
+                .map_err(|e| AutomationError::PlatformError(e.to_string()))
         } else {
             // Use standard typing method
             self.element
