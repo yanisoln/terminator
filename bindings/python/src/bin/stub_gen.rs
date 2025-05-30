@@ -1,7 +1,7 @@
 use pyo3_stub_gen::Result;
 use std::fs;
 use std::path::Path;
-use log::{info, error, debug};
+use tracing::{info, error, debug};
 
 fn extract_return_type_from_docstring(docstring_lines: &[&str]) -> Option<String> {
     for (i, line) in docstring_lines.iter().enumerate() {
@@ -130,7 +130,9 @@ fn fix_async_functions(file_path: &Path) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().filter_or("RUST_LOG", "info")).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
     
     info!("Starting stub generation");
     let stub = terminator::stub_info()?;
