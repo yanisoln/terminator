@@ -10,11 +10,24 @@ pub struct GeminiMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GeminiPart {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "inlineData")]
-    pub inline_data: Option<InlineData>,
+#[serde(untagged)]
+pub enum GeminiPart {
+    Text { 
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text: Option<String>
+    },
+    InlineData { 
+        #[serde(skip_serializing_if = "Option::is_none", rename = "inlineData")]
+        inline_data: Option<InlineData>
+    },
+    FunctionCall {
+        #[serde(rename = "functionCall")]
+        function_call: FunctionCall
+    },
+    FunctionResponse {
+        #[serde(rename = "functionResponse")]
+        function_response: FunctionResponse
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -26,19 +39,35 @@ pub struct InlineData {
 
 impl GeminiPart {
     pub fn text(text: String) -> Self {
-        Self {
+        Self::Text {
             text: Some(text),
-            inline_data: None,
         }
     }
     
     pub fn pdf(base64_data: String) -> Self {
-        Self {
-            text: None,
+        Self::InlineData {
             inline_data: Some(InlineData {
                 mime_type: "application/pdf".to_string(),
                 data: base64_data,
             }),
+        }
+    }
+    
+    pub fn function_call(name: String, args: Value) -> Self {
+        Self::FunctionCall {
+            function_call: FunctionCall {
+                name,
+                args,
+            },
+        }
+    }
+    
+    pub fn function_response(name: String, response: Value) -> Self {
+        Self::FunctionResponse {
+            function_response: FunctionResponse {
+                name,
+                response,
+            },
         }
     }
 }
@@ -74,6 +103,12 @@ pub enum GeminiResponsePart {
 pub struct FunctionCall {
     pub name: String,
     pub args: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FunctionResponse {
+    pub name: String,
+    pub response: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -244,6 +279,7 @@ impl GeminiClient {
 4. **Explain your process** - Describe what you're doing and why during complex operations
 5. **Analyze attached PDF documents** - If PDFs are attached, analyze them to extract relevant information and use it in Excel tasks
 6. DO ALL THE WORK THAT THE USER ASKS FOR, NOT JUST PART OF IT.
+7. ACTUALLY USE THE TOOLS, DON'T TRY TO WRITE THEIR OUTPUT.
 
 **AVAILABLE EXCEL TOOLS:**
 - `read_excel_cell`: Read the value from a specific cell (e.g., A1, B5, Z10)
@@ -317,30 +353,56 @@ You are now ready to help with Excel tasks. Always prioritize the user's specifi
             role: "user".to_string(),
             parts: vec![GeminiPart::text(message.to_string())],
         };
-        self.conversation_history.push(user_message.clone());
-        println!("Conversation history: {:?}", self.conversation_history);
+        self.conversation_history.push(user_message);
         
-        // Max iterations to prevent infinite loops
-        let max_iterations = 50;
-        let mut iteration = 0;
+        // Track all tool calls made during this conversation turn
         let mut all_tool_calls = Vec::new();
+        let mut total_iterations = 0;
+        
+        // Start the conversation turn
+        let final_response = self.process_conversation_turn(&tool_executor, &mut all_tool_calls, &mut total_iterations).await?;
+        
+        // Add the final response to conversation history
+        let final_message = GeminiMessage {
+            role: "model".to_string(),
+            parts: vec![GeminiPart::text(final_response.clone())],
+        };
+        self.conversation_history.push(final_message);
+        
+        // Calculate has_tool_calls before moving all_tool_calls
+        let has_tool_calls = !all_tool_calls.is_empty();
+        
+        Ok(GeminiResponseDetails {
+            content: final_response,
+            tool_calls: all_tool_calls,
+            iterations: total_iterations,
+            has_tool_calls,
+        })
+    }
 
-        // Create a TEMPORARY conversation context for this request only
-        // This will include tool calls and results, but won't pollute the permanent history
-        let mut temp_conversation = self.conversation_history.clone();
-
+    /// Process a complete conversation turn, handling function calls inline
+    async fn process_conversation_turn<F>(&mut self, tool_executor: &F, all_tool_calls: &mut Vec<ToolCallInfo>, total_iterations: &mut i32) -> Result<String, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(&str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>> + Send + Sync,
+    {
+        let max_total_iterations = 50;
+        let mut accumulated_text = String::new();
+        
+        // Working conversation that includes intermediate function calls
+        let mut working_conversation = self.conversation_history.clone();
+        
         loop {
-            iteration += 1;
-            if iteration > max_iterations {
-                return Err(format!("Maximum tool call iterations ({}) reached", max_iterations).into());
+            *total_iterations += 1;
+            if *total_iterations > max_total_iterations {
+                return Err(format!("Maximum iterations ({}) reached", max_total_iterations).into());
             }
-
-            // Prepare the request with system instruction
+            
+            // Make API call to Gemini
             let url = format!("{}/gemini-2.0-flash:generateContent?key={}", self.base_url, self.api_key);
             
             let request_body = json!({
                 "system_instruction": self.system_instruction,
-                "contents": temp_conversation, // Use temporary context, not permanent history
+                "contents": working_conversation,
                 "tools": [{
                     "functionDeclarations": self.tools
                 }],
@@ -356,7 +418,6 @@ You are now ready to help with Excel tasks. Always prioritize the user's specifi
                 }
             });
 
-            // Send request
             let response = self.client
                 .post(&url)
                 .header("Content-Type", "application/json")
@@ -364,113 +425,132 @@ You are now ready to help with Excel tasks. Always prioritize the user's specifi
                 .send()
                 .await?;
 
-            if response.status().is_success() {
-                let gemini_response: GeminiResponse = response.json().await?;
-                
-                if let Some(candidate) = gemini_response.candidates.first() {
-                    let mut has_function_calls = false;
-                    let mut response_text = String::new();
-                    let mut current_iteration_tool_calls = Vec::new();
-                    
-                    // Process all parts in the response
-                    for part in &candidate.content.parts {
-                        match part {
-                            GeminiResponsePart::Text { text } => {
-                                response_text.push_str(text);
-                            }
-                            GeminiResponsePart::FunctionCall { function_call } => {
-                                has_function_calls = true;
-                                
-                                // Execute the function call
-                                let function_result = tool_executor(&function_call.name, &function_call.args).await?;
-                                
-                                // Record the tool call for this iteration
-                                let tool_call_info = ToolCallInfo {
-                                    function_name: function_call.name.clone(),
-                                    arguments: function_call.args.clone(),
-                                    result: function_result.clone(),
-                                };
-                                
-                                current_iteration_tool_calls.push(tool_call_info.clone());
-                                all_tool_calls.push(tool_call_info);
-                            }
-                        }
-                    }
-                    
-                    if has_function_calls {
-                        // Add model's function call to TEMPORARY context only
-                        let model_function_call_message = GeminiMessage {
-                            role: "model".to_string(),
-                            parts: candidate.content.parts.clone().into_iter().map(|part| {
-                                match part {
-                                    GeminiResponsePart::Text { text } => GeminiPart::text(text),
-                                    GeminiResponsePart::FunctionCall { function_call } => {
-                                        GeminiPart::text(serde_json::to_string(&function_call).unwrap_or_default())
-                                    }
-                                }
-                            }).collect(),
-                        };
-                        temp_conversation.push(model_function_call_message);
-                        
-                        // Add function responses to TEMPORARY context only  
-                        for tool_call in &current_iteration_tool_calls {
-                            let function_response_message = GeminiMessage {
-                                role: "user".to_string(),
-                                parts: vec![GeminiPart::text(tool_call.result.clone())],
-                            };
-                            temp_conversation.push(function_response_message);
-                        }
-                        
-                        // Continue the conversation to get final response
-                        continue;
-                    } else {
-                        // No function calls, this is the final text response
-                        if !response_text.is_empty() {
-                            // ONLY add the clean final text response to permanent history
-                            let assistant_message = GeminiMessage {
-                                role: "model".to_string(),
-                                parts: vec![GeminiPart::text(response_text.clone())],
-                            };
-                            self.conversation_history.push(assistant_message);
-                            
-                            let has_tool_calls = !all_tool_calls.is_empty();
-                            return Ok(GeminiResponseDetails {
-                                content: response_text,
-                                tool_calls: all_tool_calls,
-                                iterations: iteration,
-                                has_tool_calls,
-                            });
-                        } else {
-                            // Empty response, but we may have executed functions
-                            if !all_tool_calls.is_empty() {
-                                let summary = format!("Task completed successfully. {} tools executed.", all_tool_calls.len());
-                                
-                                // Add only a clean summary to permanent history
-                                let assistant_message = GeminiMessage {
-                                    role: "model".to_string(),
-                                    parts: vec![GeminiPart::text(summary.clone())],
-                                };
-                                self.conversation_history.push(assistant_message);
-                                
-                                return Ok(GeminiResponseDetails {
-                                    content: summary,
-                                    tool_calls: all_tool_calls,
-                                    iterations: iteration,
-                                    has_tool_calls: true,
-                                });
-                            } else {
-                                return Err("Empty response from Gemini without function calls".into());
-                            }
-                        }
-                    }
-                }
-                
-                return Err("No candidate in Gemini response".into());
-            } else {
+            if !response.status().is_success() {
                 let error_text = response.text().await?;
                 return Err(format!("Gemini API error: {}", error_text).into());
             }
+
+            let gemini_response: GeminiResponse = response.json().await?;
+            let candidate = gemini_response.candidates.first()
+                .ok_or("No candidate in Gemini response")?;
+
+            // DEBUG: Log what we received from Gemini
+            println!("=== GEMINI RESPONSE DEBUG (Iteration {}) ===", *total_iterations);
+            println!("Finish reason: {:?}", candidate.finish_reason);
+            println!("Number of parts: {}", candidate.content.parts.len());
+            for (i, part) in candidate.content.parts.iter().enumerate() {
+                match part {
+                    GeminiResponsePart::Text { text } => {
+                        println!("Part {}: TEXT: {}", i, text.chars().take(100).collect::<String>());
+                    }
+                    GeminiResponsePart::FunctionCall { function_call } => {
+                        println!("Part {}: FUNCTION_CALL: {}", i, function_call.name);
+                    }
+                }
+            }
+            println!("==========================================");
+
+            // Process the response parts
+            let mut has_function_calls = false;
+            let mut text_content = String::new();
+            let mut function_calls_in_response = Vec::new();
+            
+            // Collect all text and function calls from this response
+            for part in &candidate.content.parts {
+                match part {
+                    GeminiResponsePart::Text { text } => {
+                        text_content.push_str(text);
+                    }
+                    GeminiResponsePart::FunctionCall { function_call } => {
+                        has_function_calls = true;
+                        function_calls_in_response.push(function_call.clone());
+                    }
+                }
+            }
+            
+            // Add text to accumulated response (this preserves all text from the model)
+            if !text_content.trim().is_empty() {
+                accumulated_text.push_str(&text_content);
+            }
+            
+            // Add the model's response to working conversation (represents what model said in this turn)
+            let model_parts: Vec<GeminiPart> = candidate.content.parts.iter().map(|part| {
+                match part {
+                    GeminiResponsePart::Text { text } => GeminiPart::text(text.clone()),
+                    GeminiResponsePart::FunctionCall { function_call } => {
+                        // Include the actual function call, not as text
+                        GeminiPart::function_call(function_call.name.clone(), function_call.args.clone())
+                    }
+                }
+            }).collect();
+            
+            if !model_parts.is_empty() {
+                let model_message = GeminiMessage {
+                    role: "model".to_string(),
+                    parts: model_parts,
+                };
+                working_conversation.push(model_message);
+            }
+            
+            // If there are function calls, execute them and add results for next iteration
+            if has_function_calls {
+                println!("=== EXECUTING {} FUNCTION CALLS ===", function_calls_in_response.len());
+                
+                // Collect all function responses before adding them to the conversation
+                let mut function_response_parts = Vec::new();
+                
+                for function_call in function_calls_in_response {
+                    println!("Executing function: {}", function_call.name);
+                    
+                    // Execute the function
+                    let function_result = tool_executor(&function_call.name, &function_call.args).await?;
+                    
+                    println!("Function result length: {}", function_result.len());
+                    
+                    // Record the tool call
+                    let tool_call_info = ToolCallInfo {
+                        function_name: function_call.name.clone(),
+                        arguments: function_call.args.clone(),
+                        result: function_result.clone(),
+                    };
+                    all_tool_calls.push(tool_call_info);
+                    
+                    // Collect the function response part
+                    function_response_parts.push(GeminiPart::function_response(
+                        function_call.name.clone(),
+                        json!({ "content": function_result })
+                    ));
+                }
+                
+                // Add all function responses in a single message
+                let function_results_message = GeminiMessage {
+                    role: "user".to_string(),
+                    parts: function_response_parts,
+                };
+                working_conversation.push(function_results_message);
+                
+                println!("=== CONTINUING TO NEXT ITERATION ===");
+                // Continue to let the model see the function results and potentially continue its response
+                continue;
+            } else {
+                println!("=== NO FUNCTION CALLS - BREAKING ===");
+                // No function calls means the model has finished its response
+                break;
+            }
         }
+        
+        // Return the accumulated text from all iterations
+        let final_response = if accumulated_text.trim().is_empty() {
+            if !all_tool_calls.is_empty() {
+                format!("Task completed successfully. {} tools executed.", all_tool_calls.len())
+            } else {
+                "Task completed.".to_string()
+            }
+        } else {
+            accumulated_text.trim().to_string()
+        };
+        
+        Ok(final_response)
     }
 
     /// Clear conversation history
@@ -577,14 +657,30 @@ You are now ready to help with Excel tasks. Always prioritize the user's specifi
             role: "user".to_string(),
             parts,
         };
-        
-        // Use the existing detailed method but modify the conversation temporarily
-        let _original_history = self.conversation_history.clone();
         self.conversation_history.push(user_message);
         
-        let result = self.send_message_with_tools_detailed("", tool_executor).await;
+        // Track all tool calls made during this conversation turn
+        let mut all_tool_calls = Vec::new();
+        let mut total_iterations = 0;
         
-        // Restore original history structure (the detailed method will have added the proper messages)
-        result
+        // Start the conversation turn
+        let final_response = self.process_conversation_turn(&tool_executor, &mut all_tool_calls, &mut total_iterations).await?;
+        
+        // Add the final response to conversation history
+        let final_message = GeminiMessage {
+            role: "model".to_string(),
+            parts: vec![GeminiPart::text(final_response.clone())],
+        };
+        self.conversation_history.push(final_message);
+        
+        // Calculate has_tool_calls before moving all_tool_calls
+        let has_tool_calls = !all_tool_calls.is_empty();
+        
+        Ok(GeminiResponseDetails {
+            content: final_response,
+            tool_calls: all_tool_calls,
+            iterations: total_iterations,
+            has_tool_calls,
+        })
     }
 } 
