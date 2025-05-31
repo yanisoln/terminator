@@ -2573,37 +2573,78 @@ impl UIElementImpl for WindowsUIElement {
         Ok(())
     }
 
+
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        // Get the process ID of the current element
+        let pid = self.element.0.get_process_id().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+        })?;
 
+        // Create a WindowsEngine instance to use its methods.
+        // This follows the pattern in `create_locator` but might be inefficient if called frequently.
+        let engine = WindowsEngine::new(false, false).map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create WindowsEngine: {}", e))
+        })?;
 
-        // Get the application element by PID by getting root pid and then fitlering applications
-        let automation = uiautomation::UIAutomation::new().map_err(|e| AutomationError::PlatformError(format!("Failed to create UIAutomation: {}", e)))?;
-        let application = automation.create_matcher().filter(
-            Box::new(OrFilter {
-                left: Box::new(ControlTypeFilter {
-                    control_type: ControlType::Window,
-                }),
-                right: Box::new(ControlTypeFilter {
-                    control_type: ControlType::Pane,
-                }),
-            })
-        ).from_ref(&self.element.0).find_first()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get children for element: {}", e)))?;
-
-        Ok(Some(UIElement::new(Box::new(WindowsUIElement { element: ThreadSafeWinUIElement(Arc::new(application)) }))))
+        // Get the application element by PID
+        match engine.get_application_by_pid(pid as i32, Some(DEFAULT_FIND_TIMEOUT)) { // Cast pid to i32
+            Ok(app_element) => Ok(Some(app_element)),
+            Err(AutomationError::ElementNotFound(_)) => {
+                // If the specific application element is not found by PID, return None.
+                debug!("Application element not found for PID {}", pid);
+                Ok(None)
+            }
+            Err(e) => Err(e), // Propagate other errors
+        }
     }
 
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
-        let automation = uiautomation::UIAutomation::new().map_err(|e| AutomationError::PlatformError(format!("Failed to create UIAutomation: {}", e)))?;
-        let window = automation.create_matcher().filter(
-            Box::new(ControlTypeFilter {
-                control_type: ControlType::Window,
-            })
-        ).from_ref(&self.element.0).find_first()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get children for element: {}", e)))?;
+        let mut current_element_arc = Arc::clone(&self.element.0); // Start with the current element's Arc<uiautomation::UIElement>
+        const MAX_DEPTH: usize = 20; // Safety break for parent traversal
 
-        Ok(Some(UIElement::new(Box::new(WindowsUIElement { element: ThreadSafeWinUIElement(Arc::new(window)) }))))
+        for i in 0..MAX_DEPTH {
+            // Check current element's control type
+            match current_element_arc.get_control_type() {
+                Ok(control_type) => {
+                    if control_type == ControlType::Window {
+                        // Found the window
+                        let window_ui_element = WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
+                        };
+                        return Ok(Some(UIElement::new(Box::new(window_ui_element))));
+                    }
+                }
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get control type for element during window search (iteration {}): {}",
+                        i, e
+                    )));
+                }
+            }
 
+            // Try to get the parent
+            match current_element_arc.get_cached_parent() {
+                Ok(parent_uia_element) => {
+                    // Check if parent is same as current (e.g. desktop root's parent is itself)
+                    // This requires getting runtime IDs, which can also fail.
+                    let current_runtime_id = current_element_arc.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for current element: {}", e)))?;
+                    let parent_runtime_id = parent_uia_element.get_runtime_id().map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime_id for parent element: {}", e)))?;
+
+                    if parent_runtime_id == current_runtime_id {
+                        debug!("Parent element has same runtime ID as current, stopping window search.");
+                        break; // Reached the top or a cycle.
+                    }
+                    current_element_arc = Arc::new(parent_uia_element); // Move to the parent
+                }
+                Err(e) => {
+                    // No cached parent found or error occurred.
+                    debug!("No cached parent found or error during window search (iteration {}): {}. Stopping traversal.", i, e);
+                    break;
+                }
+            }
+        }
+        // If loop finishes, no element with ControlType::Window was found.
+        Ok(None)
     }
 
     fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
