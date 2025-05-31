@@ -26,6 +26,7 @@ Excel Copilot enables AI-powered Excel automation through direct window manipula
 1. Clone the repository
 2. Install dependencies:
    ```bash
+   cd examples/excel-copilot
    npm install
    ```
 3. Run the application:
