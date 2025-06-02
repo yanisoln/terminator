@@ -80,6 +80,8 @@ pub struct SerializableUIElement {
     pub application: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub children: Option<Vec<SerializableUIElement>>,
 }
 
 impl From<&UIElement> for SerializableUIElement {
@@ -101,6 +103,7 @@ impl From<&UIElement> for SerializableUIElement {
             description: filter_empty(attrs.description),
             application: filter_empty(Some(element.application_name())),
             window_title: filter_empty(Some(element.window_title())),
+            children: None,
         }
     }
 }
@@ -117,6 +120,7 @@ impl SerializableUIElement {
             description: None,
             application: None,
             window_title: None,
+            children: None,
         }
     }
 
@@ -609,6 +613,39 @@ impl UIElement {
     /// Get the process ID of the application containing this element
     pub fn process_id(&self) -> Result<u32, AutomationError> {
         self.inner.process_id()
+    }
+
+    /// Recursively build a SerializableUIElement tree from this element.
+    ///
+    /// # Arguments
+    /// * `max_depth` - Maximum depth to traverse (inclusive). Use a reasonable limit to avoid huge trees.
+    ///
+    /// # Example
+    /// ```
+    /// let tree = element.to_serializable_tree(5);
+    /// println!("{}", serde_json::to_string_pretty(&tree).unwrap());
+    /// ```
+    pub fn to_serializable_tree(&self, max_depth: usize) -> SerializableUIElement {
+        fn build(element: &UIElement, depth: usize, max_depth: usize) -> SerializableUIElement {
+            let mut serializable = element.to_serializable();
+            let children = if depth < max_depth {
+                match element.children() {
+                    Ok(children) => {
+                        let v: Vec<SerializableUIElement> = children
+                            .iter()
+                            .map(|child| build(child, depth + 1, max_depth))
+                            .collect();
+                        if v.is_empty() { None } else { Some(v) }
+                    },
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+            serializable.children = children;
+            serializable
+        }
+        build(self, 0, max_depth)
     }
 }
 

@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/schemas/resources.js"; // Import resource schemas
 import {
   TerminatorTools,
   FindWindowSchema,
@@ -60,7 +61,12 @@ Contextual information:
 **Important:** Always provide the full selector chain when interacting with elements inside a window. Start the chain with the window selector. **Prioritize using the \`suggested_selector\` from \`explore\` results.** Use \`runCommand\` for shell operations.
 `;
 
-const server = new McpServer(serverInfo, { instructions: serverInstructions });
+const server = new McpServer(serverInfo, {
+  instructions: serverInstructions,
+  capabilities: {
+    resources: {},
+  }
+});
 
 
 // --- Tool Definitions ---
@@ -190,6 +196,43 @@ server.tool(
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
         };
       }
+    }
+);
+
+// --- Resource Definitions ---
+
+const OPEN_WINDOWS_URI = "terminator://windows/open";
+
+// Use server.resource() instead of setRequestHandler
+server.resource(
+    "open-windows", // A unique name for this resource registration
+    OPEN_WINDOWS_URI, // The static URI for this resource
+    {
+        // Metadata for the resource (used for listing/discovery)
+        name: "Open Windows",
+        description: "Lists the titles and selectors of currently open top-level windows.",
+        mimeType: "application/json",
+    },
+    async (uri) => { // The handler function to read the resource
+        console.log(`[MCP Server] Reading resource: ${uri.href}`);
+        const result = await terminatorTools.listOpenWindows();
+
+        if ("error" in result) {
+            console.error(`[MCP Server] Error reading resource ${uri.href}: ${result.error}`);
+            // Throw an error to indicate failure
+            throw new Error(`Failed to list open windows: ${result.error}`);
+        }
+
+        console.log(`[MCP Server] Successfully listed ${result.windows.length} windows for ${uri.href}.`);
+        return {
+            contents: [
+                {
+                    uri: uri.href, // Use the requested URI
+                    mimeType: "application/json",
+                    text: JSON.stringify(result.windows, null, 2), // Return the list as JSON
+                },
+            ],
+        };
     }
 );
 

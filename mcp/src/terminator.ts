@@ -115,6 +115,7 @@ export class TerminatorTools {
         { titleContains: args.titleContains },
         { timeout: args.timeoutMs }
       );
+      console.log(`[TerminatorTools] Found window: SelectorChain=${windowLocator._selector_chain}`);
       // We need the element details, not just the locator
       const windowElement = await windowLocator.first();
       console.log(`[TerminatorTools] Found window: Role=${windowElement.role}, Name=${windowElement.label}`);
@@ -276,6 +277,25 @@ export class TerminatorTools {
             return { text: result.text }; // Return the OCR text
         } catch (error) {
             return this.handleApiError(error, `captureScreen (with internal OCR)`);
+        }
+    }
+
+    /** Lists open window titles */
+    async listOpenWindows(): Promise<{ windows: { title: string | null, selector: string }[] } | { error: string }> {
+        try {
+            console.log(`[TerminatorTools] Listing open windows via exploreScreen...`);
+            const exploreResult = await this.client.exploreScreen();
+            // exploreResult.children are the top-level windows/elements
+            const windows = exploreResult.children
+                .filter(child => child.role === 'window' || child.role?.toLowerCase().includes('window')) // Filter for likely window elements
+                .map(child => ({
+                    title: child.name || child.text || null, // Use name (label) or text as title
+                    selector: child.suggested_selector // Use the suggested selector from explore
+                }));
+            console.log(`[TerminatorTools] Found ${windows.length} potential windows.`);
+            return { windows };
+        } catch (error) {
+            return this.handleApiError(error, `listOpenWindows`);
         }
     }
 }

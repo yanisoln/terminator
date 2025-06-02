@@ -1,0 +1,1527 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Terminator Automation API",
+    "version": "0.1.0",
+    "description": "API for controlling and interacting with desktop UI elements and applications."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9375",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root check",
+        "description": "Returns a simple ready message.",
+        "operationId": "root",
+        "responses": {
+          "200": {
+            "description": "Server ready message",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Terminator API Server Ready"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/first": {
+      "post": {
+        "summary": "Find the first matching UI element",
+        "description": "Locates the first UI element matching the provided selector chain.",
+        "operationId": "first",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the found element.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/all": {
+      "post": {
+        "summary": "Find all matching UI elements",
+        "description": "Locates all UI elements matching the provided selector chain.",
+        "operationId": "all",
+        "requestBody": {
+          "description": "Selector chain, optional timeout, and optional depth.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A list of found elements.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementsResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/click": {
+      "post": {
+        "summary": "Click a UI element",
+        "description": "Locates and clicks a UI element matching the selector chain.",
+        "operationId": "click_element",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the click action performed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClickResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/type_text": {
+      "post": {
+        "summary": "Type text into a UI element",
+        "description": "Locates a UI element and types the specified text into it.",
+        "operationId": "type_text_into_element",
+        "requestBody": {
+          "description": "Selector chain, text to type, and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TypeTextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/get_text": {
+      "post": {
+        "summary": "Get text from a UI element",
+        "description": "Retrieves the text content from a UI element and its children up to a max depth.",
+        "operationId": "get_element_text",
+        "requestBody": {
+          "description": "Selector chain, optional max depth, and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetTextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The retrieved text content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/get_attributes": {
+      "post": {
+        "summary": "Get attributes of a UI element",
+        "description": "Retrieves detailed attributes of a UI element.",
+        "operationId": "get_element_attributes",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The attributes of the element.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributesResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/get_bounds": {
+      "post": {
+        "summary": "Get bounds of a UI element",
+        "description": "Retrieves the screen coordinates and dimensions (bounds) of a UI element.",
+        "operationId": "get_element_bounds",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The bounds of the element.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoundsResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/is_visible": {
+      "post": {
+        "summary": "Check if a UI element is visible",
+        "description": "Checks if a UI element is currently visible on the screen.",
+        "operationId": "is_element_visible",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Boolean result indicating visibility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BooleanResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/press_key": {
+      "post": {
+        "summary": "Press a key on a UI element",
+        "description": "Sends a key press event (e.g., 'Enter', 'Ctrl+A') to a UI element.",
+        "operationId": "press_key_on_element",
+        "requestBody": {
+          "description": "Selector chain, key to press, and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PressKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/get_full_tree": {
+      "post": {
+        "summary": "Get the full descendant tree of a UI element",
+        "description": "Recursively retrieves all descendants of a specified UI element.",
+        "operationId": "get_full_tree",
+        "requestBody": {
+          "description": "Selector chain for the root element and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A flat list of all descendant elements.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementsResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/find_window": {
+      "post": {
+        "summary": "Find a top-level window",
+        "description": "Finds a top-level window based on criteria like title.",
+        "operationId": "find_window_handler",
+        "requestBody": {
+          "description": "Criteria for finding the window (e.g., part of the title) and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindWindowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the found window element.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementResponse"
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/explore": {
+      "post": {
+        "summary": "Explore UI element children or the screen",
+        "description": "Retrieves direct children of a specified UI element or top-level windows if no selector is provided.",
+        "operationId": "explore_handler",
+        "requestBody": {
+          "description": "Optional selector chain to specify the parent element (explores screen if omitted) and optional timeout.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExploreRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the parent and its direct children.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExploreResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/open_application": {
+      "post": {
+        "summary": "Open an application",
+        "description": "Launches an application by its name or path.",
+        "operationId": "open_application",
+        "requestBody": {
+          "description": "Name or path of the application to open.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenApplicationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/open_url": {
+      "post": {
+        "summary": "Open a URL",
+        "description": "Opens a URL in the default browser or a specified one.",
+        "operationId": "open_url",
+        "requestBody": {
+          "description": "URL to open and optional browser name.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/open_file": {
+      "post": {
+        "summary": "Open a file",
+        "description": "Opens a file using the system's default associated application.",
+        "operationId": "open_file",
+        "requestBody": {
+          "description": "Path to the file to open.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenFileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/run_command": {
+      "post": {
+        "summary": "Run a shell command",
+        "description": "Executes a shell command specific to the OS (Windows or Unix-like).",
+        "operationId": "run_command",
+        "requestBody": {
+          "description": "Platform-specific commands to execute.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCommandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Output (stdout, stderr) and exit code of the command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOutputResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/capture_screen": {
+      "post": {
+        "summary": "Capture screen and perform OCR",
+        "description": "Captures the primary screen and returns the recognized text content.",
+        "operationId": "capture_screen",
+        "responses": {
+          "200": {
+            "description": "The OCR-recognized text from the screen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrResponse"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/capture_monitor": {
+      "post": {
+        "summary": "Capture a specific monitor",
+        "description": "Captures a screenshot of a monitor specified by name.",
+        "operationId": "capture_monitor",
+        "requestBody": {
+          "description": "Name of the monitor to capture.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureMonitorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Base64 encoded screenshot data and dimensions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenshotResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/activate_application": {
+      "post": {
+        "summary": "Activate an application by name",
+        "description": "Brings the main window of a running application (matched by name) to the foreground.",
+        "operationId": "activate_application_handler",
+        "requestBody": {
+          "description": "Name of the application to activate.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateApplicationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/activate_browser_window": {
+      "post": {
+        "summary": "Activate a browser window by title",
+        "description": "Brings a browser window (matched by title substring) to the foreground.",
+        "operationId": "activate_browser_window_handler",
+        "requestBody": {
+          "description": "Substring of the browser window title to activate.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateBrowserWindowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/activate_app": {
+      "post": {
+        "summary": "Activate the window containing an element",
+        "description": "Finds an element by selector chain and activates its containing top-level window.",
+        "operationId": "activate_app_handler",
+        "requestBody": {
+          "description": "Selector chain for the element within the target window and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SuccessMessage" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/expect_visible": {
+      "post": {
+        "summary": "Wait for an element to be visible",
+        "description": "Waits for a UI element matching the selector chain to exist and be visible.",
+        "operationId": "expect_element_visible",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the element once it becomes visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/expect_enabled": {
+      "post": {
+        "summary": "Wait for an element to be enabled",
+        "description": "Waits for a UI element matching the selector chain to exist and be enabled.",
+        "operationId": "expect_element_enabled",
+        "requestBody": {
+          "description": "Selector chain and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the element once it becomes enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/expect_text_equals": {
+      "post": {
+        "summary": "Wait for an element's text to equal a value",
+        "description": "Waits for a UI element's text content to exactly match the expected string.",
+        "operationId": "expect_element_text_equals",
+        "requestBody": {
+          "description": "Selector chain, expected text, optional max depth, and optional timeout.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectTextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Details of the element once its text matches.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "408": { "$ref": "#/components/responses/Timeout" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/ocr_image_path": {
+      "post": {
+        "summary": "Perform OCR on an image file",
+        "description": "Reads an image file from the specified path and returns the recognized text.",
+        "operationId": "ocr_image_path",
+        "requestBody": {
+          "description": "Path to the image file.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrImagePathRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The OCR-recognized text from the image.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/applications/installed": {
+      "get": {
+        "summary": "Get all installed application names",
+        "description": "Retrieves a list of names (or labels/titles) of installed applications detected by the automation backend.",
+        "operationId": "get_installed_application_names",
+        "responses": {
+          "200": {
+            "description": "A list of application names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationNamesResponse"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/applications/running": {
+      "get": {
+        "summary": "Get all running application names",
+        "description": "Retrieves a list of names (or labels/titles) of currently running applications detected by the automation backend.",
+        "operationId": "get_running_application_names",
+        "responses": {
+          "200": {
+            "description": "A list of application names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationNamesResponse"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/applications/windows": {
+      "post": {
+        "summary": "Get windows for a specific application",
+        "description": "Retrieves a list of window elements belonging to the specified application name.",
+        "operationId": "get_application_windows",
+        "requestBody": {
+          "description": "Name of the application whose windows are to be listed.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetWindowsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A list of window elements found for the application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementsResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BasicResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "A confirmation or error message."
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "BooleanResponse": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "The boolean result of the operation."
+          }
+        },
+        "required": [
+          "result"
+        ]
+      },
+      "TextResponse": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The retrieved text content."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "OcrResponse": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text recognized by OCR."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "BoundsResponse": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double",
+            "description": "X-coordinate of the top-left corner."
+          },
+          "y": {
+            "type": "number",
+            "format": "double",
+            "description": "Y-coordinate of the top-left corner."
+          },
+          "width": {
+            "type": "number",
+            "format": "double",
+            "description": "Width of the element."
+          },
+          "height": {
+            "type": "number",
+            "format": "double",
+            "description": "Height of the element."
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ]
+      },
+      "ElementResponse": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Accessibility role of the element (e.g., 'button', 'textField')."
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "description": "Primary label or name of the element."
+          },
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Unique identifier of the element (platform-specific)."
+          },
+          "text": {
+            "type": "string",
+            "nullable": true,
+            "description": "Text content within the element."
+          },
+          "bounds": {
+            "nullable": true,
+            "description": "Screen coordinates and size.",
+            "type": "array",
+            "items": { "type": "number", "format": "double" },
+            "minItems": 4,
+            "maxItems": 4,
+            "example": [100.0, 200.0, 50.0, 30.0]
+          },
+          "visible": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether the element is currently visible."
+          },
+          "enabled": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether the element is currently enabled (interactive)."
+          },
+          "focused": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether the element currently has keyboard focus."
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "ElementsResponse": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ElementResponse"
+            },
+            "description": "List of UI elements found."
+          }
+        },
+        "required": [
+          "elements"
+        ]
+      },
+      "ClickResponse": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "The method used for clicking (e.g., 'programmatic', 'point')."
+          },
+          "coordinates": {
+            "type": "array",
+            "items": { "type": "number", "format": "double" },
+            "minItems": 2,
+            "maxItems": 2,
+            "nullable": true,
+            "description": "The [x, y] coordinates where the click occurred, if applicable."
+          },
+          "details": {
+            "type": "string",
+            "description": "Additional details about the click action."
+          }
+        },
+        "required": [
+          "method",
+          "details"
+        ]
+      },
+      "AttributesResponse": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            },
+            "description": "Platform-specific properties."
+          },
+          "id": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "role",
+          "properties"
+        ]
+      },
+      "CommandOutputResponse": {
+        "type": "object",
+        "properties": {
+          "stdout": {
+            "type": "string",
+            "description": "Standard output of the command."
+          },
+          "stderr": {
+            "type": "string",
+            "description": "Standard error output of the command."
+          },
+          "exit_code": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true,
+            "description": "Exit code of the command (null if terminated)."
+          }
+        },
+        "required": [
+          "stdout",
+          "stderr"
+        ]
+      },
+      "ScreenshotResponse": {
+        "type": "object",
+        "properties": {
+          "image_base64": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64 encoded PNG image data."
+          },
+          "width": {
+            "type": "integer",
+            "format": "uint32",
+            "description": "Width of the captured image in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint32",
+            "description": "Height of the captured image in pixels."
+          }
+        },
+        "required": [
+          "image_base64",
+          "width",
+          "height"
+        ]
+      },
+       "ExploredElementDetail": {
+         "type": "object",
+         "properties": {
+           "role": { "type": "string", "description": "Element role." },
+           "name": { "type": "string", "nullable": true, "description": "Element label/name." },
+           "id": { "type": "string", "nullable": true, "description": "Element unique ID." },
+           "bounds": { "$ref": "#/components/schemas/BoundsResponse", "nullable": true },
+           "value": { "type": "string", "nullable": true, "description": "Element value attribute." },
+           "description": { "type": "string", "nullable": true, "description": "Element description attribute." },
+           "text": { "type": "string", "nullable": true, "description": "Element text content." },
+           "parent_id": { "type": "string", "nullable": true, "description": "ID of the parent element (null for top-level)." },
+           "children_ids": {
+             "type": "array",
+             "items": { "type": "string" },
+             "description": "IDs of the direct children of this element."
+           },
+           "suggested_selector": { "type": "string", "description": "A suggested simple selector for this element." }
+         },
+         "required": [ "role", "children_ids", "suggested_selector" ]
+       },
+       "ExploreResponse": {
+         "type": "object",
+         "properties": {
+           "parent": { "$ref": "#/components/schemas/ElementResponse", "description": "Details of the element that was explored (or a root placeholder)." },
+           "children": {
+             "type": "array",
+             "items": { "$ref": "#/components/schemas/ExploredElementDetail" },
+             "description": "Details of the direct children found."
+           }
+         },
+         "required": [ "parent", "children" ]
+       },
+      "ChainedRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of selector strings to locate the element (e.g., ['window:My App', 'button:OK']).",
+            "example": ["window:Calculator", "button:Equals"]
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds for waiting operations."
+          },
+          "depth": {
+            "type": "integer",
+             "format": "uint64",
+             "nullable": true,
+             "description": "Optional depth for certain operations like 'all'."
+          }
+        },
+        "required": [
+          "selector_chain"
+        ]
+      },
+      "TypeTextRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Selector chain to locate the target element."
+          },
+          "text": {
+            "type": "string",
+            "description": "The text to type into the element."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds."
+          }
+        },
+        "required": [
+          "selector_chain",
+          "text"
+        ]
+      },
+      "GetTextRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Selector chain to locate the target element."
+          },
+          "max_depth": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Maximum depth to search for text within child elements (default 5)."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds."
+          }
+        },
+        "required": [
+          "selector_chain"
+        ]
+      },
+      "PressKeyRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Selector chain to locate the target element."
+          },
+          "key": {
+            "type": "string",
+            "description": "The key or key combination to press (e.g., 'Enter', 'Ctrl+A')."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds."
+          }
+        },
+        "required": [
+          "selector_chain",
+          "key"
+        ]
+      },
+      "OpenApplicationRequest": {
+        "type": "object",
+        "properties": {
+          "app_name": {
+            "type": "string",
+            "description": "Name or path of the application to open."
+          }
+        },
+        "required": [
+          "app_name"
+        ]
+      },
+      "OpenUrlRequest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL to open."
+          },
+          "browser": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional specific browser name to use."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "OpenFileRequest": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the file to open."
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      },
+      "RunCommandRequest": {
+        "type": "object",
+        "properties": {
+          "windows_command": {
+            "type": "string",
+            "nullable": true,
+            "description": "Command to run on Windows."
+          },
+          "unix_command": {
+            "type": "string",
+            "nullable": true,
+            "description": "Command to run on Linux/macOS."
+          }
+        },
+        "description": "At least one command must be provided."
+      },
+      "CaptureMonitorRequest": {
+        "type": "object",
+        "properties": {
+          "monitor_name": {
+            "type": "string",
+            "description": "Name of the monitor to capture (platform-specific)."
+          }
+        },
+        "required": [
+          "monitor_name"
+        ]
+      },
+      "OcrImagePathRequest": {
+        "type": "object",
+        "properties": {
+          "image_path": {
+            "type": "string",
+            "description": "Path to the image file for OCR."
+          }
+        },
+        "required": [
+          "image_path"
+        ]
+      },
+      "ExpectRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Selector chain to locate the target element."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds for the expectation."
+          }
+        },
+        "required": [
+          "selector_chain"
+        ]
+      },
+      "ExpectTextRequest": {
+        "type": "object",
+        "properties": {
+          "selector_chain": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Selector chain to locate the target element."
+          },
+          "expected_text": {
+            "type": "string",
+            "description": "The exact text expected in the element."
+          },
+          "max_depth": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Maximum depth to search for text (default 5)."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional timeout in milliseconds for the expectation."
+          }
+        },
+        "required": [
+          "selector_chain",
+          "expected_text"
+        ]
+      },
+      "ActivateApplicationRequest": {
+        "type": "object",
+        "properties": {
+          "app_name": {
+            "type": "string",
+            "description": "Name of the application to activate."
+          }
+        },
+        "required": [
+          "app_name"
+        ]
+      },
+      "ActivateBrowserWindowRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Substring of the browser window title to activate."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "FindWindowRequest": {
+         "type": "object",
+         "properties": {
+           "title_contains": {
+             "type": "string",
+             "nullable": true,
+             "description": "Substring to match within the window title (case-insensitive)."
+           },
+           "timeout_ms": {
+             "type": "integer",
+             "format": "uint64",
+             "nullable": true,
+             "description": "Optional timeout in milliseconds."
+           }
+         },
+         "description": "Criteria to find a window. At least one criterion should be provided, although the API currently allows empty."
+       },
+       "ExploreRequest": {
+         "type": "object",
+         "properties": {
+           "selector_chain": {
+             "type": "array",
+             "items": { "type": "string" },
+             "nullable": true,
+             "description": "Selector chain to locate the element to explore. If null or empty, explores the screen's top-level windows."
+           },
+           "application_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional application name to explore."
+          },
+           "timeout_ms": {
+             "type": "integer",
+             "format": "uint64",
+             "nullable": true,
+             "description": "Optional timeout in milliseconds (applies when exploring a specific element)."
+           }
+         }
+       },
+       "ApplicationNamesResponse": {
+         "type": "object",
+         "properties": {
+           "names": {
+             "type": "array",
+             "items": { "type": "string" },
+             "description": "List of application names (labels/titles)."
+           }
+         },
+         "required": [ "names" ]
+       },
+       "GetWindowsRequest": {
+         "type": "object",
+         "properties": {
+           "app_name": {
+             "type": "string",
+             "description": "The name (label/title) of the target application."
+           }
+         },
+         "required": [ "app_name" ]
+       }
+    },
+    "responses": {
+      "SuccessMessage": {
+        "description": "Operation successful.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BasicResponse"
+            },
+            "example": { "message": "Operation completed successfully" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Bad Request - Invalid input parameters.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BasicResponse"
+            },
+            "example": { "message": "Automation error: InvalidArgument(\"selector_chain cannot be empty\")" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not Found - The requested element or resource was not found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BasicResponse"
+            },
+            "example": { "message": "Automation error: ElementNotFound(\"Could not find element matching selector 'button:NonExistent'\")" }
+          }
+        }
+      },
+      "Timeout": {
+        "description": "Request Timeout - The operation timed out before completing.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BasicResponse"
+            },
+             "example": { "message": "Automation error: Timeout(\"Timed out waiting for element after 5000ms\")" }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Internal Server Error - An unexpected error occurred.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BasicResponse"
+            },
+            "example": { "message": "Automation error: PlatformError(\"Unexpected OS-level failure\")" }
+          }
+        }
+      },
+       "NotImplemented": {
+         "description": "Not Implemented - The requested operation is not supported.",
+         "content": {
+           "application/json": {
+             "schema": {
+               "$ref": "#/components/schemas/BasicResponse"
+             },
+             "example": { "message": "Automation error: UnsupportedOperation(\"This platform does not support X\")" }
+           }
+         }
+       }
+    }
+  }
+}
