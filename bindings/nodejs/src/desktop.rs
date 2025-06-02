@@ -35,9 +35,7 @@ impl Desktop {
                 .with_env_filter(log_level)
                 .try_init();
         });
-        let rt = tokio::runtime::Runtime::new()
-            .expect("Failed to create Tokio runtime");
-        let desktop = rt.block_on(TerminatorDesktop::new(use_background_apps, activate_app))
+        let desktop = TerminatorDesktop::new(use_background_apps, activate_app)
             .expect("Failed to create Desktop instance");
         Desktop { inner: desktop }
     }

@@ -6,7 +6,7 @@ use crate::tests::init_tracing;
 #[ignore]
 async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
     init_tracing();
-    let desktop = Desktop::new(false, true).await?;
+    let desktop = Desktop::new(false, true)?;
 
     // Try to find the Firefox window by title. 
     // This might need adjustment based on the actual window title.
