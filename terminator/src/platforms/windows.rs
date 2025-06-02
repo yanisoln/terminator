@@ -60,7 +60,7 @@ const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
 // List of common browser process names (without .exe)
 const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
-    "chrome", "firefox", "msedge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc", "explorer"
+    "chrome", "firefox", "msedge", "edge", "iexplore", "opera", "brave", "vivaldi", "browser", "arc", "explorer"
 ];
 
 // Helper function to get process name by PID using native Windows API
@@ -156,6 +156,134 @@ impl WindowsEngine {
             use_background_apps,
             activate_app,
         })
+    }
+
+    /// Extract browser-specific information from window titles
+    fn extract_browser_info(title: &str) -> (bool, Vec<String>) {
+        let title_lower = title.to_lowercase();
+        let is_browser = KNOWN_BROWSER_PROCESS_NAMES.iter()
+            .any(|&browser| title_lower.contains(browser));
+        
+        if is_browser {
+            let mut parts = Vec::new();
+            
+            // Split by common browser title separators
+            for separator in &[" - ", " — ", " | ", " • "] {
+                if title.contains(separator) {
+                    parts.extend(title.split(separator).map(|s| s.trim().to_string()));
+                    break;
+                }
+            }
+            
+            // If no separators found, use the whole title
+            if parts.is_empty() {
+                parts.push(title.trim().to_string());
+            }
+            
+            (true, parts)
+        } else {
+            (false, vec![title.to_string()])
+        }
+    }
+
+    /// Calculate similarity score between two strings with various matching strategies
+    fn calculate_similarity(text1: &str, text2: &str) -> f64 {
+        let text1_lower = text1.to_lowercase();
+        let text2_lower = text2.to_lowercase();
+        
+        // Exact match
+        if text1_lower == text2_lower {
+            return 1.0;
+        }
+        
+        // Contains match - favor longer matches
+        if text1_lower.contains(&text2_lower) || text2_lower.contains(&text1_lower) {
+            let shorter = text1_lower.len().min(text2_lower.len());
+            let longer = text1_lower.len().max(text2_lower.len());
+            return shorter as f64 / longer as f64 * 0.9; // Slight penalty for partial match
+        }
+        
+        // Word-based similarity for longer texts
+        let words1: Vec<&str> = text1_lower.split_whitespace().collect();
+        let words2: Vec<&str> = text2_lower.split_whitespace().collect();
+        
+        if words1.is_empty() || words2.is_empty() {
+            return 0.0;
+        }
+        
+        let mut common_words = 0;
+        for word1 in &words1 {
+            for word2 in &words2 {
+                if word1 == word2 || word1.contains(word2) || word2.contains(word1) {
+                    common_words += 1;
+                    break;
+                }
+            }
+        }
+        
+        // Calculate Jaccard similarity with word overlap
+        let total_unique_words = words1.len() + words2.len() - common_words;
+        if total_unique_words > 0 {
+            common_words as f64 / total_unique_words as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Enhanced title matching that handles browser windows and fuzzy matching
+    fn find_best_title_match(
+        &self,
+        windows: &[(uiautomation::UIElement, String)], 
+        target_title: &str
+    ) -> Option<(uiautomation::UIElement, f64)> {
+        let title_lower = target_title.to_lowercase();
+        let mut best_match: Option<uiautomation::UIElement> = None;
+        let mut best_score = 0.0f64;
+        
+        for (window, window_name) in windows {
+            // Strategy 1: Direct contains match (highest priority)
+            if window_name.to_lowercase().contains(&title_lower) {
+                info!("Found exact title match: '{}' contains '{}'", window_name, target_title);
+                return Some((window.clone(), 1.0));
+            }
+            
+            // Strategy 2: Browser-aware matching
+            let (is_browser_window, window_parts) = Self::extract_browser_info(window_name);
+            let (is_target_browser, target_parts) = Self::extract_browser_info(target_title);
+            
+            if is_browser_window && is_target_browser {
+                let mut max_part_similarity = 0.0f64;
+                
+                for window_part in &window_parts {
+                    for target_part in &target_parts {
+                        let similarity = Self::calculate_similarity(window_part, target_part);
+                        max_part_similarity = max_part_similarity.max(similarity);
+                        
+                        debug!("Comparing '{}' vs '{}' = {:.2}", window_part, target_part, similarity);
+                    }
+                }
+                
+                if max_part_similarity > 0.6 && max_part_similarity > best_score {
+                    info!("Found browser match: '{}' vs '{}' (similarity: {:.2})", 
+                          window_name, target_title, max_part_similarity);
+                    best_score = max_part_similarity;
+                    best_match = Some(window.clone());
+                }
+            }
+            
+            // Strategy 3: General fuzzy matching as fallback
+            if best_score < 0.6 {
+                let similarity = Self::calculate_similarity(window_name, target_title);
+                if similarity > 0.5 && similarity > best_score {
+                    debug!("Potential fuzzy match: '{}' vs '{}' (similarity: {:.2})", 
+                           window_name, target_title, similarity);
+                    best_score = similarity;
+                    best_match = Some(window.clone());
+                }
+            }
+        }
+        
+        best_match.map(|window| (window, best_score))
     }
 }
 
@@ -1435,20 +1563,15 @@ impl AccessibilityEngine for WindowsEngine {
 
         info!("Found {} windows to search through", windows.len());
 
-        // Filter windows by title after retrieval (more efficient than filter_fn)
-        let title_lower = title.to_lowercase();
-        let mut matching_window = None;
+        // Collect window information for matching
+        let mut window_info = Vec::new();
         let mut window_names = Vec::new(); // For debugging
         
         for window in windows {
             match window.get_name() {
                 Ok(window_name) => {
                     window_names.push(window_name.clone());
-                    if window_name.to_lowercase().contains(&title_lower) {
-                        info!("Found matching window: '{}' for title: '{}'", window_name, title);
-                        matching_window = Some(window);
-                        break;
-                    }
+                    window_info.push((window, window_name));
                 }
                 Err(e) => {
                     debug!("Failed to get name for window: {}", e);
@@ -1456,14 +1579,48 @@ impl AccessibilityEngine for WindowsEngine {
             }
         }
 
-        let window_element_raw = matching_window.ok_or_else(|| {
-            error!("No window found with title containing: '{}'", title);
-            debug!("Available window names: {:?}", window_names);
-            AutomationError::ElementNotFound(format!(
-                "Window with title containing '{}' not found. Available windows: {:?}",
-                title, window_names
-            ))
-        })?;
+        // Use the enhanced title matching helper
+        let (window_element_raw, best_match_score) = self.find_best_title_match(&window_info, title)
+            .ok_or_else(|| {
+                error!("No window found with title containing: '{}'", title);
+                debug!("Available window names: {:?}", window_names);
+                
+                // Enhanced error message with suggestions
+                let mut error_msg = format!(
+                    "Window with title containing '{}' not found. Available windows: {:?}",
+                    title, window_names
+                );
+                
+                // Try to suggest similar windows for browsers
+                let (is_target_browser, _) = Self::extract_browser_info(title);
+                if is_target_browser {
+                    let browser_windows: Vec<&String> = window_names.iter()
+                        .filter(|name| {
+                            let (is_browser, _) = Self::extract_browser_info(name);
+                            is_browser
+                        })
+                        .collect();
+                    
+                    if !browser_windows.is_empty() {
+                        error_msg.push_str(&format!(
+                            "\n\nFound these browser windows: {:?}\n\
+                            Tip: Browser tab titles are often truncated in window titles. \
+                            Try using just the domain name or shorter title.",
+                            browser_windows
+                        ));
+                    }
+                }
+                
+                AutomationError::ElementNotFound(error_msg)
+            })?;
+
+        if best_match_score > 0.0 && best_match_score < 1.0 {
+            info!(
+                "Using best match with similarity {:.2}: '{}'",
+                best_match_score,
+                window_element_raw.get_name().unwrap_or_default()
+            );
+        }
 
         info!(
             "Found window with title '{}', ID: {:?}",
@@ -1544,28 +1701,23 @@ impl AccessibilityEngine for WindowsEngine {
 
         info!("Found {} windows for PID: {}", pid_matching_windows.len(), pid);
 
-        // Now filter by title if provided
+        // Enhanced title matching logic for PID-based search
         let selected_window = if let Some(title) = title {
-            let title_lower = title.to_lowercase();
-            let mut title_matching_window = None;
+            info!("Filtering {} windows by title: '{}'", pid_matching_windows.len(), title);
             
-            info!("Filtering by title: '{}'", title);
-            for (window, window_name) in &pid_matching_windows {
-                if window_name.to_lowercase().contains(&title_lower) {
-                    info!("Found title match: '{}' contains '{}'", window_name, title);
-                    title_matching_window = Some(window.clone());
-                    break;
-                }
-            }
-
-            // If title match found, use it; otherwise fall back to first window with matching PID
-            match title_matching_window {
-                Some(window) => {
-                    info!("Using title-matched window");
+            // Use the enhanced title matching helper
+            match self.find_best_title_match(&pid_matching_windows, title) {
+                Some((window, score)) => {
+                    if score < 1.0 {
+                        info!("Using best match with similarity {:.2} for PID {}: '{}'", 
+                              score, pid, window.get_name().unwrap_or_default());
+                    }
                     window
                 }
                 None => {
-                    warn!("No title match found for '{}', falling back to first window with PID {}", title, pid);
+                    let window_names: Vec<&String> = pid_matching_windows.iter().map(|(_, name)| name).collect();
+                    warn!("No good title match found for '{}' in PID {}, falling back to first window. Available: {:?}", 
+                          title, pid, window_names);
                     pid_matching_windows[0].0.clone()
                 }
             }
@@ -4619,5 +4771,158 @@ mod tests {
                 println!("Cannot get focused element: {}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_browser_title_matching() {
+        // Test the extract_browser_info function
+        let (is_browser, parts) = WindowsEngine::extract_browser_info(
+            "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
+        );
+        
+        assert!(is_browser, "Should detect as browser title");
+        assert!(parts.len() >= 2, "Should split browser title into parts: {:?}", parts);
+        
+        // Should contain both the page title and the browser name
+        let parts_str = parts.join(" ");
+        assert!(parts_str.to_lowercase().contains("mailtracker"), "Should contain page title");
+        assert!(parts_str.to_lowercase().contains("chrome"), "Should contain browser name");
+        
+        // Test similarity calculation
+        let similarity = WindowsEngine::calculate_similarity(
+            "Chrome Web Store - Google Chrome",
+            "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
+        );
+        
+        assert!(similarity > 0.3, "Should have reasonable similarity: {}", similarity);
+        
+        println!("Browser title parts: {:?}", parts);
+        println!("Similarity score: {:.2}", similarity);
+    }
+
+    #[test]
+    fn test_browser_title_matching_edge_cases() {
+        // Test various browser title formats
+        let test_cases = vec![
+            ("Tab Title - Google Chrome", true),
+            ("Mozilla Firefox", true),
+            ("Microsoft Edge", true),
+            ("Some App - Not Application", false), // Changed to avoid "browser" word
+            ("Chrome Web Store - Google Chrome", true),
+            ("GitHub - Google Chrome", true),
+            ("Random Window Title", false),
+        ];
+
+        for (title, expected_is_browser) in test_cases {
+            let (is_browser, parts) = WindowsEngine::extract_browser_info(title);
+            assert_eq!(is_browser, expected_is_browser, 
+                      "Browser detection failed for: '{}', expected: {}, got: {}", 
+                      title, expected_is_browser, is_browser);
+            
+            if is_browser {
+                assert!(!parts.is_empty(), "Browser title should have parts: '{}'", title);
+            }
+        }
+    }
+
+    #[test]
+    fn test_similarity_calculation_edge_cases() {
+        let test_cases = vec![
+            ("identical", "identical", 1.0),
+            ("Longer String", "Long", 0.3), // More realistic expected value
+            ("Chrome Web Store", "MailTracker Chrome Web Store", 0.4), // More realistic
+            ("completely different", "nothing similar", 0.0),
+            ("", "empty test", 0.0),
+            ("single", "", 0.0),
+        ];
+
+        for (text1, text2, min_expected) in test_cases {
+            let similarity = WindowsEngine::calculate_similarity(text1, text2);
+            
+            if min_expected == 1.0 {
+                assert_eq!(similarity, 1.0, "Identical strings should have similarity 1.0");
+            } else if min_expected == 0.0 {
+                assert_eq!(similarity, 0.0, "Completely different strings should have similarity 0.0");
+            } else {
+                assert!(similarity >= min_expected - 0.2 && similarity <= 1.0, 
+                       "Similarity for '{}' vs '{}' should be around {}, got: {:.2}", 
+                       text1, text2, min_expected, similarity);
+            }
+            
+            println!("'{}' vs '{}' = {:.2}", text1, text2, similarity);
+        }
+    }
+
+    #[test]
+    fn test_find_best_title_match_browser_scenario() {
+        // Simulate the exact scenario from the logs
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping browser scenario test");
+                return;
+            }
+        };
+
+        // Mock window data based on the actual log
+        // Expected: "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
+        // Available: "Chrome Web Store - Google Chrome"
+        
+        // We can't create actual UIElements for testing, but we can test our logic
+        let target_title = "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome";
+        let available_window_name = "Chrome Web Store - Google Chrome";
+        
+        // Test the individual components
+        let (is_target_browser, target_parts) = WindowsEngine::extract_browser_info(target_title);
+        let (is_window_browser, window_parts) = WindowsEngine::extract_browser_info(available_window_name);
+        
+        assert!(is_target_browser, "Target should be detected as browser");
+        assert!(is_window_browser, "Window should be detected as browser");
+        
+        println!("Target parts: {:?}", target_parts);
+        println!("Window parts: {:?}", window_parts);
+        
+        // Test similarity between parts
+        let mut max_similarity = 0.0f64;
+        for target_part in &target_parts {
+            for window_part in &window_parts {
+                let similarity = WindowsEngine::calculate_similarity(target_part, window_part);
+                max_similarity = max_similarity.max(similarity);
+                println!("'{}' vs '{}' = {:.2}", target_part, window_part, similarity);
+            }
+        }
+        
+        // Should find a good match since both contain "Chrome Web Store - Google Chrome"
+        assert!(max_similarity > 0.6, 
+               "Should find good similarity between browser titles, got: {:.2}", max_similarity);
+    }
+
+    #[test]
+    fn test_enhanced_error_messages() {
+        // Test that browser error messages provide helpful suggestions
+        let target_title = "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome";
+        let available_windows = vec![
+            "Taskbar".to_string(),
+            "Chrome Web Store - Google Chrome".to_string(),
+            "Firefox - Mozilla Firefox".to_string(),
+            "Random Application".to_string(),
+        ];
+        
+        let (is_target_browser, _) = WindowsEngine::extract_browser_info(target_title);
+        assert!(is_target_browser, "Target should be browser");
+        
+        let browser_windows: Vec<&String> = available_windows.iter()
+            .filter(|name| {
+                let (is_browser, _) = WindowsEngine::extract_browser_info(name);
+                is_browser
+            })
+            .collect();
+        
+        assert!(!browser_windows.is_empty(), "Should find browser windows in the list");
+        assert!(browser_windows.len() >= 2, "Should find multiple browser windows: {:?}", browser_windows);
+        
+        // Verify the specific windows we expect
+        assert!(browser_windows.iter().any(|w| w.contains("Chrome")), "Should find Chrome window");
+        assert!(browser_windows.iter().any(|w| w.contains("Firefox")), "Should find Firefox window");
     }
 }

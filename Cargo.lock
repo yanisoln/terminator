@@ -5332,6 +5332,21 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
+version = "0.30.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys 0.8.7",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "windows 0.52.0",
+]
+
+[[package]]
+name = "sysinfo"
 version = "0.34.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4b93974b3d3aeaa036504b8eefd4c039dced109171c1ae973f1dc63b2c7e4b2"
@@ -5430,7 +5445,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.34.2",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -5478,14 +5493,17 @@ dependencies = [
  "arboard",
  "async-stream",
  "chrono",
+ "criterion",
  "ctrlc",
  "dashmap",
  "futures",
  "notify",
+ "rand 0.8.5",
  "rdev",
  "regex",
  "serde",
  "serde_json",
+ "sysinfo 0.30.13",
  "tempfile",
  "terminator",
  "thiserror 1.0.69",
