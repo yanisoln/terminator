@@ -1812,7 +1812,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_names(false)
         .with_file(true)
         .with_line_number(true)
-        .with_max_level(Level::DEBUG) // Default to INFO, can override with RUST_LOG=debug
+        // .with_max_level(Level::DEBUG) // Default to INFO, can override with RUST_LOG=debug
         .init();
 
     info!("Starting Terminator server");

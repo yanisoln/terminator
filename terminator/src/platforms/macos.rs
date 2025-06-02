@@ -739,33 +739,48 @@ impl UIElementImpl for MacOSUIElement {
             ];
 
             debug!("Attempting to find window title using {} attributes", title_attrs.len());
-            if let Ok(attr_names) = self.element.0.attribute_names() {
-                for title_attr_name in title_attrs {
-                    if attr_names.iter().any(|n| n.to_string() == title_attr_name) {
-                        let title_attr = AXAttribute::new(&CFString::new(title_attr_name));
-                        if let Ok(value) = self.element.0.attribute(&title_attr) {
-                            if let Some(cf_string) = value.downcast_into::<CFString>() {
-                                let title = cf_string.to_string();
-                                attrs.name = Some(title.clone());
-                                attrs.label = Some(title);
-                                debug!(
-                                    "Found window title via {}: {:?}",
-                                    title_attr_name, attrs.name
-                                );
-                                break;
-                            }
+            // Fetch attr_names once for window
+            let attr_names = match self.element.0.attribute_names() {
+                Ok(names) => names,
+                Err(e) => {
+                    debug!("Failed to get attribute names: {:?}", e);
+                    let duration = start.elapsed();
+                    debug!("Window attributes completed in {:?}", duration);
+                    if duration > std::time::Duration::from_millis(100) {
+                        warn!(
+                            "⚠️ attributes() unusually long: window attributes collection took {:?} (>100ms) for element: {:?} (role: AXWindow)",
+                            duration,
+                            self.element.0
+                        );
+                    }
+                    return attrs;
+                }
+            };
+            for title_attr_name in title_attrs {
+                if attr_names.iter().any(|n| n.to_string() == title_attr_name) {
+                    let title_attr = AXAttribute::new(&CFString::new(title_attr_name));
+                    if let Ok(value) = self.element.0.attribute(&title_attr) {
+                        if let Some(cf_string) = value.downcast_into::<CFString>() {
+                            let title = cf_string.to_string();
+                            attrs.name = Some(title.clone());
+                            attrs.label = Some(title);
+                            debug!(
+                                "Found window title via {}: {:?}",
+                                title_attr_name, attrs.name
+                            );
+                            break;
                         }
                     }
                 }
-            } else {
-                debug!("Failed to get attribute names");
             }
 
             // Try to get window position and size for debugging
             debug!("Checking for window position attribute");
-            let pos_attr = AXAttribute::new(&CFString::new("AXPosition"));
-            if let Ok(_) = self.element.0.attribute(&pos_attr) {
-                debug!("Window has position attribute");
+            if attr_names.iter().any(|n| n.to_string() == "AXPosition") {
+                let pos_attr = AXAttribute::new(&CFString::new("AXPosition"));
+                if let Ok(_) = self.element.0.attribute(&pos_attr) {
+                    debug!("Window has position attribute");
+                }
             }
 
             // Try to get standard macOS window attributes
@@ -773,14 +788,16 @@ impl UIElementImpl for MacOSUIElement {
             debug!("Collecting {} standard window attributes", std_attrs.len());
 
             for attr_name in std_attrs {
-                let attr = AXAttribute::new(&CFString::new(attr_name));
-                if let Ok(value) = self.element.0.attribute(&attr) {
-                    if let Some(cf_bool) = value.downcast_into::<CFBoolean>() {
-                        attrs.properties.insert(
-                            attr_name.to_string(),
-                            Some(Value::String(format!("{:?}", cf_bool))),
-                        );
-                        debug!("Added window attribute {}: {:?}", attr_name, cf_bool);
+                if attr_names.iter().any(|n| n.to_string() == attr_name) {
+                    let attr = AXAttribute::new(&CFString::new(attr_name));
+                    if let Ok(value) = self.element.0.attribute(&attr) {
+                        if let Some(cf_bool) = value.downcast_into::<CFBoolean>() {
+                            attrs.properties.insert(
+                                attr_name.to_string(),
+                                Some(Value::String(format!("{:?}", cf_bool))),
+                            );
+                            debug!("Added window attribute {}: {:?}", attr_name, cf_bool);
+                        }
                     }
                 }
             }
@@ -789,8 +806,9 @@ impl UIElementImpl for MacOSUIElement {
             debug!("Window attributes completed in {:?}", duration);
             if duration > std::time::Duration::from_millis(100) {
                 warn!(
-                    "⚠️ Window attributes collection took unusually long: {:?} (> 1s)! This may indicate a performance issue or unresponsive app.",
-                    duration
+                    "⚠️ attributes() unusually long: window attributes collection took {:?} (>100ms) for element: {:?} (role: AXWindow)",
+                    duration,
+                    self.element.0
                 );
             }
             return attrs;
@@ -813,13 +831,21 @@ impl UIElementImpl for MacOSUIElement {
         // Debug attribute collection
         debug!("Collecting attributes for element with role: {}", attrs.role);
 
-        // Get attribute names first
+        // Fetch attr_names once for non-window elements
         let attr_names = match self.element.0.attribute_names() {
             Ok(names) => {
                 if names.is_empty() {
                     debug!("attribute_names returned an empty list; skipping attribute retrieval");
                     let duration = start.elapsed();
                     debug!("Non-window attributes completed in {:?} with {} properties", duration, attrs.properties.len());
+                    if duration > std::time::Duration::from_millis(100) {
+                        warn!(
+                            "⚠️ attributes() unusually long: non-window attributes collection took {:?} (>100ms) for element: {:?} (role: {:?})",
+                            duration,
+                            self.element.0,
+                            attrs.role
+                        );
+                    }
                     return attrs;
                 }
                 names
@@ -828,6 +854,14 @@ impl UIElementImpl for MacOSUIElement {
                 debug!("Failed to get attribute names: {:?}", e);
                 let duration = start.elapsed();
                 debug!("Non-window attributes completed in {:?} with {} properties", duration, attrs.properties.len());
+                if duration > std::time::Duration::from_millis(100) {
+                    warn!(
+                        "⚠️ attributes() unusually long: non-window attributes collection took {:?} (>100ms) for element: {:?} (role: {:?})",
+                        duration,
+                        self.element.0,
+                        attrs.role
+                    );
+                }
                 return attrs;
             }
         };
@@ -867,7 +901,7 @@ impl UIElementImpl for MacOSUIElement {
             }
         }
 
-        // Collect all other attributes
+        // Collect all other attributes, but only if present in attr_names
         debug!("Starting collection of all available attributes");
         debug!("Found {} total attributes to process", attr_names.len());
         // Print the list of attribute names for debugging
@@ -878,7 +912,7 @@ impl UIElementImpl for MacOSUIElement {
             if index % 10 == 0 {
                 debug!("Processing attribute {} of {}", index + 1, attr_names.len());
             }
-            
+            // Only attempt to fetch attribute if it's in attr_names (guaranteed by loop)
             let attr = AXAttribute::new(&name);
             match self.element.0.attribute(&attr) {
                 Ok(value) => {
@@ -902,6 +936,14 @@ impl UIElementImpl for MacOSUIElement {
 
         let duration = start.elapsed();
         debug!("Non-window attributes completed in {:?} with {} properties", duration, attrs.properties.len());
+        if duration > std::time::Duration::from_millis(100) {
+            warn!(
+                "⚠️ attributes() unusually long: non-window attributes collection took {:?} (>100ms) for element: {:?} (role: {:?})",
+                duration,
+                self.element.0,
+                attrs.role
+            );
+        }
         attrs
     }
 
