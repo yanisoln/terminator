@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
@@ -40,11 +41,76 @@ pub struct CommandOutput {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
+}
+
+impl fmt::Debug for UINode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.debug_with_depth(f, 0, 100)
+    }
+}
+
+impl UINode {
+    /// Helper method for debug formatting with depth control
+    fn debug_with_depth(&self, f: &mut fmt::Formatter<'_>, current_depth: usize, max_depth: usize) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("UINode");
+        debug_struct.field("attributes", &self.attributes);
+        
+        if !self.children.is_empty() {
+            if current_depth < max_depth {
+                debug_struct.field("children", &DebugChildrenWithDepth {
+                    children: &self.children,
+                    current_depth,
+                    max_depth,
+                });
+            } else {
+                debug_struct.field("children", &format!("[{} children (depth limit reached)]", self.children.len()));
+            }
+        }
+        
+        debug_struct.finish()
+    }
+}
+
+/// Helper struct for debug formatting children with depth control
+struct DebugChildrenWithDepth<'a> {
+    children: &'a Vec<UINode>,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugChildrenWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        
+        // Show ALL children, no limit
+        for child in self.children.iter() {
+            list.entry(&DebugNodeWithDepth {
+                node: child,
+                current_depth: self.current_depth + 1,
+                max_depth: self.max_depth,
+            });
+        }
+        
+        list.finish()
+    }
+}
+
+/// Helper struct for debug formatting a single node with depth control
+struct DebugNodeWithDepth<'a> {
+    node: &'a UINode,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugNodeWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.debug_with_depth(f, self.current_depth, self.max_depth)
+    }
 }
 
 /// Holds the screenshot data
