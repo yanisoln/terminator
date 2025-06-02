@@ -45,9 +45,7 @@ impl Desktop {
         });
         let use_background_apps = use_background_apps.unwrap_or(false);
         let activate_app = activate_app.unwrap_or(false);
-        let desktop = tokio::runtime::Runtime::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(use_background_apps, activate_app))
+        let desktop = TerminatorDesktop::new(use_background_apps, activate_app)
             .map_err(|e| automation_error_to_pyerr(e))?;
         Ok(Desktop { inner: desktop })
     }

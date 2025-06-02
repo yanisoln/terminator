@@ -216,35 +216,15 @@ impl<'de> Deserialize<'de> for UIElement {
 /// Attempts to find a live UI element matching the serializable data
 fn find_live_element(serializable: &SerializableUIElement) -> Option<UIElement> {
     // Try to create a Desktop instance and search the UI tree
-    // If any step fails (runtime creation, Desktop creation, or element search), return None
+    // If any step fails (Desktop creation or element search), return None
     std::panic::catch_unwind(|| {
-        // Try to use current runtime first, fall back to creating new one
-        let result = if tokio::runtime::Handle::try_current().is_ok() {
-            // We're already in a tokio runtime, use spawn_blocking
-            let serializable_clone = serializable.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().ok()?;
-                let desktop = rt.block_on(async {
-                    crate::Desktop::new(false, false).await.ok()
-                })?;
-                
-                rt.block_on(async {
-                    find_element_in_tree(&desktop, &serializable_clone).await
-                })
-            }).join().ok()?
-        } else {
-            // No current runtime, create one
-            let rt = tokio::runtime::Runtime::new().ok()?;
-            let desktop = rt.block_on(async {
-                crate::Desktop::new(false, false).await.ok()
-            })?;
-            
-            rt.block_on(async {
-                find_element_in_tree(&desktop, serializable).await
-            })
-        };
-        
-        result
+        // Desktop::new is now synchronous, so we can call it directly
+        let desktop = crate::Desktop::new(false, false).ok()?;
+        // find_element_in_tree is still async, so we need a runtime only for that
+        let rt = tokio::runtime::Runtime::new().ok()?;
+        rt.block_on(async {
+            find_element_in_tree(&desktop, serializable).await
+        })
     }).unwrap_or(None)
 }
 

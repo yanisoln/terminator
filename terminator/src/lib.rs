@@ -65,7 +65,7 @@ pub struct Desktop {
 
 impl Desktop {
     #[instrument(skip(use_background_apps, activate_app))]
-    pub async fn new(
+    pub fn new(
         use_background_apps: bool,
         activate_app: bool,
     ) -> Result<Self, AutomationError> {
