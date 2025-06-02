@@ -1157,9 +1157,15 @@
           },
           "depth": {
             "type": "integer",
-             "format": "uint64",
-             "nullable": true,
-             "description": "Optional depth for certain operations like 'all'."
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional depth for certain operations like 'all'."
+          },
+          "detail_level": {
+            "type": "string",
+            "enum": ["minimal", "standard", "full"],
+            "nullable": true,
+            "description": "Optional detail level for element responses. One of: 'minimal', 'standard', 'full'."
           }
         },
         "required": [

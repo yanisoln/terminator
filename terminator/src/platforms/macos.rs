@@ -2003,8 +2003,36 @@ impl AccessibilityEngine for MacOSEngine {
         _timeout: Option<Duration>, // Timeout not directly supported by macOS AX API like Windows UIA
         _depth: Option<usize>,      // Depth parameter required by trait
     ) -> Result<Vec<UIElement>, AutomationError> {
-        let start_element = if let Some(el) = root {
-            // Try to downcast to MacOSUIElement to get the underlying AXUIElement
+        // macOS: Require explicit application root if root is None
+        let (actual_root, actual_selector) = if root.is_none() {
+            // Only support selector chains starting with application role
+            match selector {
+                Selector::Chain(selectors) if !selectors.is_empty() => {
+                    match &selectors[0] {
+                        Selector::Role { role, name: Some(app_name) } if role.eq_ignore_ascii_case("application") => {
+                            debug!("macOS: inferring application root from selector chain: {}", app_name);
+                            let app_el = self.get_application_by_name(app_name)?;
+                            (Some(app_el), Selector::Chain(selectors[1..].to_vec()))
+                        }
+                        _ => {
+                            return Err(AutomationError::InvalidArgument(
+                                "macOS: Selector chain must start with { role: 'application', name: ... } if no root is provided".to_string()
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    return Err(AutomationError::InvalidArgument(
+                        "macOS: No root provided and selector is not a chain starting with application role".to_string()
+                    ));
+                }
+            }
+        } else {
+            (root.cloned(), selector.clone())
+        };
+
+        // Now call the original logic with the resolved root and selector
+        let start_element = if let Some(el) = actual_root {
             if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
                 macos_el.element.clone()
             } else {
@@ -2029,7 +2057,7 @@ impl AccessibilityEngine for MacOSEngine {
             }
         }
 
-        match selector {
+        match &actual_selector {
             Selector::Role { role, name } => {
                 let target_roles = map_generic_role_to_macos_roles(role);
                 let name_filter = name.as_ref().map(|n| n.to_lowercase());
@@ -2221,24 +2249,34 @@ impl AccessibilityEngine for MacOSEngine {
         root: Option<&UIElement>,
         _timeout: Option<Duration>, // Timeout not directly supported
     ) -> Result<UIElement, AutomationError> {
-        debug!("starting find_element with selector: {:?}", selector);
-
-        // Print root element's role and name/title for debugging
-        if let Some(el) = root {
-            if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
-                let role = macos_el.element.0.role().ok().map(|r| r.to_string()).unwrap_or_else(|| "<unknown>".to_string());
-                let title = macos_el.element.0.title().ok().map(|t| t.to_string()).unwrap_or_else(|| "<none>".to_string());
-                debug!("Root element: role = {}, title = {}", role, title);
-            } else {
-                debug!("Root element provided, but not a MacOSUIElement");
+        // macOS: Require explicit application root if root is None
+        let (actual_root, actual_selector) = if root.is_none() {
+            match selector {
+                Selector::Chain(selectors) if !selectors.is_empty() => {
+                    match &selectors[0] {
+                        Selector::Role { role, name: Some(app_name) } if role.eq_ignore_ascii_case("application") => {
+                            debug!("macOS: inferring application root from selector chain: {}", app_name);
+                            let app_el = self.get_application_by_name(app_name)?;
+                            (Some(app_el), Selector::Chain(selectors[1..].to_vec()))
+                        }
+                        _ => {
+                            return Err(AutomationError::InvalidArgument(
+                                "macOS: Selector chain must start with { role: 'application', name: ... } if no root is provided".to_string()
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    return Err(AutomationError::InvalidArgument(
+                        "macOS: No root provided and selector is not a chain starting with application role".to_string()
+                    ));
+                }
             }
         } else {
-            let role = self.system_wide.0.role().ok().map(|r| r.to_string()).unwrap_or_else(|| "<unknown>".to_string());
-            let title = self.system_wide.0.title().ok().map(|t| t.to_string()).unwrap_or_else(|| "<none>".to_string());
-            debug!("Root element (system_wide): role = {}, title = {}", role, title);
-        }
+            (root.cloned(), selector.clone())
+        };
 
-        let start_element = if let Some(el) = root {
+        let start_element = if let Some(el) = actual_root {
             if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
                 macos_el.element.clone()
             } else {
@@ -2272,7 +2310,7 @@ impl AccessibilityEngine for MacOSEngine {
         }
 
         debug!("find_element called with selector: {:?}", selector);
-        match selector {
+        match &actual_selector {
             Selector::Role { role, name } => {
                 let target_roles = map_generic_role_to_macos_roles(role);
                 let name_filter = name.as_ref().map(|n| n.to_lowercase());

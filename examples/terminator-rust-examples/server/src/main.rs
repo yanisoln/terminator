@@ -7,7 +7,7 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, env};
+use std::{collections::{HashMap, HashSet}, env};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
@@ -231,7 +231,6 @@ struct FindWindowRequest {
 struct ExploreRequest {
     selector_chain: Option<Vec<String>>, // Make selector chain optional (already was)
     timeout_ms: Option<u64>,             // Added timeout
-    application_name: Option<String>,    // New: optional application name
 }
 
 // Add at the top with other request structs
@@ -298,6 +297,7 @@ struct ElementResponse {
     focused: Option<bool>,
     is_keyboard_focusable: Option<bool>,
     bounds: Option<(f64, f64, f64, f64)>,
+    children: Option<Vec<ElementResponse>>,
 }
 
 impl ElementResponse {
@@ -313,6 +313,7 @@ impl ElementResponse {
             focused: None,
             is_keyboard_focusable: None,
             bounds: None,
+            children: None,
         };
 
         if detail_level == DetailLevel::Minimal {
@@ -335,6 +336,34 @@ impl ElementResponse {
         response.is_keyboard_focusable = element.is_keyboard_focusable().ok();
 
         response
+    }
+
+    // New: recursive constructor for tree
+    fn from_element_with_children(element: &UIElement, detail_level: DetailLevel, max_depth: usize) -> Self {
+        let mut resp = Self::from_element(element, detail_level);
+        // If max_depth is 0, treat as unlimited depth
+        let should_recurse = max_depth == 0 || max_depth > 0;
+        if should_recurse {
+            if let Ok(children) = element.children() {
+                if !children.is_empty() {
+                    resp.children = Some(
+                        children
+                            .iter()
+                            .map(|child| {
+                                if max_depth == 0 {
+                                    // Unlimited depth
+                                    Self::from_element_with_children(child, detail_level, 0)
+                                } else {
+                                    // Decrement depth
+                                    Self::from_element_with_children(child, detail_level, max_depth - 1)
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+            }
+        }
+        resp
     }
 }
 
@@ -797,8 +826,10 @@ async fn get_full_tree(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get full tree");
+    let depth = payload.depth.unwrap_or(0);
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, depth = depth, "Attempting to get full tree");
 
+    /*
     // Define the recursive helper function
     fn get_children_recursive(element: &UIElement) -> Result<Vec<ElementResponse>, ApiError> {
         let direct_children_elements = element.children()?;
@@ -830,6 +861,7 @@ async fn get_full_tree(
 
         Ok(all_descendants) // Return the accumulated list
     }
+    */
 
     // Handle empty selector chain case
     if payload.selector_chain.is_empty() {
@@ -841,23 +873,10 @@ async fn get_full_tree(
 
         // Process each application and its children
         for app in applications {
-            // Add the application itself
-            all_elements.push(ElementResponse::from_element(&app, DetailLevel::Full));
-
-            // Get all descendants of this application
-            match get_children_recursive(&app) {
-                Ok(descendants) => {
-                    all_elements.extend(descendants);
-                }
-                Err(e) => {
-                    error!(
-                        "Error getting descendants for application {:?}: {:?}",
-                        app.id(),
-                        e
-                    );
-                    // Continue with other applications
-                }
-            }
+            // Add the application itself as a tree
+            all_elements.push(ElementResponse::from_element_with_children(&app, DetailLevel::Full, depth));
+            // let descendants = get_children_recursive(&app)?;
+            // all_elements.extend(descendants); // <-- Commented out: flat list logic
         }
 
         return Ok(Json(ElementsResponse {
@@ -872,11 +891,11 @@ async fn get_full_tree(
     // Find the root element for the subtree
     let root_element = locator.wait(timeout).await?;
 
-    // Call the recursive function starting from the found root element
-    let elements_in_subtree = get_children_recursive(&root_element)?;
+    // Build the tree from the found root element
+    let tree = ElementResponse::from_element_with_children(&root_element, DetailLevel::Full, depth);
 
     Ok(Json(ElementsResponse {
-        elements: elements_in_subtree,
+        elements: vec![tree],
     }))
 }
 
@@ -1099,15 +1118,6 @@ async fn explore_handler(
             role: "window".to_string(),
             name: None,
         })
-    };
-
-    // If application_name is provided, use it as the root for the locator
-    let locator = if let Some(app_name) = &payload.application_name {
-        let app = state.desktop.application(app_name)
-            .map_err(|e| ApiError::BadRequest(format!("Failed to get application '{}': {}", app_name, e)))?;
-        locator.within(app)
-    } else {
-        locator
     };
 
     let timeout = get_timeout(payload.timeout_ms);
@@ -1703,6 +1713,7 @@ async fn get_running_applications(
                     visible: None,
                     enabled: None,
                     focused: None,
+                    children: None,
                 });
                 let elapsed = app_start.elapsed();
                 debug!("Mapped application {}/{} in {:?}", i + 1, apps.len(), elapsed);
@@ -1759,24 +1770,27 @@ async fn get_application_windows(
     // 3. Filter children to find windows (e.g., role == "AXWindow" on macOS)
     //    Note: The exact role might differ on Windows/Linux. AXWindow is macOS specific.
     //    A more robust approach might involve checking platform or having platform-specific logic here.
-    let windows: Vec<ElementResponse> = children
-        .iter()
-        .filter(|el| {
-            // Basic check - improve this if needed for cross-platform compatibility
-            match el.role().as_str() {
-                #[cfg(target_os = "macos")]
-                "AXWindow" => true,
-                #[cfg(target_os = "windows")]
-                "Window" => true, // Example role for Windows, adjust as needed
-                _ => {
-                    // Log unexpected roles if debugging is needed
-                    // trace!("Child element role: {}", el.role());
-                    false
-                }
+    let mut seen_ids = HashSet::new();
+    let mut windows: Vec<ElementResponse> = Vec::new();
+    for el in children.iter().filter(|el| {
+        match el.role().as_str() {
+            #[cfg(target_os = "macos")]
+            "AXWindow" => true,
+            #[cfg(target_os = "windows")]
+            "Window" => true, // Example role for Windows, adjust as needed
+            _ => false,
+        }
+    }) {
+        let resp = ElementResponse::from_element(el, DetailLevel::Standard);
+        if let Some(ref id) = resp.id {
+            if seen_ids.insert(id.clone()) {
+                windows.push(resp);
             }
-        })
-        .map(|el| ElementResponse::from_element(el, DetailLevel::Standard)) // Convert UIElement to ElementResponse with detail level
-        .collect();
+        } else {
+            // If no id, include anyway (rare)
+            windows.push(resp);
+        }
+    }
 
     info!("Found {} windows for application '{}'", windows.len(), payload.app_name);
 
