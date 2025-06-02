@@ -1,5 +1,6 @@
 use crate::errors::AutomationError;
 use crate::selector::Selector;
+use crate::ScreenshotResult;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use serde::{Deserialize, Serialize, Serializer, Deserializer};
@@ -340,6 +341,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // New method to get the process ID of the element
     fn process_id(&self) -> Result<u32, AutomationError>;
+
+    // New method to capture a screenshot of the element
+    fn capture(&self) -> Result<ScreenshotResult, AutomationError>;
 }
 
 impl UIElement {
@@ -517,6 +521,11 @@ impl UIElement {
     /// * `duration` - Optional duration for the highlight.
     pub fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
         self.inner.highlight(color, duration)
+    }
+
+    /// Capture a screenshot of the element
+    pub fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
+        self.inner.capture()
     }
 
     /// Convenience methods to reduce verbosity with optional properties
