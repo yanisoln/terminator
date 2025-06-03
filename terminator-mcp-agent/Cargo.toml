@@ -1,0 +1,12 @@
+[package]
+name = "terminator-mcp-agent"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+terminator = { workspace = true }
+anyhow = { workspace = true }
