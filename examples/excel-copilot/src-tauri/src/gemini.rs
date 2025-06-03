@@ -251,6 +251,37 @@ impl GeminiClient {
                 }),
             },
             FunctionDeclaration {
+                name: "get_excel_ui_context".to_string(),
+                description: "Get the complete UI tree context of the Excel window, including available UI elements, active cell, and element IDs for precise targeting".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            FunctionDeclaration {
+                name: "paste_tsv_batch_data".to_string(),
+                description: "Paste batch data in TSV (Tab-Separated Values) format into Excel starting from a specific cell. Use this ONLY for large batch operations like importing data from PDFs or bulk data entry. Always verify safety to avoid overwriting existing data.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "start_cell": {
+                            "type": "string",
+                            "description": "The starting cell address where to paste the data (e.g., A1, B3)"
+                        },
+                        "tsv_data": {
+                            "type": "string",
+                            "description": "The data in TSV format - rows separated by newlines, columns separated by tabs. Example: 'Name\\tAge\\tCity\\nJohn\\t25\\tParis\\nMarie\\t30\\tLyon'"
+                        },
+                        "verify_safe": {
+                            "type": "boolean",
+                            "description": "Whether to verify that the target range is empty before pasting (default: true). Set to false only if you're sure you want to overwrite data."
+                        }
+                    },
+                    "required": ["start_cell", "tsv_data"]
+                }),
+            },
+            FunctionDeclaration {
                 name: "set_excel_formula".to_string(),
                 description: "Set a formula in an Excel cell".to_string(),
                 parameters: json!({
@@ -355,113 +386,53 @@ impl GeminiClient {
         
         // Create locale-specific formatting rules
         let number_format_rules = if decimal_sep == ',' {
-            format!(r#"**NUMBER FORMAT NORMALIZATION (LOCALE: COMMA DECIMAL):**
-Current system locale: {}
-- When writing numeric values to Excel, normalize according to your locale:
-  - Convert "+2.259,84" to "2259.84" (remove + sign, thousands separators, convert comma to dot for Excel)
-  - Convert "-1.458,25" to "-1458.25" (remove thousands separators, convert comma to dot for Excel)
-  - Convert "1.234.567,89" to "1234567.89" (remove thousands separators, convert comma to dot for Excel)
-  - Always convert final comma decimal separator to dot (.) for Excel compatibility
-  - Remove thousands separators (dots in your locale)
-- Display numbers to user using local format: 1234,67 but write to Excel as: 1234.67
-- NEVER add apostrophes (') to numeric values - this makes them text"#, locale_info)
+            "LOCALE: Comma decimal. Normalize numbers: remove +, thousands separators, convert comma→dot for Excel (e.g., '1.234,56' → '1234.56')"
         } else {
-            format!(r#"**NUMBER FORMAT NORMALIZATION (LOCALE: DOT DECIMAL):**
-Current system locale: {}
-- When writing numeric values to Excel, normalize according to your locale:
-  - Convert "+2,259.84" to "2259.84" (remove + sign and comma thousands separators)
-  - Convert "-1,458.25" to "-1458.25" (remove comma thousands separators, keep - sign)
-  - Convert "1,234,567.89" to "1234567.89" (remove comma thousands separators)
-  - Use dot (.) as decimal separator, remove comma thousands separators
-  - This ensures Excel recognizes values as numbers for calculations
-- NEVER add apostrophes (') to numeric values - this makes them text"#, locale_info)
+            "LOCALE: Dot decimal. Normalize numbers: remove +, comma thousands separators (e.g., '1,234.56' → '1234.56')"
         };
 
-        let base_prompt = r#"You are Excel Copilot. You interact with Excel files using tools. Always respond in English or French as requested.
+        let base_tools = r#"TOOLS: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, get_excel_ui_context, paste_tsv_batch_data, set_excel_formula"#;
 
-**TOOLS AVAILABLE:**
-- Basic: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula"#;
-
-        let copilot_section = if self.copilot_enabled {
-            r#"
-- MS Copilot: send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot
-
-**MS EXCEL COPILOT CONSTRAINTS:**
-- CRITICAL: Copilot ONLY works on files saved in OneDrive
-- Data range MUST have at least 3 rows and 2 columns
-- Headers are REQUIRED in the first row with different names
-- Before using Copilot tools, ALWAYS verify data meets these requirements
-
-**MS EXCEL COPILOT INTERACTION SEQUENCE:**
-- The system automatically follows this sequence: Select Range → Click "Copilot" → Click "Ask Copilot" → Wait 5s → Send Request → Apply Changes
-- For range-based tools (format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot), the range is selected FIRST
-- For general requests (send_request_to_excel_copilot), it works on currently selected area or entire sheet
-
-**WHEN TO USE MS COPILOT:**
-- Complex formatting requests → format_cells_with_copilot (auto-selects range)
-- Chart creation → create_chart_with_copilot (auto-selects data range)
-- Conditional formatting → apply_conditional_formatting_with_copilot (auto-selects range)
-- Data analysis, pivot tables, advanced features → send_request_to_excel_copilot
-
-**COPILOT DATA VALIDATION:**
-- Before any Copilot operation, check data has ≥3 rows, ≥2 columns
-- Verify headers exist in first row
-- If requirements not met, explain what's needed
-
-**COPILOT BEST PRACTICES:**
-- Always specify clear ranges for formatting and charts (e.g., "B1:D8")
-- Use descriptive requests like "Create a bar chart from this data" rather than "Create bar chart from B1:D8"
-- For formatting, use natural language: "bold text with blue background" instead of technical formatting codes"#
+        let copilot_tools = if self.copilot_enabled {
+            ", send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot"
         } else {
             ""
         };
 
-        let common_rules = format!(r#"
-
-**CRITICAL RULES:**
-1. ALWAYS use tools to interact with Excel - NEVER fake results
-2. Start every task with get_excel_sheet_overview
-3. NEVER invent cell contents or data
-4. If you need info, READ it with tools first
-5. Don't talk between toolcalls, just use them
-6. Fix formula errors immediately (#NAME?, #REF!, etc.)
-7. After writing formulas, re-read the cell to verify
-
-{}
-
-**WHEN TO USE BASIC TOOLS:**
-- Simple cell reading/writing → read_excel_cell, write_excel_cell
-- Basic formulas → set_excel_formula
-- Data overview → get_excel_sheet_overview
-
-**FORBIDDEN:**
-- Simulating tool outputs like "Reading A1... value is 42"
-- Pretending you called a function
-- Inventing Excel data
-- Leaving error values in cells
-- Writing numbers with apostrophes or commas to Excel
-
-**PROTOCOL:**
-- Need data? → Call appropriate read tool
-- Need simple write? → Call write_excel_cell (with normalized numbers)"#, number_format_rules);
-
-        let final_protocol = if self.copilot_enabled {
+        let copilot_rules = if self.copilot_enabled {
             r#"
-- Need formatting/charts with specific range? → Use MS Copilot range-based tools (check requirements first)
-- Need general analysis? → Use send_request_to_excel_copilot (check requirements first)
-- Lack context? → READ THE FILE
-- See errors? → Fix them immediately
 
-Use tools efficiently. Be direct. No hallucination. Leverage MS Copilot for advanced Excel features with proper range selection and data validation."#
+COPILOT CONSTRAINTS:
+- OneDrive files only, >= 3 rows, >= 2 cols, headers required, auto-save enabled
+- Check file path contains "OneDrive" before Copilot operations
+- Be specific in requests: "Format with bold headers, currency column C, alternating rows" not "Format data"
+
+COPILOT USAGE:
+- Complex formatting → format_cells_with_copilot
+- Charts → create_chart_with_copilot  
+- Conditional formatting → apply_conditional_formatting_with_copilot
+- Analysis → send_request_to_excel_copilot
+- Be precise with copilot, tell him exactly what he should do"#
         } else {
-            r#"
-- Lack context? → READ THE FILE
-- See errors? → Fix them immediately
-
-Use tools efficiently. Be direct. No hallucination. Copilot features are disabled - use basic tools only."#
+            "\nCOPILOT: Disabled"
         };
 
-        let system_prompt = format!("{}{}{}{}", base_prompt, copilot_section, common_rules, final_protocol);
+        let system_prompt = format!(r#"Excel automation assistant. {}{}{number_format_rules}
+
+RULES:
+1. Always use tools, never fake results
+2. Start with get_excel_sheet_overview
+3. TSV paste for batch data, verify_safe=true unless confirmed
+4. UI issues → get_excel_ui_context first
+5. Fix formula errors immediately
+
+
+PROTOCOL:
+- Read data → read tools
+- Write single cells → write_excel_cell  
+- Need context? → READ THE FILE, before asking user for information
+- Bulk data → paste_tsv_batch_data
+- Formulas → set_excel_formula{copilot_rules}"#, base_tools, copilot_tools, number_format_rules = number_format_rules);
 
         self.system_instruction = SystemInstruction {
             parts: vec![GeminiPart::text(system_prompt)],

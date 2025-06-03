@@ -447,7 +447,7 @@ impl ExcelAutomation {
                         println!("Found 'Ask Copilot' button, clicking it");
                         ask_copilot_button.click()?;
                         
-                        // Step 3: Wait ~5s for Copilot to load
+                        // Step 3: Wait ~2s for Copilot to load
                         println!("Waiting for Copilot to load...");
                         tokio::time::sleep(Duration::from_millis(5000)).await;
                         
@@ -504,7 +504,7 @@ impl ExcelAutomation {
         println!("Checking for Apply button in Copilot response");
         
         // Try to find Apply button with multiple attempts, every 5 seconds
-        let max_attempts = 6; // 30 seconds total (6 attempts × 5 seconds)
+        let max_attempts = 15; // 30 seconds total (15 attempts × 2 seconds)
         let mut attempt = 0;
         
         while attempt < max_attempts {
@@ -703,10 +703,10 @@ impl ExcelAutomation {
                 }
             }
             
-            // Wait 5 seconds before next attempt (except on last attempt)
+            // Wait 2 seconds before next attempt (except on last attempt)
             if attempt < max_attempts {
                 println!("Waiting 5 seconds before next attempt...");
-                tokio::time::sleep(Duration::from_millis(5000)).await;
+                tokio::time::sleep(Duration::from_millis(2000)).await;
             }
         }
         
@@ -768,6 +768,254 @@ impl ExcelAutomation {
         tokio::time::sleep(Duration::from_millis(1000)).await;
         
         Ok(result)
+    }
+
+    /// Get the complete UI tree context of Excel window for better element targeting
+    pub async fn get_excel_ui_context(&self) -> Result<String> {
+        println!("Getting complete Excel UI context");
+        
+        let excel_window = self.get_excel_window().await?;
+        
+        // Get detailed information about the Excel window structure
+        let mut context = String::new();
+        context.push_str("EXCEL UI CONTEXT:\n");
+        context.push_str("==================\n");
+        
+        // Get window attributes
+        let window_attrs = excel_window.attributes();
+        context.push_str(&format!("Window Title: '{}'\n", window_attrs.name.as_deref().unwrap_or("Unknown")));
+        context.push_str(&format!("Window Role: '{}'\n", window_attrs.role.as_str()));
+        context.push_str(&format!("Window Label: '{}'\n", window_attrs.label.as_deref().unwrap_or("Unknown")));
+        
+        // Try to get child elements for navigation context
+        context.push_str("\nKey UI Elements:\n");
+        context.push_str("-----------------\n");
+        
+        // Look for common Excel UI elements that can be used as landmarks
+        let ui_elements_to_find = vec![
+            ("Name Box", "Name Box"),
+            ("Formula Bar", "Formula Bar"), 
+            ("Ribbon", "Ribbon"),
+            ("Sheet Tab", "Sheet"),
+            ("Copilot", "Copilot"),
+            ("Ask Copilot", "Ask Copilot"),
+            ("Apply", "Apply"),
+        ];
+        
+        for (element_name, selector_name) in ui_elements_to_find {
+            let selector = Selector::Name(selector_name.to_string());
+            match excel_window.locator(selector)?.all(Some(Duration::from_millis(1000)), None).await {
+                Ok(elements) => {
+                    if !elements.is_empty() {
+                        context.push_str(&format!("✓ {}: {} element(s) found\n", element_name, elements.len()));
+                        
+                        // For important elements, get more details
+                        if element_name == "Copilot" || element_name == "Apply" {
+                            for (i, element) in elements.iter().take(3).enumerate() {
+                                let attrs = element.attributes();
+                                context.push_str(&format!("  - {}[{}]: role='{}', name='{}', label='{}'\n", 
+                                    element_name, i, 
+                                    attrs.role.as_str(),
+                                    attrs.name.as_deref().unwrap_or("N/A"),
+                                    attrs.label.as_deref().unwrap_or("N/A")
+                                ));
+                            }
+                        }
+                    } else {
+                        context.push_str(&format!("✗ {}: Not found\n", element_name));
+                    }
+                }
+                Err(_) => {
+                    context.push_str(&format!("✗ {}: Search failed\n", element_name));
+                }
+            }
+        }
+        
+        // Get active sheet information
+        context.push_str("\nActive Sheet Info:\n");
+        context.push_str("------------------\n");
+        
+        // Try to identify the current active cell
+        let name_box_selector = Selector::Name("Name Box".to_string());
+        match excel_window.locator(name_box_selector)?.first(Some(Duration::from_millis(1000))).await {
+            Ok(name_box) => {
+                match name_box.text(1) {
+                    Ok(active_cell) => {
+                        context.push_str(&format!("Active Cell: {}\n", active_cell.trim()));
+                    }
+                    Err(_) => {
+                        context.push_str("Active Cell: Could not determine\n");
+                    }
+                }
+            }
+            Err(_) => {
+                context.push_str("Active Cell: Name Box not accessible\n");
+            }
+        }
+        
+        context.push_str("\n==================\n");
+        
+        Ok(context)
+    }
+
+    /// Paste TSV data into Excel starting from a specific cell with safety checks
+    pub async fn paste_tsv_data(&self, start_cell: &str, tsv_data: &str, verify_safe: bool) -> Result<String> {
+        println!("Pasting TSV data starting from cell: {}", start_cell);
+        
+        let excel_window = self.get_excel_window().await?;
+        excel_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Parse TSV to understand the data dimensions
+        let lines: Vec<&str> = tsv_data.lines().collect();
+        let rows = lines.len();
+        let cols = lines.get(0).map(|line| line.split('\t').count()).unwrap_or(0);
+        
+        if rows == 0 || cols == 0 {
+            return Err(anyhow!("Invalid TSV data: {} rows, {} columns", rows, cols));
+        }
+        
+        println!("TSV data dimensions: {} rows × {} columns", rows, cols);
+        
+        // Calculate the target range
+        let start_pos = self.parse_cell_address(start_cell)?;
+        let end_col_letter = self.column_index_to_letter(start_pos.1 + cols - 1);
+        let end_row = start_pos.0 + rows - 1;
+        let target_range = format!("{}:{}{}", start_cell, end_col_letter, end_row);
+        
+        println!("Target range will be: {}", target_range);
+        
+        // Safety check: verify the target area if requested
+        if verify_safe {
+            println!("Performing safety check for range: {}", target_range);
+            
+            // Read the target range to check if it contains data
+            match self.read_range(start_cell, &format!("{}{}", end_col_letter, end_row)).await {
+                Ok(existing_range) => {
+                    let non_empty_cells = existing_range.values.iter()
+                        .flatten()
+                        .filter(|cell| !cell.trim().is_empty())
+                        .count();
+                    
+                    if non_empty_cells > 0 {
+                        return Err(anyhow!(
+                            "SAFETY CHECK FAILED: Target range {} contains {} non-empty cells. Use verify_safe=false to override, or choose a different starting cell.",
+                            target_range, non_empty_cells
+                        ));
+                    } else {
+                        println!("Safety check passed: target range is empty");
+                    }
+                }
+                Err(e) => {
+                    println!("Warning: Could not verify target range safety: {}", e);
+                }
+            }
+        }
+        
+        // Navigate to the starting cell
+        excel_window.press_key("{ctrl}g")?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        excel_window.type_text(start_cell, false)?;
+        excel_window.press_key("{enter}")?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Clear clipboard first
+        match self.clear_clipboard().await {
+            Ok(_) => println!("Clipboard cleared"),
+            Err(e) => println!("Warning: Could not clear clipboard: {}", e),
+        }
+        
+        // Copy TSV data to clipboard
+        self.set_clipboard_content(tsv_data).await?;
+        
+        // Paste the data
+        excel_window.press_key("{ctrl}v")?;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        
+        // Press Escape to clear any selection
+        excel_window.press_key("{escape}")?;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        
+        // Save the file
+        self.save_current_file().await?;
+        
+        // Verify the paste operation by reading a sample
+        let verification_result = match self.read_cell(start_cell).await {
+            Ok(cell) => {
+                let expected_first_value = lines.get(0)
+                    .and_then(|line| line.split('\t').next())
+                    .unwrap_or("");
+                
+                if cell.value.trim() == expected_first_value.trim() {
+                    "✓ Paste verification successful"
+                } else {
+                    "⚠ Paste verification: values may not match exactly"
+                }
+            }
+            Err(_) => "⚠ Could not verify paste operation"
+        };
+        
+        Ok(format!(
+            "SUCCESS: Pasted TSV data ({} rows × {} columns) into range {}. {}. Data includes: first cell '{}', last calculated cell '{}{}'",
+            rows, cols, target_range, verification_result,
+            lines.get(0).and_then(|line| line.split('\t').next()).unwrap_or(""),
+            end_col_letter, end_row
+        ))
+    }
+
+    /// Parse cell address like "A1" to (row_index, col_index) zero-based
+    fn parse_cell_address(&self, cell_address: &str) -> Result<(usize, usize)> {
+        let cell_address = cell_address.trim().to_uppercase();
+        
+        let mut col_str = String::new();
+        let mut row_str = String::new();
+        let mut found_digit = false;
+        
+        for ch in cell_address.chars() {
+            if ch.is_ascii_digit() {
+                found_digit = true;
+                row_str.push(ch);
+            } else if ch.is_ascii_alphabetic() && !found_digit {
+                col_str.push(ch);
+            } else {
+                return Err(anyhow!("Invalid cell address format: {}", cell_address));
+            }
+        }
+        
+        if col_str.is_empty() || row_str.is_empty() {
+            return Err(anyhow!("Invalid cell address: {}", cell_address));
+        }
+        
+        // Convert column letters to index (A=0, B=1, ..., Z=25, AA=26, etc.)
+        let mut col_index = 0;
+        for ch in col_str.chars() {
+            col_index = col_index * 26 + (ch as usize - 'A' as usize + 1);
+        }
+        col_index -= 1; // Convert to 0-based
+        
+        // Convert row to index (1-based to 0-based)
+        let row_index = row_str.parse::<usize>()? - 1;
+        
+        Ok((row_index, col_index))
+    }
+
+    /// Set clipboard content
+    async fn set_clipboard_content(&self, content: &str) -> Result<()> {
+        let mut clipboard = arboard::Clipboard::new()
+            .map_err(|e| anyhow!("Failed to access clipboard: {}", e))?;
+        
+        clipboard.set_text(content)
+            .map_err(|e| anyhow!("Failed to set clipboard content: {}", e))?;
+        
+        // Wait a moment for clipboard to be updated
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        
+        Ok(())
+    }
+
+    /// Clear clipboard content
+    async fn clear_clipboard(&self) -> Result<()> {
+        self.set_clipboard_content("").await
     }
 }
 

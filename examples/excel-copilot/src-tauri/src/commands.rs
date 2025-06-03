@@ -476,6 +476,28 @@ async fn execute_excel_tool_with_path(
             get_complete_excel_status_from_file(file_path).await
                 .map_err(|e| format!("Failed to get sheet overview: {}", e))?
         }
+        "get_excel_ui_context" => {
+            let ui_context = automation.get_excel_ui_context().await
+                .map_err(|e| format!("Failed to get Excel UI context: {}", e))?;
+                
+            format!("SUCCESS: Retrieved Excel UI context. {}", ui_context)
+        }
+        "paste_tsv_batch_data" => {
+            let start_cell = args["start_cell"].as_str()
+                .ok_or("Missing or invalid start_cell parameter")?;
+            let tsv_data = args["tsv_data"].as_str()
+                .ok_or("Missing or invalid tsv_data parameter")?;
+            let verify_safe = args["verify_safe"].as_bool().unwrap_or(true);
+            
+            let result = automation.paste_tsv_data(start_cell, tsv_data, verify_safe).await
+                .map_err(|e| format!("Failed to paste TSV data: {}", e))?;
+                
+            // Save the file after batch paste
+            automation.save_current_file().await
+                .map_err(|e| format!("Failed to save file after TSV paste: {}", e))?;
+                
+            format!("SUCCESS: {}", result)
+        }
         "send_request_to_excel_copilot" => {
             let request = args["request"].as_str()
                 .ok_or("Missing or invalid request parameter")?;
@@ -534,7 +556,7 @@ async fn execute_excel_tool_with_path(
             format!("SUCCESS: Excel Copilot applied conditional formatting to range {} with condition '{}'. Result: {}", range, condition, result)
         }
         _ => {
-            return Err(format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula, send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot", function_name).into());
+            return Err(format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, get_excel_ui_context, paste_tsv_batch_data, set_excel_formula, send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot", function_name).into());
         }
     };
 
