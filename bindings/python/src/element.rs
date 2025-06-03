@@ -391,6 +391,15 @@ impl UIElement {
             .map_err(|e| automation_error_to_pyerr(e))
     }
 
+    #[pyo3(name = "process_id", text_signature = "($self)")]
+    /// Get the process ID of the application containing this element.
+    /// 
+    /// Returns:
+    ///     int: The process ID.
+    pub fn process_id(&self) -> PyResult<u32> {
+        self.inner.process_id().map_err(|e| automation_error_to_pyerr(e))
+    }
+
     #[pyo3(name = "highlight", signature = (color=None, duration_ms=None))]
     #[pyo3(text_signature = "($self, color, duration_ms)")]
     /// Highlights the element with a colored border.

@@ -352,4 +352,12 @@ impl Element {
             })
             .map_err(map_error)
     }
+
+    /// Get the process ID of the application containing this element.
+    /// 
+    /// @returns {number} The process ID.
+    #[napi]
+    pub fn process_id(&self) -> napi::Result<u32> {
+        self.inner.process_id().map_err(map_error)
+    }
 } 
