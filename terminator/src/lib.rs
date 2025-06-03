@@ -153,7 +153,63 @@ impl Desktop {
         })
     }
 
-    #[instrument(skip(self))]
+    /// Enable or disable background cache warming for improved performance
+    /// 
+    /// This feature spawns a background thread that periodically builds UI trees for
+    /// frequently used applications, keeping the native platform cache warm.
+    /// This can significantly improve performance when your recorder needs to fetch
+    /// full UI trees for applications.
+    /// 
+    /// # Arguments
+    /// * `enable` - Whether to enable (true) or disable (false) the cache warmer
+    /// * `interval_seconds` - How often to refresh the cache (default: 30 seconds)
+    /// * `max_apps_to_cache` - Maximum number of recent apps to keep cached (default: 10)
+    /// 
+    /// # Example
+    /// ```no_run
+    /// use terminator::Desktop;
+    /// 
+    /// let desktop = Desktop::new(false, false)?;
+    /// 
+    /// // Enable cache warming every 60 seconds for up to 15 apps
+    /// desktop.enable_background_cache_warmer(true, Some(60), Some(15))?;
+    /// 
+    /// // Later, disable cache warming
+    /// desktop.enable_background_cache_warmer(false, None, None)?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    pub fn enable_background_cache_warmer(
+        &self,
+        enable: bool,
+        interval_seconds: Option<u64>,
+        max_apps_to_cache: Option<usize>,
+    ) -> Result<(), AutomationError> {
+        self.engine.enable_background_cache_warmer(enable, interval_seconds, max_apps_to_cache)
+    }
+
+    /// Check if the background cache warmer is currently running
+    /// 
+    /// # Returns
+    /// `true` if the cache warmer is active, `false` otherwise
+    pub fn is_cache_warmer_enabled(&self) -> bool {
+        self.engine.is_cache_warmer_enabled()
+    }
+
+    /// Returns the root element of the desktop
+    /// 
+    /// The root element represents the desktop and provides access to all UI elements
+    /// currently visible on the screen.
+    /// 
+    /// # Examples
+    /// 
+    /// ```no_run
+    /// use terminator::Desktop;
+    /// 
+    /// let desktop = Desktop::new(false, false)?;
+    /// let root = desktop.root();
+    /// println!("Desktop root: {:?}", root.role());
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
     pub fn root(&self) -> UIElement {
         let start = Instant::now();
         info!("Getting root element");

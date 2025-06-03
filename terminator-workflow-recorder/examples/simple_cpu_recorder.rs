@@ -1,11 +1,10 @@
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use sysinfo::{System, Process};
+use sysinfo::{System};
 use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::time::interval;
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct PerformanceSnapshot {
@@ -85,7 +84,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut recorder = WorkflowRecorder::new("cpu_memory_test_workflow".to_string(), config);
     
     // Performance monitoring setup
-    let mut system = System::new_all();
     let running = Arc::new(AtomicBool::new(true));
     let performance_data = Arc::new(Mutex::new(Vec::<PerformanceSnapshot>::new()));
     let session_start = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -140,8 +138,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
             
-            // Try to detect foreground app (simplified - would need platform-specific code for accuracy)
-            let foreground_app = active_processes.first().map(|p| p.name.clone());
             
             // Get current process name for filtering
             let current_process_name = std::env::current_exe()

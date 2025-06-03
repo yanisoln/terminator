@@ -2963,4 +2963,26 @@ impl AccessibilityEngine for MacOSEngine {
 
         Ok(monitor_name)
     }
+
+    /// Enable downcasting to concrete engine types
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    /// Enable or disable background cache warming for improved performance (macOS placeholder)
+    fn enable_background_cache_warmer(
+        &self,
+        _enable: bool,
+        _interval_seconds: Option<u64>,
+        _max_apps_to_cache: Option<usize>,
+    ) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "Background cache warming is not yet implemented for macOS".to_string()
+        ))
+    }
+
+    /// Check if the background cache warmer is currently running (macOS placeholder)
+    fn is_cache_warmer_enabled(&self) -> bool {
+        false
+    }
 }

@@ -464,6 +464,16 @@ pub struct EventMetadata {
 }
 
 
+// implement empty() constructor 
+impl EventMetadata {
+    pub fn empty() -> Self {
+        Self { ui_element: None }
+    }
+}
+
+
+
+
 /// Serializable version of UIElement for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUIElement {
@@ -792,7 +802,6 @@ impl From<&RecordedWorkflow> for SerializableRecordedWorkflow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
 
   
     #[test]
