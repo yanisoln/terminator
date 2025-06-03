@@ -24,6 +24,12 @@ base64 = { workspace = true }
 name = "terminator"
 path = "src/lib.rs"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+atspi = { version = "0.26.3", features = ["tokio", "proxies-tokio", "zbus", "connection"] }
+zbus = { version = "5.5", default-features = false }
+atspi-common = { version = "0.10.1", default-features = false }
+atspi-proxies = { version = "0.10.2", default-features = false }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 accessibility-sys = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
 accessibility = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
