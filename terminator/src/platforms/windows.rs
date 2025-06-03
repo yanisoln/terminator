@@ -389,7 +389,6 @@ impl WindowsEngine {
             config: TreeBuildingConfig {
                 timeout_per_operation_ms: 100, // Short timeout for background operation
                 yield_every_n_elements: 20,    // Yield frequently to not block
-                prefer_cached_calls: true,     // Always prefer cached calls
                 batch_size: 10,               // Smaller batches for background work
             },
             elements_processed: 0,
@@ -1903,7 +1902,6 @@ impl AccessibilityEngine for WindowsEngine {
             config: TreeBuildingConfig {
                 timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
                 yield_every_n_elements: 50,    // Yield more frequently for responsiveness
-                prefer_cached_calls: true,      // Prioritize cached API calls for maximum performance
                 batch_size: 50,                // Larger batches for efficiency
             },
             elements_processed: 0,
@@ -2037,7 +2035,6 @@ impl AccessibilityEngine for WindowsEngine {
             config: TreeBuildingConfig {
                 timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
                 yield_every_n_elements: 50,    // Yield more frequently for responsiveness
-                prefer_cached_calls: true,      // Prioritize cached API calls for maximum performance
                 batch_size: 50,                // Larger batches for efficiency
             },
             elements_processed: 0,
@@ -2091,7 +2088,6 @@ impl AccessibilityEngine for WindowsEngine {
 struct TreeBuildingConfig {
     timeout_per_operation_ms: u64,
     yield_every_n_elements: usize,
-    prefer_cached_calls: bool,
     batch_size: usize,
 }
 
@@ -2145,15 +2141,15 @@ fn build_ui_node_tree_cached_first(
         thread::sleep(Duration::from_millis(1));
     }
     
-    // Get element attributes with caching preference
-    let attributes = get_element_attributes_cached_first(element, context)?;
+    // Get element attributes - use standard method for safety
+    let attributes = element.attributes();
     
     let mut children_nodes = Vec::new();
     
-    // Get children with caching strategy
-    match get_element_children_cached_first(element, context) {
+    // Get children with safe strategy
+    match get_element_children_safe(element, context) {
         Ok(children_elements) => {
-            debug!("Processing {} children at depth {} (using caching strategy)", children_elements.len(), current_depth);
+            debug!("Processing {} children at depth {} (using safe strategy)", children_elements.len(), current_depth);
             
             // Process children in efficient batches
             for batch in children_elements.chunks(context.config.batch_size) {
@@ -2186,160 +2182,21 @@ fn build_ui_node_tree_cached_first(
     })
 }
 
-// Get element attributes with caching strategy
-fn get_element_attributes_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<UIElementAttributes, AutomationError> {
-    if context.config.prefer_cached_calls {
-        // Try to get cached attributes first (much faster)
-        match get_cached_attributes_fast(element) {
-            Ok(attributes) => {
-                context.increment_cache_hit();
-                return Ok(attributes);
-            }
-            Err(_) => {
-                // Fallback to regular attributes
-                context.increment_fallback();
-            }
-        }
-    }
-    
-    // Fallback: try regular call first, then timeout version
-    match element.attributes() {
-        attributes => {
-            // Regular attributes call succeeded
-            Ok(attributes)
-        }
-    }
-}
-
-// Fast cached attributes extraction
-fn get_cached_attributes_fast(element: &UIElement) -> Result<UIElementAttributes, AutomationError> {
-    // Try to get the underlying Windows element for direct cached access
-    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
-        let mut properties = HashMap::new();
-        
-        // Use cached getters when available (much faster than live calls)
-        let role = win_element.element.0.get_cached_control_type()
-            .or_else(|_| win_element.element.0.get_control_type())
-            .map(|ct| ct.to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-            
-        let name = win_element.element.0.get_cached_name()
-            .or_else(|_| win_element.element.0.get_name())
-            .ok()
-            .filter(|s| !s.is_empty());
-            
-        let automation_id = win_element.element.0.get_cached_automation_id()
-            .or_else(|_| win_element.element.0.get_automation_id())
-            .ok()
-            .filter(|s| !s.is_empty());
-        
-        let help_text = win_element.element.0.get_cached_help_text()
-            .or_else(|_| win_element.element.0.get_help_text())
-            .ok()
-            .filter(|s| !s.is_empty());
-        
-        // Get value with cached preference
-        let value = win_element.element.0.get_cached_property_value(UIProperty::ValueValue)
-            .or_else(|_| win_element.element.0.get_property_value(UIProperty::ValueValue))
-            .ok()
-            .and_then(|v| v.get_string().ok())
-            .filter(|s| !s.is_empty());
-        
-        // Get label (labeled-by element's name) with cached preference
-        let label = win_element.element.0.get_cached_labeled_by()
-            .or_else(|_| win_element.element.0.get_labeled_by())
-            .ok()
-            .and_then(|labeled_element| {
-                labeled_element.get_cached_name()
-                    .or_else(|_| labeled_element.get_name())
-                    .ok()
-                    .filter(|s| !s.is_empty())
-            });
-        
-        // Get keyboard focusable with cached preference
-        let is_keyboard_focusable = win_element.element.0.get_cached_property_value(UIProperty::IsKeyboardFocusable)
-            .or_else(|_| win_element.element.0.get_property_value(UIProperty::IsKeyboardFocusable))
-            .ok()
-            .and_then(|v| v.try_into().ok());
-        
-        // Add automation ID to properties if available
-        if let Some(aid) = automation_id {
-            properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
-        }
-        
-        // Add help text to properties if available  
-        if let Some(ref ht) = help_text {
-            properties.insert("HelpText".to_string(), Some(serde_json::Value::String(ht.clone())));
-        }
-        
-        return Ok(UIElementAttributes {
-            role,
-            name,
-            label,
-            value,
-            description: help_text,
-            properties,
-            is_keyboard_focusable,
-        });
-    }
-    
-    Err(AutomationError::PlatformError("Cannot access cached attributes".to_string()))
-}
-
-// Get element children with caching strategy  
-fn get_element_children_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<Vec<UIElement>, AutomationError> {
-    if context.config.prefer_cached_calls {
-        // Try cached children first (much faster)
-        match get_cached_children_fast(element) {
-            Ok(children) => {
-                context.increment_cache_hit();
-                debug!("Got {} cached children", children.len());
-                return Ok(children);
-            }
-            Err(_) => {
-                context.increment_fallback();
-                debug!("Cache miss, falling back to live children enumeration");
-            }
-        }
-    }
-    
-    // Fallback: try regular children call first, then timeout version if needed
+// Safe element children access
+fn get_element_children_safe(element: &UIElement, context: &mut TreeBuildingContext) -> Result<Vec<UIElement>, AutomationError> {
+    // Primarily use the standard children method
     match element.children() {
-        Ok(children) => Ok(children),
+        Ok(children) => {
+            context.increment_cache_hit(); // Count this as successful
+            Ok(children)
+        },
         Err(_) => {
+            context.increment_fallback();
             // Only use timeout version if regular call fails
             get_element_children_with_timeout(element, Duration::from_millis(context.config.timeout_per_operation_ms))
         }
     }
 }
-
-// Fast cached children extraction
-fn get_cached_children_fast(element: &UIElement) -> Result<Vec<UIElement>, AutomationError> {
-    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
-        // Try cached children first
-        match win_element.element.0.get_cached_children() {
-            Ok(cached_children) => {
-                debug!("Found {} cached children", cached_children.len());
-                let ui_children = cached_children
-                    .into_iter()
-                    .map(|ele| {
-                        UIElement::new(Box::new(WindowsUIElement {
-                            element: ThreadSafeWinUIElement(Arc::new(ele)),
-                        }))
-                    })
-                    .collect();
-                return Ok(ui_children);
-            }
-            Err(_) => {
-                // Cache miss, will fallback
-            }
-        }
-    }
-    
-    Err(AutomationError::PlatformError("Cannot access cached children".to_string()))
-}
-
-
 
 // Helper function to get element children with timeout
 fn get_element_children_with_timeout(element: &UIElement, timeout: Duration) -> Result<Vec<UIElement>, AutomationError> {
@@ -2395,8 +2252,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn role(&self) -> String {
-        self.element.0.get_cached_control_type()
-            .or_else(|_| self.element.0.get_control_type())
+        self.element.0.get_control_type()
             .map(|ct| ct.to_string())
             .unwrap_or_else(|_| "unknown".to_string())
     }
@@ -2426,17 +2282,8 @@ impl UIElementImpl for WindowsUIElement {
             None
         }
         
-        // Try cached properties first, fallback to live properties
+        // Use standard property access (not mixed cached/live)
         for property in property_list {
-            // Try cached version first
-            if let Ok(value) = self.element.0.get_cached_property_value(property) {
-                if let Some(formatted_value) = format_property_value(&value) {
-                    properties.insert(format!("{:?}", property), Some(formatted_value));
-                    continue; // Skip live call since cached worked
-                }
-            }
-            
-            // Fallback to live property call
             if let Ok(value) = self.element.0.get_property_value(property) {
                 if let Some(formatted_value) = format_property_value(&value) {
                     properties.insert(format!("{:?}", property), Some(formatted_value));
@@ -2449,54 +2296,41 @@ impl UIElementImpl for WindowsUIElement {
             s.filter(|s| !s.is_empty())
         }
         
-        // Get role - try cached first
-        let role = self.element.0.get_cached_control_type()
-            .or_else(|_| self.element.0.get_control_type())
+        // Get role
+        let role = self.element.0.get_control_type()
             .map(|ct| ct.to_string())
             .unwrap_or_else(|_| "unknown".to_string());
         
-        // Get name - try cached first  
+        // Get name
         let name = filter_empty_string(
-            self.element.0.get_cached_name()
-                .or_else(|_| self.element.0.get_name())
-                .ok()
+            self.element.0.get_name().ok()
         );
         
-        // Get label - try cached first
-        let label = self.element.0.get_cached_labeled_by()
-            .or_else(|_| self.element.0.get_labeled_by())
+        // Get label
+        let label = self.element.0.get_labeled_by()
             .ok()
-            .and_then(|e| filter_empty_string(
-                e.get_cached_name()
-                    .or_else(|_| e.get_name())
-                    .ok()
-            ));
+            .and_then(|e| filter_empty_string(e.get_name().ok()));
         
-        // Get value - try cached first
-        let value = self.element.0.get_cached_property_value(UIProperty::ValueValue)
-            .or_else(|_| self.element.0.get_property_value(UIProperty::ValueValue))
+        // Get value
+        let value = self.element.0.get_property_value(UIProperty::ValueValue)
             .ok()
             .and_then(|v| filter_empty_string(v.get_string().ok()));
         
-        // Get description - try cached first
+        // Get description
         let description = filter_empty_string(
-            self.element.0.get_cached_help_text()
-                .or_else(|_| self.element.0.get_help_text())
-                .ok()
+            self.element.0.get_help_text().ok()
         );
         
-        // Get keyboard focusable - try cached first
-        let is_keyboard_focusable = self.element.0.get_cached_property_value(UIProperty::IsKeyboardFocusable)
-            .or_else(|_| self.element.0.get_property_value(UIProperty::IsKeyboardFocusable))
+        // Get keyboard focusable
+        let is_keyboard_focusable = self.element.0.get_property_value(UIProperty::IsKeyboardFocusable)
             .ok()
             .and_then(|v| v.try_into().ok());
         
         // Add automation ID to properties if available
-        if let Some(aid) = self.element.0.get_cached_automation_id()
-            .or_else(|_| self.element.0.get_automation_id())
-            .ok()
-            .filter(|s| !s.is_empty()) {
-            properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
+        if let Ok(aid) = self.element.0.get_automation_id() {
+            if !aid.is_empty() {
+                properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
+            }
         }
         
         // Add help text to properties if available  
@@ -2595,8 +2429,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError> {
-        let rect = self.element.0.get_cached_bounding_rectangle()
-            .or_else(|_| self.element.0.get_bounding_rectangle())
+        let rect = self.element.0.get_bounding_rectangle()
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
         Ok((
             rect.get_left() as f64,
@@ -2897,60 +2730,19 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_enabled(&self) -> Result<bool, AutomationError> {
-        // Try cached version first
-        self.element.0.get_cached_property_value(UIProperty::IsEnabled)
-            .and_then(|v| v.try_into().map_err(|e| format!("Failed to convert to bool: {:?}", e).into()))
-            .or_else(|_| {
-                // Fallback to live call
-                self.element.0.is_enabled()
-            })
+        self.element.0.is_enabled()
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
     }
 
     fn is_visible(&self) -> Result<bool, AutomationError> {
-        // Try cached version first - offscreen means invisible
-        match self.element.0.get_cached_property_value(UIProperty::IsOffscreen) {
-            Ok(variant) => {
-                let is_offscreen: Result<bool, _> = variant.try_into();
-                match is_offscreen {
-                    Ok(is_offscreen) => Ok(!is_offscreen), // Invert since offscreen means NOT visible
-                    Err(_) => {
-                        // Fallback to live call
-                        self.element.0.is_offscreen()
-                            .map(|is_offscreen| !is_offscreen)
-                            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
-                    }
-                }
-            }
-            Err(_) => {
-                // Fallback to live call
-                self.element.0.is_offscreen()
-                    .map(|is_offscreen| !is_offscreen)
-                    .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
-            }
-        }
+        self.element.0.is_offscreen()
+            .map(|is_offscreen| !is_offscreen)
+            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
-        // Try cached version first
-        match self.element.0.get_cached_property_value(UIProperty::HasKeyboardFocus) {
-            Ok(variant) => {
-                let has_focus: Result<bool, _> = variant.try_into();
-                match has_focus {
-                    Ok(has_focus) => Ok(has_focus),
-                    Err(_) => {
-                        // Fallback to live call
-                        self.element.0.has_keyboard_focus()
-                            .map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
-                    }
-                }
-            }
-            Err(_) => {
-                // Fallback to live call
-                self.element.0.has_keyboard_focus()
-                    .map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
-            }
-        }
+        self.element.0.has_keyboard_focus()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
     }
 
     fn perform_action(&self, action: &str) -> Result<(), AutomationError> {
@@ -3051,9 +2843,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
-        // Try cached version first
-        let variant = self.element.0.get_cached_property_value(UIProperty::IsKeyboardFocusable)
-            .or_else(|_| self.element.0.get_property_value(UIProperty::IsKeyboardFocusable))
+        let variant = self.element.0.get_property_value(UIProperty::IsKeyboardFocusable)
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         variant.try_into().map_err(|e| AutomationError::PlatformError(format!("Failed to convert IsKeyboardFocusable to bool: {:?}", e)))
     }
