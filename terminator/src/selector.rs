@@ -53,6 +53,12 @@ impl From<&str> for Selector {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::ClassName(parts[1].to_string())
             }
+            _ if s.to_lowercase().starts_with("nativeid:") => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::NativeId(parts[1].trim().to_string())
+            }
+            _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
+            _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ if s.contains(':') => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {
@@ -60,14 +66,8 @@ impl From<&str> for Selector {
                     name: Some(parts[1].to_string()),
                 }
             }
-            _ if s.to_lowercase().starts_with("nativeid:") => {
-                let parts: Vec<&str> = s.splitn(2, ':').collect();
-                Selector::NativeId(parts[1].trim().to_string())
-            }
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
-            _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
-            _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ => Selector::Name(s.to_string()),
         }
     }
