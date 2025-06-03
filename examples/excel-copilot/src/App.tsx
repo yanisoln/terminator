@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
 
@@ -30,6 +30,7 @@ function App() {
   const [status, setStatus] = useState('ready');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [attachedPdfs, setAttachedPdfs] = useState<string[]>([]);
+  const [copilotEnabled, setCopilotEnabled] = useState(false);
 
   useEffect(() => {
     loadChatHistory();
@@ -58,7 +59,7 @@ function App() {
     try {
       const result = await invoke<string>('create_new_excel');
       setCurrentFile('new workbook');
-      showStatus('excel file created');
+      showStatus(`excel file created: ${result}`);
     } catch (error) {
       console.error('error creating new file:', error);
       showStatus('failed to create new file');
@@ -86,7 +87,10 @@ function App() {
     
     setIsLoading(true);
     try {
-      await invoke('setup_gemini_client', { apiKey: geminiApiKey });
+      await invoke('setup_gemini_client', { 
+        apiKey: geminiApiKey, 
+        copilotEnabled: copilotEnabled 
+      });
       setIsGeminiConfigured(true);
       setShowApiKeyInput(false);
       showStatus('gemini configured successfully');
@@ -143,7 +147,7 @@ function App() {
       clearInterval(pollForUpdates);
       await loadChatHistory();
       
-      showStatus('message sent');
+      showStatus(`message sent: ${response}`);
     } catch (error) {
       console.error('error sending message:', error);
       showStatus(`error: ${error}`);
@@ -188,6 +192,35 @@ function App() {
     } catch (error) {
       console.error('excel interaction test failed:', error);
       showStatus(`excel test failed: ${error}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const showLocaleInfo = async () => {
+    setIsLoading(true);
+    try {
+      const localeInfo = await invoke<string>('get_locale_info');
+      showStatus(`locale info: ${localeInfo}`);
+      
+      // Add a message to chat to show locale info
+      const userMessage: ChatMessage = {
+        role: 'user',
+        content: '🌍 System Locale Information Request',
+        timestamp: Date.now()
+      };
+      
+      const assistantMessage: ChatMessage = {
+        role: 'model',
+        content: `📍 **System Locale Information:**\n\n${localeInfo}\n\n*This affects how numbers are formatted when writing to Excel. The system automatically normalizes number formats according to your locale before sending them to Excel.*`,
+        timestamp: Date.now()
+      };
+      
+      setChatMessages(prev => [...prev, userMessage, assistantMessage]);
+      
+    } catch (error) {
+      console.error('failed to get locale info:', error);
+      showStatus(`locale info failed: ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -258,11 +291,56 @@ function App() {
               >
                 test excel
               </button>
+              <button 
+                className="btn btn-outline" 
+                onClick={showLocaleInfo}
+                disabled={isLoading}
+                title="show system locale and number formatting info"
+              >
+                locale info
+              </button>
             </div>
             {currentFile && (
               <div className="current-file">
                 <span className="file-label">current file:</span>
                 <span className="file-name">{currentFile}</span>
+              </div>
+            )}
+          </section>
+
+          <section className="copilot-section">
+            <h3 className="section-title">copilot settings</h3>
+            <div className="copilot-toggle">
+              <label className="toggle-label">
+                <input
+                  type="checkbox"
+                  checked={copilotEnabled}
+                  onChange={(e) => setCopilotEnabled(e.target.checked)}
+                  className="toggle-input"
+                />
+                <span className="toggle-slider"></span>
+                <span className="toggle-text">Enable MS Excel Copilot</span>
+              </label>
+            </div>
+            
+            {copilotEnabled && (
+              <div className="copilot-requirements">
+                <div className="requirements-header">⚠️ Requirements:</div>
+                <ul className="requirements-list">
+                  <li>📁 File must be saved in <strong>OneDrive</strong></li>
+                  <li>📂 Use <strong>"Open"</strong> (not "New") to select existing OneDrive file</li>
+                  <li>📊 Data range needs <strong>≥3 rows, ≥2 columns</strong></li>
+                  <li>🏷️ <strong>Headers required</strong> in first row</li>
+                </ul>
+                <div className="requirements-note">
+                  💡 Copilot only works with OneDrive documents that have properly structured data with headers.
+                </div>
+              </div>
+            )}
+            
+            {copilotEnabled && !currentFile.includes('OneDrive') && currentFile && (
+              <div className="copilot-warning">
+                ⚠️ Current file may not be in OneDrive. Copilot features might not work.
               </div>
             )}
           </section>

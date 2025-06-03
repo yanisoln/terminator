@@ -4,9 +4,10 @@ use std::sync::Mutex;
 use tauri::{State, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::excel::{ExcelWorkbook, ExcelSheet, CellPosition, CellRange};
+use crate::excel::{ExcelWorkbook, ExcelSheet};
 use crate::gemini::GeminiClient;
 use crate::excel_interaction::{get_excel_automation};
+use crate::locale_utils::{normalize_number_for_excel, get_locale_info as get_system_locale_info};
 use anyhow::Result;
 use serde_json::Value;
 
@@ -245,14 +246,24 @@ pub async fn get_excel_content(
 pub async fn setup_gemini_client(
     state: State<'_, AppStateStruct>,
     api_key: String,
+    copilot_enabled: Option<bool>,
 ) -> Result<String, String> {
     let mut gemini_state = state.gemini_client.lock().unwrap();
     
-    let client = GeminiClient::new(api_key)
+    let use_copilot = copilot_enabled.unwrap_or(false);
+    
+    let client = GeminiClient::new(api_key, use_copilot)
         .map_err(|e| format!("Error creating Gemini client: {}", e))?;
     
     *gemini_state = Some(client);
-    Ok("✅ Gemini client configured successfully".to_string())
+    
+    let status_msg = if use_copilot {
+        "✅ Gemini client configured successfully with Copilot support"
+    } else {
+        "✅ Gemini client configured successfully (Copilot disabled)"
+    };
+    
+    Ok(status_msg.to_string())
 }
 
 /// Send a chat message to Gemini with tool calling support
@@ -387,7 +398,17 @@ async fn execute_excel_tool_with_path(
             let value = args["value"].as_str()
                 .ok_or("Missing or invalid value parameter")?;
             
-            automation.write_cell(cell_address, value).await
+            // Normalize the value if it looks like a number
+            let normalized_value = if value.chars().any(|c| c.is_ascii_digit()) && 
+                                     (value.contains('.') || value.contains(',') || value.contains('+') || value.contains('-')) {
+                let normalized = normalize_number_for_excel(value);
+                println!("Tool number normalization: '{}' -> '{}'", value, normalized);
+                normalized
+            } else {
+                value.to_string()
+            };
+            
+            automation.write_cell(cell_address, &normalized_value).await
                 .map_err(|e| format!("Failed to write cell: {}", e))?;
                 
             // Save the file after writing
@@ -398,8 +419,13 @@ async fn execute_excel_tool_with_path(
             let verification = automation.read_cell(cell_address).await
                 .map_err(|e| format!("Failed to verify write: {}", e))?;
             
-            format!("SUCCESS: Wrote '{}' to cell {}. VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified.", 
-                      value, cell_address, verification.address, verification.value)
+            if normalized_value != value {
+                format!("SUCCESS: Wrote '{}' to cell {} (normalized from '{}'). VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified with locale-aware number formatting.", 
+                          normalized_value, cell_address, value, verification.address, verification.value)
+            } else {
+                format!("SUCCESS: Wrote '{}' to cell {}. VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified.", 
+                          normalized_value, cell_address, verification.address, verification.value)
+            }
         }
         "read_excel_range" => {
             let start_cell = args["start_cell"].as_str()
@@ -450,8 +476,65 @@ async fn execute_excel_tool_with_path(
             get_complete_excel_status_from_file(file_path).await
                 .map_err(|e| format!("Failed to get sheet overview: {}", e))?
         }
+        "send_request_to_excel_copilot" => {
+            let request = args["request"].as_str()
+                .ok_or("Missing or invalid request parameter")?;
+            
+            let result = automation.send_request_to_excel_copilot(request).await
+                .map_err(|e| format!("Failed to send request to Excel Copilot: {}", e))?;
+                
+            // Save the file after Copilot operation
+            automation.save_current_file().await
+                .map_err(|e| format!("Failed to save file after Copilot operation: {}", e))?;
+                
+            format!("SUCCESS: Excel Copilot executed '{}'. Result: {}", request, result)
+        }
+        "format_cells_with_copilot" => {
+            let range = args["range"].as_str()
+                .ok_or("Missing or invalid range parameter")?;
+            let format_description = args["format_description"].as_str()
+                .ok_or("Missing or invalid format_description parameter")?;
+            
+            let result = automation.format_cells_with_copilot(range, format_description).await
+                .map_err(|e| format!("Failed to format cells with Copilot: {}", e))?;
+                
+            // Save the file after formatting
+            automation.save_current_file().await
+                .map_err(|e| format!("Failed to save file after formatting: {}", e))?;
+                
+            format!("SUCCESS: Excel Copilot formatted range {} with '{}'. Result: {}", range, format_description, result)
+        }
+        "create_chart_with_copilot" => {
+            let data_range = args["data_range"].as_str()
+                .ok_or("Missing or invalid data_range parameter")?;
+            let chart_type = args["chart_type"].as_str()
+                .ok_or("Missing or invalid chart_type parameter")?;
+            
+            let result = automation.create_chart_with_copilot(data_range, chart_type).await
+                .map_err(|e| format!("Failed to create chart with Copilot: {}", e))?;
+                
+            automation.save_current_file().await
+                .map_err(|e| format!("Failed to save file after chart creation: {}", e))?;
+                
+            format!("SUCCESS: Excel Copilot created {} chart from range {}. Result: {}", chart_type, data_range, result)
+        }
+        "apply_conditional_formatting_with_copilot" => {
+            let range = args["range"].as_str()
+                .ok_or("Missing or invalid range parameter")?;
+            let condition = args["condition"].as_str()
+                .ok_or("Missing or invalid condition parameter")?;
+            
+            let result = automation.apply_conditional_formatting_with_copilot(range, condition).await
+                .map_err(|e| format!("Failed to apply conditional formatting with Copilot: {}", e))?;
+                
+            // Save the file after conditional formatting
+            automation.save_current_file().await
+                .map_err(|e| format!("Failed to save file after conditional formatting: {}", e))?;
+                
+            format!("SUCCESS: Excel Copilot applied conditional formatting to range {} with condition '{}'. Result: {}", range, condition, result)
+        }
         _ => {
-            return Err(format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula", function_name).into());
+            return Err(format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula, send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot", function_name).into());
         }
     };
 
@@ -711,10 +794,20 @@ pub async fn excel_write_cell(
     let automation = get_excel_automation().await
         .map_err(|e| format!("Excel automation error: {}", e))?;
     
-    automation.write_cell(&cell_address, &value).await
+    // Normalize the value if it looks like a number
+    let normalized_value = if value.chars().any(|c| c.is_ascii_digit()) && 
+                             (value.contains('.') || value.contains(',') || value.contains('+') || value.contains('-')) {
+        let normalized = normalize_number_for_excel(&value);
+        println!("Number normalization: '{}' -> '{}'", value, normalized);
+        normalized
+    } else {
+        value.clone()
+    };
+    
+    automation.write_cell(&cell_address, &normalized_value).await
         .map_err(|e| format!("Error writing to cell: {}", e))?;
     
-    Ok(format!("Written '{}' to cell {}", value, cell_address))
+    Ok(format!("Written '{}' to cell {} (original: '{}')", normalized_value, cell_address, value))
 }
 
 #[tauri::command]
@@ -743,4 +836,10 @@ pub async fn excel_set_formula(
         .map_err(|e| format!("Error setting formula: {}", e))?;
     
     Ok(format!("Formula '{}' set in cell {}", formula, cell_address))
+}
+
+/// Get system locale information for number formatting
+#[tauri::command]
+pub async fn get_locale_info() -> Result<String, String> {
+    Ok(get_system_locale_info())
 } 

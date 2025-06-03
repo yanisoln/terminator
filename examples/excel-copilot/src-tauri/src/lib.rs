@@ -7,12 +7,13 @@ mod excel;
 mod excel_interaction;
 mod gemini;
 mod commands;
+mod locale_utils;
 
 use commands::{
     open_excel_file, create_new_excel, save_excel_file, get_excel_content,
     setup_gemini_client, chat_with_gemini, chat_with_gemini_pdf, get_chat_history, clear_chat_history,
     excel_read_cell, excel_write_cell, excel_read_range, excel_set_formula,
-    select_pdf_files,
+    select_pdf_files, get_locale_info,
     AppStateStruct
 };
 
@@ -39,7 +40,8 @@ pub fn run() {
             excel_read_cell,
             excel_write_cell,
             excel_read_range,
-            excel_set_formula
+            excel_set_formula,
+            get_locale_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -421,6 +421,354 @@ impl ExcelAutomation {
         }
         result
     }
+
+    /// Send a request to Microsoft Excel Copilot with proper selection sequence
+    pub async fn send_request_to_excel_copilot(&self, request: &str) -> Result<String> {
+        println!("Sending request to Excel Copilot: {}", request);
+        
+        let excel_window = self.get_excel_window().await?;
+        
+        // Ensure Excel window is focused and active
+        excel_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Step 1: Find and click the Copilot button
+        let copilot_selector = Selector::Name("Copilot".to_string());
+        match excel_window.locator(copilot_selector)?.first(Some(Duration::from_millis(3000))).await {
+            Ok(copilot_button) => {
+                println!("Found Excel Copilot button, clicking it");
+                copilot_button.click()?;
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+                
+                // Step 2: Find and click "Ask Copilot" button
+                let ask_copilot_selector = Selector::Name("Ask Copilot".to_string());
+                match excel_window.locator(ask_copilot_selector)?.first(Some(Duration::from_millis(3000))).await {
+                    Ok(ask_copilot_button) => {
+                        println!("Found 'Ask Copilot' button, clicking it");
+                        ask_copilot_button.click()?;
+                        
+                        // Step 3: Wait ~5s for Copilot to load
+                        println!("Waiting for Copilot to load...");
+                        tokio::time::sleep(Duration::from_millis(5000)).await;
+                        
+                        // Step 4: Type the request
+                        println!("Typing request to Copilot: {}", request);
+                        excel_window.type_text(request, false)?;
+                        
+                        // Step 5: Send the request (Enter key)
+                        excel_window.press_key("{enter}")?;
+                        tokio::time::sleep(Duration::from_millis(3000)).await;
+                        
+                        // Step 6: Check for Apply button and click it if present
+                        let apply_result = self.check_and_apply_copilot_changes(&excel_window).await?;
+                        
+                        Ok(format!("Copilot request '{}' sent successfully. {}", request, apply_result))
+                    }
+                    Err(_) => {
+                        println!("'Ask Copilot' button not found, trying to type request directly");
+                        
+                        // Wait a bit and try to type the request directly
+                        tokio::time::sleep(Duration::from_millis(2000)).await;
+                        excel_window.type_text(request, false)?;
+                        excel_window.press_key("{enter}")?;
+                        tokio::time::sleep(Duration::from_millis(3000)).await;
+                        
+                        let apply_result = self.check_and_apply_copilot_changes(&excel_window).await?;
+                        Ok(format!("Copilot request '{}' sent (fallback method). {}", request, apply_result))
+                    }
+                }
+            }
+            Err(_) => {
+                println!("Copilot button not found, trying alternative approach");
+                
+                // Alternative: Try to use keyboard shortcut to access Copilot (Alt+H, then F, then X)
+                // "%h" = Alt+H, then "fx" = F then X
+                excel_window.press_key("%h")?; // Alt+H to open Home tab
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                excel_window.type_text("fx", false)?; // F then X to open Copilot
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                
+                // Type the request
+                excel_window.type_text(request, false)?;
+                excel_window.press_key("{enter}")?;
+                tokio::time::sleep(Duration::from_millis(3000)).await;
+                
+                let apply_result = self.check_and_apply_copilot_changes(&excel_window).await?;
+                Ok(format!("Copilot request '{}' sent via keyboard shortcut. {}", request, apply_result))
+            }
+        }
+    }
+
+    /// Check for Apply button in Copilot response and click it if present
+    async fn check_and_apply_copilot_changes(&self, excel_window: &terminator::UIElement) -> Result<String> {
+        println!("Checking for Apply button in Copilot response");
+        
+        // Try to find Apply button with multiple attempts, every 5 seconds
+        let max_attempts = 6; // 30 seconds total (6 attempts × 5 seconds)
+        let mut attempt = 0;
+        
+        while attempt < max_attempts {
+            attempt += 1;
+            println!("Attempt {} of {} to find Apply button", attempt, max_attempts);
+            
+            // Strategy 1: Look for "Apply" button with short name
+            println!("Strategy 1: Looking for exact 'Apply' button");
+            let apply_selector = Selector::Name("Apply".to_string());
+            match excel_window.locator(apply_selector)?.all(Some(Duration::from_millis(2000)), None).await {
+                Ok(found_elements) => {
+                    println!("Found {} elements named 'Apply'", found_elements.len());
+                    
+                    // Examine each element and find the real button
+                    for (i, element) in found_elements.iter().enumerate() {
+                        let attributes = element.attributes();
+                        let role = attributes.role.as_str();
+                        let name = attributes.name.as_deref().unwrap_or("");
+                        
+                        println!("Apply element {}: role='{}', name='{}', name_length={}", i, role, name, name.len());
+                        
+                        // Look for the Apply button: exact name match and button role
+                        if name == "Apply" && name.len() == 5 {
+                            if role.contains("button") || role.contains("Button") || 
+                               role.eq_ignore_ascii_case("menuitem") ||
+                               role.eq_ignore_ascii_case("listitem") {
+                                println!("Found real Apply button (exact match): role='{}', clicking it", role);
+                                element.click()?;
+                                tokio::time::sleep(Duration::from_millis(2000)).await;
+                                return Ok("Changes applied successfully via Apply button.".to_string());
+                            }
+                        }
+                    }
+                    
+                    // If no exact match, try clicking any reasonable short element
+                    for (i, element) in found_elements.iter().enumerate() {
+                        let attributes = element.attributes();
+                        let role = attributes.role.as_str();
+                        let name = attributes.name.as_deref().unwrap_or("");
+                        
+                        if name.len() <= 10 && !role.eq_ignore_ascii_case("group") && 
+                           !role.eq_ignore_ascii_case("text") && !name.contains("You said:") {
+                            println!("Trying Apply element {} as fallback: role='{}', name='{}'", i, role, name);
+                            match element.click() {
+                                Ok(_) => {
+                                    tokio::time::sleep(Duration::from_millis(2000)).await;
+                                    return Ok("Changes applied successfully via Apply element (fallback).".to_string());
+                                }
+                                Err(e) => {
+                                    println!("Failed to click Apply element {}: {}", i, e);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("No elements named 'Apply' found in strategy 1");
+                }
+            }
+            
+            // Strategy 2: Look for buttons with roles that might be Apply buttons
+            println!("Strategy 2: Looking for button-role elements");
+            let button_roles = vec!["Button", "button", "MenuItem", "menuitem", "ListItem", "listitem"];
+            
+            for role_name in &button_roles {
+                let role_selector = Selector::Role { 
+                    role: role_name.to_string(), 
+                    name: None 
+                };
+                match excel_window.locator(role_selector)?.all(Some(Duration::from_millis(1000)), None).await {
+                    Ok(elements) => {
+                        // Check up to 10 elements of each role
+                        for (_index, element) in elements.iter().take(10).enumerate() {
+                            let attributes = element.attributes();
+                            let name = attributes.name.as_deref().unwrap_or("");
+                            
+                            // Look for exact "Apply" match in button-role elements
+                            if name == "Apply" || name == "Apply Changes" || name == "Apply Suggestion" {
+                                println!("Found {} element with name '{}', clicking it", role_name, name);
+                                match element.click() {
+                                    Ok(_) => {
+                                        tokio::time::sleep(Duration::from_millis(2000)).await;
+                                        return Ok(format!("Changes applied successfully via {} button: '{}'.", role_name, name));
+                                    }
+                                    Err(e) => {
+                                        println!("Failed to click {} element '{}': {}", role_name, name, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        println!("No {} elements found", role_name);
+                    }
+                }
+            }
+            
+            // Check alternative button names
+            let alt_button_names = vec![
+                "Create", 
+                "Generate",
+                "Apply Changes",
+                "Accept",
+                "Confirm",
+                "Execute",
+                "Run"
+            ];
+            
+            for button_name in &alt_button_names {
+                let selector = Selector::Name(button_name.to_string());
+                match excel_window.locator(selector)?.first(Some(Duration::from_millis(1000))).await {
+                    Ok(button) => {
+                        let attributes = button.attributes();
+                        let role = attributes.role.as_str();
+                        let actual_name = attributes.name.as_deref().unwrap_or("Unknown");
+                        
+                        println!("Found alternative element '{}' - role: '{}', name: '{}'", button_name, role, actual_name);
+                        
+                        // Skip elements that are clearly not buttons
+                        if role.eq_ignore_ascii_case("group") || 
+                           role.eq_ignore_ascii_case("text") ||
+                           role.eq_ignore_ascii_case("tabitem") ||
+                           role.eq_ignore_ascii_case("tab") ||
+                           actual_name.contains("You said:") {
+                            println!("Skipping non-button element for {} (role: {})", button_name, role);
+                            continue;
+                        }
+                        
+                        // Try to verify it's a button-like element
+                        if role.contains("button") || role.contains("Button") || 
+                           actual_name.eq_ignore_ascii_case(button_name) {
+                            println!("Found alternative action button: {} (role: {}), clicking it", actual_name, role);
+                            button.click()?;
+                            tokio::time::sleep(Duration::from_millis(2000)).await;
+                            return Ok(format!("Changes applied successfully via {} button.", actual_name));
+                        } else {
+                            // Try clicking anyway but be more cautious
+                            if actual_name.len() < 15 {
+                                println!("Found {} element but uncertain if it's clickable (role: {}), trying to click anyway", actual_name, role);
+                                match button.click() {
+                                    Ok(_) => {
+                                        tokio::time::sleep(Duration::from_millis(2000)).await;
+                                        return Ok(format!("Changes applied successfully via {} element.", actual_name));
+                                    }
+                                    Err(_) => {
+                                        println!("Failed to click {} element, continuing search", actual_name);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+            
+            // Additional search: Look for suggestion buttons that might appear in Copilot responses
+            // These might have specific patterns or be located in suggestion areas
+            println!("Searching for Copilot suggestion buttons on attempt {}", attempt);
+            
+            // Try to find buttons in suggestion areas or with suggestion-related roles
+            let suggestion_selectors = vec![
+                ("Apply conditional formatting", "Apply the conditional formatting suggestion"),
+                ("Apply suggestion", "Apply this suggestion"),
+                ("Use this suggestion", "Use the Copilot suggestion"),
+            ];
+            
+            for (search_text, description) in suggestion_selectors {
+                // Look for buttons containing these phrases
+                let selector = Selector::Name(search_text.to_string());
+                match excel_window.locator(selector)?.first(Some(Duration::from_millis(1000))).await {
+                    Ok(element) => {
+                        let attributes = element.attributes();
+                        let role = attributes.role.as_str();
+                        let name = attributes.name.as_deref().unwrap_or("");
+                        
+                        println!("Found suggestion element: '{}' - role: '{}', name: '{}'", search_text, role, name);
+                        
+                        // Skip clearly non-button elements
+                        if !role.eq_ignore_ascii_case("group") && 
+                           !role.eq_ignore_ascii_case("text") &&
+                           !role.eq_ignore_ascii_case("tabitem") {
+                            println!("Trying to click suggestion button: {}", description);
+                            match element.click() {
+                                Ok(_) => {
+                                    tokio::time::sleep(Duration::from_millis(2000)).await;
+                                    return Ok(format!("Changes applied successfully via suggestion: {}.", description));
+                                }
+                                Err(e) => {
+                                    println!("Failed to click suggestion '{}': {}", search_text, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+            
+            // Wait 5 seconds before next attempt (except on last attempt)
+            if attempt < max_attempts {
+                println!("Waiting 5 seconds before next attempt...");
+                tokio::time::sleep(Duration::from_millis(5000)).await;
+            }
+        }
+        
+        println!("No Apply button found after {} attempts", max_attempts);
+        Ok("Request sent to Copilot. No Apply button found after multiple attempts - changes might be applied automatically.".to_string())
+    }
+
+    /// Send a request to Excel Copilot with specific range selection
+    pub async fn send_request_to_excel_copilot_with_range(&self, request: &str, range: &str) -> Result<String> {
+        println!("Sending request to Excel Copilot with range {}: {}", range, request);
+        
+        let excel_window = self.get_excel_window().await?;
+        excel_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Step 1: Select the specified range first
+        println!("Selecting range: {}", range);
+        excel_window.press_key("{ctrl}g")?; // Go to dialog
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        excel_window.type_text(range, false)?;
+        excel_window.press_key("{enter}")?;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        
+        // Step 2-6: Follow the normal Copilot sequence
+        self.send_request_to_excel_copilot(request).await
+    }
+
+    /// Helper function to format common Copilot requests with range
+    pub async fn format_cells_with_copilot(&self, range: &str, format_description: &str) -> Result<String> {
+        let request = format!("Format these cells with {}", format_description);
+        self.send_request_to_excel_copilot_with_range(&request, range).await
+    }
+
+    /// Create chart with Copilot using specific data range
+    pub async fn create_chart_with_copilot(&self, data_range: &str, chart_type: &str) -> Result<String> {
+        let request = format!("Create a {} chart from this data", chart_type);
+        self.send_request_to_excel_copilot_with_range(&request, data_range).await
+    }
+
+    /// Apply conditional formatting with Copilot to specific range
+    pub async fn apply_conditional_formatting_with_copilot(&self, range: &str, condition: &str) -> Result<String> {
+        let request = format!("Apply conditional formatting where {}", condition);
+        self.send_request_to_excel_copilot_with_range(&request, range).await
+    }
+
+    /// Interact with Excel Copilot for various tasks (updated method)
+    pub async fn interact_with_copilot(&self, task_description: &str) -> Result<String> {
+        println!("Interacting with Excel Copilot for task: {}", task_description);
+        
+        // Ensure Excel is active and focused
+        let excel_window = self.get_excel_window().await?;
+        excel_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Send the request to Copilot using the updated method
+        let result = self.send_request_to_excel_copilot(task_description).await?;
+        
+        // Wait a bit more for changes to take effect
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        
+        Ok(result)
+    }
 }
 
 /// Get the global Excel automation instance

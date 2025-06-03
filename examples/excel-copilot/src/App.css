@@ -756,3 +756,110 @@ body {
   background: var(--color-primary);
   color: var(--color-background);
 }
+
+/* Copilot Settings Section */
+.copilot-section {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.copilot-toggle {
+  margin-bottom: 15px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.toggle-input {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 50px;
+  height: 24px;
+  background-color: #ccc;
+  border-radius: 24px;
+  transition: background-color 0.3s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: white;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.3s;
+}
+
+.toggle-input:checked + .toggle-slider {
+  background-color: #007acc;
+}
+
+.toggle-input:checked + .toggle-slider::before {
+  transform: translateX(26px);
+}
+
+.toggle-text {
+  font-weight: 500;
+  color: #333;
+}
+
+.copilot-requirements {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.requirements-header {
+  font-weight: bold;
+  color: #856404;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.requirements-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px 0;
+}
+
+.requirements-list li {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #856404;
+  line-height: 1.4;
+}
+
+.requirements-note {
+  font-size: 12px;
+  color: #6c757d;
+  font-style: italic;
+  background: #f8f9fa;
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 3px solid #007acc;
+}
+
+.copilot-warning {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}

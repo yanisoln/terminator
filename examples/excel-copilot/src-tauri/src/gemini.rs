@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use base64::{Engine as _, engine::general_purpose};
+use crate::locale_utils::{get_decimal_separator, get_locale_info};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GeminiMessage {
@@ -142,6 +143,7 @@ pub struct GeminiClient {
     conversation_history: Vec<GeminiMessage>,
     tools: Vec<FunctionDeclaration>,
     system_instruction: SystemInstruction,
+    copilot_enabled: bool,
 }
 
 /// Information about a tool call made by Gemini
@@ -163,7 +165,7 @@ pub struct GeminiResponseDetails {
 
 impl GeminiClient {
     /// Create a new Gemini client with the provided API key
-    pub fn new(api_key: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(api_key: String, copilot_enabled: bool) -> Result<Self, Box<dyn std::error::Error>> {
         let client = Client::new();
         let base_url = "https://generativelanguage.googleapis.com/v1beta/models".to_string();
         
@@ -174,9 +176,10 @@ impl GeminiClient {
             conversation_history: Vec::new(),
             tools: Vec::new(),
             system_instruction: SystemInstruction { parts: Vec::new() },
+            copilot_enabled,
         };
 
-        // Setup Excel tools
+        // Setup Excel tools (conditionally include Copilot tools)
         gemini_client.setup_excel_tools();
         
         // Setup system instruction
@@ -187,7 +190,7 @@ impl GeminiClient {
 
     /// Configure Excel automation tools for Gemini
     fn setup_excel_tools(&mut self) {
-        self.tools = vec![
+        let mut tools = vec![
             FunctionDeclaration {
                 name: "read_excel_cell".to_string(),
                 description: "Read the value from a specific cell in Excel".to_string(),
@@ -266,14 +269,154 @@ impl GeminiClient {
                 }),
             },
         ];
+
+        // Add Copilot tools only if enabled
+        if self.copilot_enabled {
+            tools.extend(vec![
+                FunctionDeclaration {
+                    name: "send_request_to_excel_copilot".to_string(),
+                    description: "Send a request to Microsoft Excel Copilot for advanced tasks like formatting, charts, conditional formatting, data analysis, etc. Note: This will work on currently selected cells or entire sheet.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "request": {
+                                "type": "string",
+                                "description": "The request to send to Excel Copilot (e.g., 'Create a bar chart from this data', 'Format these cells with bold and red background', 'Apply conditional formatting to highlight values greater than 100')"
+                            }
+                        },
+                        "required": ["request"]
+                    }),
+                },
+                FunctionDeclaration {
+                    name: "format_cells_with_copilot".to_string(),
+                    description: "Format Excel cells using Copilot with specific formatting instructions. This will first select the specified range, then use Copilot to format it.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "range": {
+                                "type": "string",
+                                "description": "The cell range to format (e.g., A1:C10, B1:D8)"
+                            },
+                            "format_description": {
+                                "type": "string",
+                                "description": "Description of the formatting to apply (e.g., 'bold text with blue background', 'currency format', 'percentage with 2 decimals')"
+                            }
+                        },
+                        "required": ["range", "format_description"]
+                    }),
+                },
+                FunctionDeclaration {
+                    name: "create_chart_with_copilot".to_string(),
+                    description: "Create charts in Excel using Copilot. This will first select the specified data range, then ask Copilot to create the chart.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "data_range": {
+                                "type": "string",
+                                "description": "The data range for the chart (e.g., A1:B10, B1:D8)"
+                            },
+                            "chart_type": {
+                                "type": "string",
+                                "description": "Type of chart to create (e.g., 'bar chart', 'line chart', 'pie chart', 'scatter plot')"
+                            }
+                        },
+                        "required": ["data_range", "chart_type"]
+                    }),
+                },
+                FunctionDeclaration {
+                    name: "apply_conditional_formatting_with_copilot".to_string(),
+                    description: "Apply conditional formatting to Excel cells using Copilot. This will first select the specified range, then apply the conditional formatting.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "range": {
+                                "type": "string",
+                                "description": "The cell range to apply conditional formatting (e.g., A1:D20, B1:E15)"
+                            },
+                            "condition": {
+                                "type": "string",
+                                "description": "The condition for formatting (e.g., 'values greater than 100', 'duplicate values', 'top 10 values')"
+                            }
+                        },
+                        "required": ["range", "condition"]
+                    }),
+                },
+            ]);
+        }
+
+        self.tools = tools;
     }
 
     /// Setup the system instruction for the Excel Copilot (Probably need to be improved)
     fn setup_system_instruction(&mut self) {
-        let system_prompt = r#"You are Excel Copilot. You interact with Excel files using tools. Always respond in English.
+        // Get locale information
+        let locale_info = get_locale_info();
+        let decimal_sep = get_decimal_separator();
+        
+        // Create locale-specific formatting rules
+        let number_format_rules = if decimal_sep == ',' {
+            format!(r#"**NUMBER FORMAT NORMALIZATION (LOCALE: COMMA DECIMAL):**
+Current system locale: {}
+- When writing numeric values to Excel, normalize according to your locale:
+  - Convert "+2.259,84" to "2259.84" (remove + sign, thousands separators, convert comma to dot for Excel)
+  - Convert "-1.458,25" to "-1458.25" (remove thousands separators, convert comma to dot for Excel)
+  - Convert "1.234.567,89" to "1234567.89" (remove thousands separators, convert comma to dot for Excel)
+  - Always convert final comma decimal separator to dot (.) for Excel compatibility
+  - Remove thousands separators (dots in your locale)
+- Display numbers to user using local format: 1234,67 but write to Excel as: 1234.67
+- NEVER add apostrophes (') to numeric values - this makes them text"#, locale_info)
+        } else {
+            format!(r#"**NUMBER FORMAT NORMALIZATION (LOCALE: DOT DECIMAL):**
+Current system locale: {}
+- When writing numeric values to Excel, normalize according to your locale:
+  - Convert "+2,259.84" to "2259.84" (remove + sign and comma thousands separators)
+  - Convert "-1,458.25" to "-1458.25" (remove comma thousands separators, keep - sign)
+  - Convert "1,234,567.89" to "1234567.89" (remove comma thousands separators)
+  - Use dot (.) as decimal separator, remove comma thousands separators
+  - This ensures Excel recognizes values as numbers for calculations
+- NEVER add apostrophes (') to numeric values - this makes them text"#, locale_info)
+        };
+
+        let base_prompt = r#"You are Excel Copilot. You interact with Excel files using tools. Always respond in English or French as requested.
 
 **TOOLS AVAILABLE:**
-- read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula
+- Basic: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, set_excel_formula"#;
+
+        let copilot_section = if self.copilot_enabled {
+            r#"
+- MS Copilot: send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot
+
+**MS EXCEL COPILOT CONSTRAINTS:**
+- CRITICAL: Copilot ONLY works on files saved in OneDrive
+- Data range MUST have at least 3 rows and 2 columns
+- Headers are REQUIRED in the first row with different names
+- Before using Copilot tools, ALWAYS verify data meets these requirements
+
+**MS EXCEL COPILOT INTERACTION SEQUENCE:**
+- The system automatically follows this sequence: Select Range → Click "Copilot" → Click "Ask Copilot" → Wait 5s → Send Request → Apply Changes
+- For range-based tools (format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot), the range is selected FIRST
+- For general requests (send_request_to_excel_copilot), it works on currently selected area or entire sheet
+
+**WHEN TO USE MS COPILOT:**
+- Complex formatting requests → format_cells_with_copilot (auto-selects range)
+- Chart creation → create_chart_with_copilot (auto-selects data range)
+- Conditional formatting → apply_conditional_formatting_with_copilot (auto-selects range)
+- Data analysis, pivot tables, advanced features → send_request_to_excel_copilot
+
+**COPILOT DATA VALIDATION:**
+- Before any Copilot operation, check data has ≥3 rows, ≥2 columns
+- Verify headers exist in first row
+- If requirements not met, explain what's needed
+
+**COPILOT BEST PRACTICES:**
+- Always specify clear ranges for formatting and charts (e.g., "B1:D8")
+- Use descriptive requests like "Create a bar chart from this data" rather than "Create bar chart from B1:D8"
+- For formatting, use natural language: "bold text with blue background" instead of technical formatting codes"#
+        } else {
+            ""
+        };
+
+        let common_rules = format!(r#"
 
 **CRITICAL RULES:**
 1. ALWAYS use tools to interact with Excel - NEVER fake results
@@ -284,22 +427,44 @@ impl GeminiClient {
 6. Fix formula errors immediately (#NAME?, #REF!, etc.)
 7. After writing formulas, re-read the cell to verify
 
+{}
+
+**WHEN TO USE BASIC TOOLS:**
+- Simple cell reading/writing → read_excel_cell, write_excel_cell
+- Basic formulas → set_excel_formula
+- Data overview → get_excel_sheet_overview
+
 **FORBIDDEN:**
 - Simulating tool outputs like "Reading A1... value is 42"
 - Pretending you called a function
 - Inventing Excel data
 - Leaving error values in cells
+- Writing numbers with apostrophes or commas to Excel
 
 **PROTOCOL:**
 - Need data? → Call appropriate read tool
-- Need to write? → Call write_excel_cell  
+- Need simple write? → Call write_excel_cell (with normalized numbers)"#, number_format_rules);
+
+        let final_protocol = if self.copilot_enabled {
+            r#"
+- Need formatting/charts with specific range? → Use MS Copilot range-based tools (check requirements first)
+- Need general analysis? → Use send_request_to_excel_copilot (check requirements first)
 - Lack context? → READ THE FILE
 - See errors? → Fix them immediately
 
-Use tools efficiently. Be direct. No hallucination."#;
+Use tools efficiently. Be direct. No hallucination. Leverage MS Copilot for advanced Excel features with proper range selection and data validation."#
+        } else {
+            r#"
+- Lack context? → READ THE FILE
+- See errors? → Fix them immediately
+
+Use tools efficiently. Be direct. No hallucination. Copilot features are disabled - use basic tools only."#
+        };
+
+        let system_prompt = format!("{}{}{}{}", base_prompt, copilot_section, common_rules, final_protocol);
 
         self.system_instruction = SystemInstruction {
-            parts: vec![GeminiPart::text(system_prompt.to_string())],
+            parts: vec![GeminiPart::text(system_prompt)],
         };
     }
 
