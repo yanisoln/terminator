@@ -36,10 +36,10 @@
     "automation"
   ],
   "optionalDependencies": {
-    "terminator-win32-x64-msvc": "0.3.5",
-    "terminator-darwin-x64": "0.3.5",
-    "terminator-linux-x64-gnu": "0.3.5",
-    "terminator-darwin-arm64": "0.3.5"
+    "terminator.js-win32-x64-msvc": "0.3.7",
+    "terminator.js-darwin-x64": "0.3.7",
+    "terminator.js-linux-x64-gnu": "0.3.7",
+    "terminator.js-darwin-arm64": "0.3.7"
   },
-  "version": "0.3.5"
+  "version": "0.3.7"
 }
