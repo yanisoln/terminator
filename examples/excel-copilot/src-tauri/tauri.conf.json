@@ -43,6 +43,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "entitlements": null,
+      "providerShortName": "io.terminator.excel-copilot"
+    }
   }
 } 
