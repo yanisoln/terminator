@@ -641,6 +641,16 @@ class Locator:
         Returns:
             Optional[UIElement]: The window element, or None if not present.
         """
+    async def process_id(self, timeout_ms:typing.Optional[builtins.int]=None) -> int:
+        r"""
+        (async) Get the process ID of the application containing the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            int: The process ID of the application.
+        """
     async def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None, timeout_ms:typing.Optional[builtins.int]=None) -> None:
         r"""
         (async) Highlights the first matching element with a colored border.
@@ -931,6 +941,13 @@ class UIElement:
         
         Returns:
             ExploreResponse: Details about the element and its children.
+        """
+    def process_id(self) -> builtins.int:
+        r"""
+        Get the process ID of the application containing this element.
+        
+        Returns:
+            int: The process ID.
         """
     def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None) -> None:
         r"""

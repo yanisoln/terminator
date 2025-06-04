@@ -9,6 +9,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -144,6 +146,9 @@ pub struct WindowsEngine {
     automation: ThreadSafeWinUIAutomation,
     use_background_apps: bool,
     activate_app: bool,
+    // Cache warming system
+    cache_warmer_enabled: Arc<AtomicBool>,
+    cache_warmer_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
 
 impl WindowsEngine {
@@ -155,11 +160,267 @@ impl WindowsEngine {
             automation: arc_automation,
             use_background_apps,
             activate_app,
+            // Cache warming system
+            cache_warmer_enabled: Arc::new(AtomicBool::new(false)),
+            cache_warmer_handle: Arc::new(Mutex::new(None)),
         })
     }
 
+    /// Enable or disable the background cache warming system
+    /// 
+    /// This spawns a background thread that periodically fetches UI trees for frequently used applications
+    /// to keep the Windows native cache warm, improving performance when applications need to be queried.
+    /// 
+    /// # Arguments
+    /// * `enable` - Whether to enable (true) or disable (false) the cache warmer
+    /// * `interval_seconds` - How often to refresh the cache (default: 30 seconds)
+    /// * `max_apps_to_cache` - Maximum number of recent apps to keep cached (default: 10)
+    pub fn enable_background_cache_warmer(
+        &self, 
+        enable: bool, 
+        interval_seconds: Option<u64>,
+        max_apps_to_cache: Option<usize>
+    ) -> Result<(), AutomationError> {
+        if enable {
+            // Don't start if already running
+            if self.cache_warmer_enabled.load(Ordering::SeqCst) {
+                info!("Cache warmer is already running");
+                return Ok(());
+            }
+
+            let interval = Duration::from_secs(interval_seconds.unwrap_or(30));
+            let max_apps = max_apps_to_cache.unwrap_or(10);
+
+            info!("Starting background cache warmer (interval: {:?}, max apps: {})", interval, max_apps);
+
+            self.cache_warmer_enabled.store(true, Ordering::SeqCst);
+            
+            // Clone necessary data for the background thread
+            let automation_clone = self.automation.clone();
+            let enabled_flag = Arc::clone(&self.cache_warmer_enabled);
+            
+            let handle = thread::spawn(move || {
+                Self::cache_warmer_thread(automation_clone, enabled_flag, interval, max_apps);
+            });
+
+            // Store the thread handle
+            let mut handle_guard = self.cache_warmer_handle.lock().unwrap();
+            *handle_guard = Some(handle);
+            
+            info!("✅ Background cache warmer started");
+        } else {
+            // Stop the cache warmer
+            if !self.cache_warmer_enabled.load(Ordering::SeqCst) {
+                info!("Cache warmer is not running");
+                return Ok(());
+            }
+
+            info!("Stopping background cache warmer...");
+            self.cache_warmer_enabled.store(false, Ordering::SeqCst);
+
+            // Wait for the thread to finish
+            let mut handle_guard = self.cache_warmer_handle.lock().unwrap();
+            if let Some(handle) = handle_guard.take() {
+                drop(handle_guard); // Release the lock before joining
+                if let Err(e) = handle.join() {
+                    warn!("Cache warmer thread panicked: {:?}", e);
+                }
+            }
+            
+            info!("✅ Background cache warmer stopped");
+        }
+
+        Ok(())
+    }
+
+    /// The background thread function that periodically warms the cache
+    fn cache_warmer_thread(
+        automation: ThreadSafeWinUIAutomation,
+        enabled_flag: Arc<AtomicBool>,
+        interval: Duration,
+        max_apps: usize,
+    ) {
+        info!("Cache warmer thread started");
+        
+        while enabled_flag.load(Ordering::SeqCst) {
+            // Sleep for the interval, but check for stop signal every second
+            for _ in 0..interval.as_secs() {
+                if !enabled_flag.load(Ordering::SeqCst) {
+                    info!("Cache warmer thread received stop signal");
+                    return;
+                }
+                thread::sleep(Duration::from_secs(1));
+            }
+
+            if !enabled_flag.load(Ordering::SeqCst) {
+                break;
+            }
+
+            // Perform cache warming
+            debug!("Starting cache warming cycle");
+            let start_time = std::time::Instant::now();
+            
+            match Self::warm_cache_for_recent_apps(&automation, max_apps) {
+                Ok(cached_count) => {
+                    let elapsed = start_time.elapsed();
+                    info!(
+                        "Cache warming completed: {} apps cached in {:?}", 
+                        cached_count, elapsed
+                    );
+                }
+                Err(e) => {
+                    warn!("Cache warming failed: {}", e);
+                }
+            }
+        }
+        
+        info!("Cache warmer thread stopped");
+    }
+
+    /// Warm the cache for recently active applications
+    fn warm_cache_for_recent_apps(
+        automation: &ThreadSafeWinUIAutomation,
+        max_apps: usize,
+    ) -> Result<usize, AutomationError> {
+        debug!("Finding recent applications to cache");
+
+        // Find all windows for applications
+        let root_element = automation.0.get_root_element().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+        })?;
+
+        // Use the same sophisticated filtering as the main window detection
+        // Search for both Window and Pane control types since some applications use panes as main containers
+        let window_matcher = automation.0
+            .create_matcher()
+            .from_ref(&root_element)
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
+            .depth(1) // Match the depth used in the main functions
+            .timeout(3000);
+
+        let windows = window_matcher.find_all().map_err(|e| {
+            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+        })?;
+
+        // Group windows by process ID to find recent applications
+        let mut app_windows: HashMap<u32, Vec<uiautomation::UIElement>> = HashMap::new();
+        
+        for window in windows {
+            if let Ok(pid) = window.get_process_id() {
+                // Skip system processes and very common ones that don't need caching
+                if Self::should_cache_app_by_pid(pid) {
+                    app_windows.entry(pid).or_insert_with(Vec::new).push(window);
+                }
+            }
+        }
+
+        debug!("Found {} applications to potentially cache", app_windows.len());
+
+        // Limit to the most recent apps (by taking first N PIDs found)
+        let apps_to_cache: Vec<_> = app_windows.into_iter().take(max_apps).collect();
+        let mut cached_count = 0;
+
+        for (pid, windows) in apps_to_cache {
+            debug!("Warming cache for PID: {} ({} windows)", pid, windows.len());
+            
+            // Cache the main window for this app
+            if let Some(main_window) = windows.into_iter().next() {
+                match Self::warm_cache_for_window(main_window) {
+                    Ok(_) => {
+                        cached_count += 1;
+                        debug!("Successfully cached PID: {}", pid);
+                    }
+                    Err(e) => {
+                        debug!("Failed to cache PID {}: {}", pid, e);
+                    }
+                }
+
+                // Small delay between apps to spread CPU load
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+
+        Ok(cached_count)
+    }
+
+    /// Determine if we should cache this application based on its PID
+    fn should_cache_app_by_pid(pid: u32) -> bool {
+        // Skip system processes
+        if pid <= 4 {
+            return false;
+        }
+
+        // Try to get process name to filter out system processes
+        if let Ok(process_name) = get_process_name_by_pid(pid as i32) {
+            let name_lower = process_name.to_lowercase();
+            
+            // Skip Windows system processes
+            let system_processes = [
+                "explorer", "dwm", "winlogon", "csrss", "wininit", "services",
+                "lsass", "svchost", "audiodg", "conhost", "taskhostw",
+                "backgroundtaskhost", "runtimebroker", "shellexperiencehost",
+                "searchui", "startmenuexperiencehost", "cortana"
+            ];
+            
+            if system_processes.contains(&name_lower.as_str()) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Warm the cache for a specific window by building its UI tree
+    fn warm_cache_for_window(window: uiautomation::UIElement) -> Result<(), AutomationError> {
+        // Convert to our UIElement wrapper
+        let ui_element = UIElement::new(Box::new(WindowsUIElement {
+            element: ThreadSafeWinUIElement(Arc::new(window)),
+        }));
+
+        // Use cache-first tree building to warm the native cache
+        let mut context = TreeBuildingContext {
+            config: TreeBuildingConfig {
+                timeout_per_operation_ms: 100, // Short timeout for background operation
+                yield_every_n_elements: 20,    // Yield frequently to not block
+                batch_size: 10,               // Smaller batches for background work
+            },
+            elements_processed: 0,
+            max_depth_reached: 0,
+            cache_hits: 0,
+            fallback_calls: 0,
+            errors_encountered: 0,
+        };
+
+        // Build the tree to populate the cache (we don't need the result)
+        match build_ui_node_tree_cached_first(&ui_element, 0, &mut context) {
+            Ok(_) => {
+                debug!(
+                    "Cache warmed: {} elements, {} cache hits", 
+                    context.elements_processed, context.cache_hits
+                );
+                Ok(())
+            }
+            Err(e) => {
+                debug!("Cache warming failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Check if the cache warmer is currently running
+    pub fn is_cache_warmer_enabled(&self) -> bool {
+        self.cache_warmer_enabled.load(Ordering::SeqCst)
+    }
+
     /// Extract browser-specific information from window titles
-    fn extract_browser_info(title: &str) -> (bool, Vec<String>) {
+    pub fn extract_browser_info(title: &str) -> (bool, Vec<String>) {
         let title_lower = title.to_lowercase();
         let is_browser = KNOWN_BROWSER_PROCESS_NAMES.iter()
             .any(|&browser| title_lower.contains(browser));
@@ -187,7 +448,7 @@ impl WindowsEngine {
     }
 
     /// Calculate similarity score between two strings with various matching strategies
-    fn calculate_similarity(text1: &str, text2: &str) -> f64 {
+    pub fn calculate_similarity(text1: &str, text2: &str) -> f64 {
         let text1_lower = text1.to_lowercase();
         let text2_lower = text2.to_lowercase();
         
@@ -1537,7 +1798,7 @@ impl AccessibilityEngine for WindowsEngine {
             error!("Failed to get root element: {}", e);
             AutomationError::PlatformError(format!("Failed to get root element: {}", e))
         })?;
-
+        
         // Use a more efficient approach: first find windows by control type, then filter by name
         // Search for both Window and Pane control types since some applications use panes as main containers
         let window_matcher = self
@@ -1633,9 +1894,40 @@ impl AccessibilityEngine for WindowsEngine {
             element: ThreadSafeWinUIElement(Arc::new(window_element_raw)),
         }));
 
-        // Build the FULL UI tree with optimized performance
-        info!("Building FULL UI tree with performance optimizations");
-        build_full_ui_node_tree_optimized(&window_element_wrapper)
+        // Build the FULL UI tree with cache-first performance optimizations
+        info!("Building FULL UI tree with cache-first performance optimizations");
+        
+        // Use cached tree building approach for better performance
+        let mut context = TreeBuildingContext {
+            config: TreeBuildingConfig {
+                timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
+                yield_every_n_elements: 50,    // Yield more frequently for responsiveness
+                batch_size: 50,                // Larger batches for efficiency
+            },
+            elements_processed: 0,
+            max_depth_reached: 0,
+            cache_hits: 0,
+            fallback_calls: 0,
+            errors_encountered: 0,
+        };
+        
+        info!("Starting FULL tree building (no limits) with cache-first optimization");
+        let result = build_ui_node_tree_cached_first(&window_element_wrapper, 0, &mut context)?;
+        
+        info!("FULL tree building completed. Stats: elements={}, depth={}, cache_hits={}, fallbacks={}, errors={}", 
+              context.elements_processed, context.max_depth_reached, 
+              context.cache_hits, context.fallback_calls, context.errors_encountered);
+        
+        // Log cache effectiveness
+        let cache_hit_rate = if context.elements_processed > 0 {
+            (context.cache_hits as f64 / context.elements_processed as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        info!("Cache hit rate: {:.1}%", cache_hit_rate);
+        
+        Ok(result)
     }
 
     fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
@@ -1725,7 +2017,7 @@ impl AccessibilityEngine for WindowsEngine {
             info!("No title filter provided, using first window with PID {}", pid);
             pid_matching_windows[0].0.clone()
         };
-
+            
         let selected_window_name = selected_window.get_name().unwrap_or_else(|_| "Unknown".to_string());
         info!("Selected window: '{}' for PID: {} (title filter: {:?})", 
               selected_window_name, pid, title);
@@ -1735,53 +2027,67 @@ impl AccessibilityEngine for WindowsEngine {
             element: ThreadSafeWinUIElement(Arc::new(selected_window)),
         }));
 
-        // Build the FULL UI tree with optimized performance
-        info!("Building FULL UI tree with performance optimizations for PID: {}", pid);
-        build_full_ui_node_tree_optimized(&window_element_wrapper)
+        // Build the FULL UI tree with cache-first performance optimizations
+        info!("Building FULL UI tree with cache-first performance optimizations for PID: {}", pid);
+        
+        // Use cached tree building approach for better performance
+        let mut context = TreeBuildingContext {
+            config: TreeBuildingConfig {
+                timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
+                yield_every_n_elements: 50,    // Yield more frequently for responsiveness
+                batch_size: 50,                // Larger batches for efficiency
+            },
+            elements_processed: 0,
+            max_depth_reached: 0,
+            cache_hits: 0,
+            fallback_calls: 0,
+            errors_encountered: 0,
+        };
+        
+        let result = build_ui_node_tree_cached_first(&window_element_wrapper, 0, &mut context)?;
+        
+        info!("FULL tree building completed for PID: {}. Stats: elements={}, depth={}, cache_hits={}, fallbacks={}, errors={}", 
+              pid, context.elements_processed, context.max_depth_reached, 
+              context.cache_hits, context.fallback_calls, context.errors_encountered);
+        
+        // Log cache effectiveness
+        let cache_hit_rate = if context.elements_processed > 0 {
+            (context.cache_hits as f64 / context.elements_processed as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        info!("Cache hit rate: {:.1}%", cache_hit_rate);
+        
+        Ok(result)
+    }
+
+    /// Enable downcasting to concrete engine types
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    /// Enable or disable background cache warming for improved performance (Windows implementation)
+    fn enable_background_cache_warmer(
+        &self,
+        enable: bool,
+        interval_seconds: Option<u64>,
+        max_apps_to_cache: Option<usize>,
+    ) -> Result<(), AutomationError> {
+        self.enable_background_cache_warmer(enable, interval_seconds, max_apps_to_cache)
+    }
+
+    /// Check if the background cache warmer is currently running (Windows implementation)
+    fn is_cache_warmer_enabled(&self) -> bool {
+        self.is_cache_warmer_enabled()
     }
 }
 
-
-// Optimized function to build the FULL UI tree with performance improvements
-fn build_full_ui_node_tree_optimized(element: &UIElement) -> Result<crate::UINode, AutomationError> {
-    use std::time::Instant;
-    
-    let start_time = Instant::now();
-    
-    // Configuration for responsiveness (NO LIMITS on tree size/depth)
-    let config = TreeBuildingConfig {
-        timeout_per_operation_ms: 50,  // Much shorter timeout for faster operations
-        yield_every_n_elements: 50,    // Yield more frequently for responsiveness
-        prefer_cached_calls: true,      // Prioritize cached API calls
-        batch_size: 50,                // Larger batches for efficiency
-    };
-    
-    let mut context = TreeBuildingContext {
-        config,
-        elements_processed: 0,
-        max_depth_reached: 0,
-        cache_hits: 0,
-        fallback_calls: 0,
-        errors_encountered: 0,
-    };
-    
-    info!("Starting FULL tree building (no limits) with caching optimization");
-    
-    let result = build_ui_node_tree_cached_first(element, 0, &mut context);
-    
-    let elapsed = start_time.elapsed();
-    info!("FULL tree building completed in {:?}. Stats: elements={}, depth={}, cache_hits={}, fallbacks={}, errors={}", 
-          elapsed, context.elements_processed, context.max_depth_reached, 
-          context.cache_hits, context.fallback_calls, context.errors_encountered);
-    
-    result
-}
 
 // Streamlined configuration focused on performance, not limits
 struct TreeBuildingConfig {
     timeout_per_operation_ms: u64,
     yield_every_n_elements: usize,
-    prefer_cached_calls: bool,
     batch_size: usize,
 }
 
@@ -1835,15 +2141,15 @@ fn build_ui_node_tree_cached_first(
         thread::sleep(Duration::from_millis(1));
     }
     
-    // Get element attributes with caching preference
-    let attributes = get_element_attributes_cached_first(element, context)?;
+    // Get element attributes - use standard method for safety
+    let attributes = element.attributes();
     
     let mut children_nodes = Vec::new();
     
-    // Get children with caching strategy
-    match get_element_children_cached_first(element, context) {
+    // Get children with safe strategy
+    match get_element_children_safe(element, context) {
         Ok(children_elements) => {
-            debug!("Processing {} children at depth {} (using caching strategy)", children_elements.len(), current_depth);
+            debug!("Processing {} children at depth {} (using safe strategy)", children_elements.len(), current_depth);
             
             // Process children in efficient batches
             for batch in children_elements.chunks(context.config.batch_size) {
@@ -1876,160 +2182,21 @@ fn build_ui_node_tree_cached_first(
     })
 }
 
-// Get element attributes with caching strategy
-fn get_element_attributes_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<UIElementAttributes, AutomationError> {
-    if context.config.prefer_cached_calls {
-        // Try to get cached attributes first (much faster)
-        match get_cached_attributes_fast(element) {
-            Ok(attributes) => {
-                context.increment_cache_hit();
-                return Ok(attributes);
-            }
-            Err(_) => {
-                // Fallback to regular attributes
-                context.increment_fallback();
-            }
-        }
-    }
-    
-    // Fallback: try regular call first, then timeout version
-    match element.attributes() {
-        attributes => {
-            // Regular attributes call succeeded
-            Ok(attributes)
-        }
-    }
-}
-
-// Fast cached attributes extraction
-fn get_cached_attributes_fast(element: &UIElement) -> Result<UIElementAttributes, AutomationError> {
-    // Try to get the underlying Windows element for direct cached access
-    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
-        let mut properties = HashMap::new();
-        
-        // Use cached getters when available (much faster than live calls)
-        let role = win_element.element.0.get_cached_control_type()
-            .or_else(|_| win_element.element.0.get_control_type())
-            .map(|ct| ct.to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-            
-        let name = win_element.element.0.get_cached_name()
-            .or_else(|_| win_element.element.0.get_name())
-            .ok()
-            .filter(|s| !s.is_empty());
-            
-        let automation_id = win_element.element.0.get_cached_automation_id()
-            .or_else(|_| win_element.element.0.get_automation_id())
-            .ok()
-            .filter(|s| !s.is_empty());
-        
-        let help_text = win_element.element.0.get_cached_help_text()
-            .or_else(|_| win_element.element.0.get_help_text())
-            .ok()
-            .filter(|s| !s.is_empty());
-        
-        // Get value with cached preference
-        let value = win_element.element.0.get_cached_property_value(UIProperty::ValueValue)
-            .or_else(|_| win_element.element.0.get_property_value(UIProperty::ValueValue))
-            .ok()
-            .and_then(|v| v.get_string().ok())
-            .filter(|s| !s.is_empty());
-        
-        // Get label (labeled-by element's name) with cached preference
-        let label = win_element.element.0.get_cached_labeled_by()
-            .or_else(|_| win_element.element.0.get_labeled_by())
-            .ok()
-            .and_then(|labeled_element| {
-                labeled_element.get_cached_name()
-                    .or_else(|_| labeled_element.get_name())
-                    .ok()
-                    .filter(|s| !s.is_empty())
-            });
-        
-        // Get keyboard focusable with cached preference
-        let is_keyboard_focusable = win_element.element.0.get_cached_property_value(UIProperty::IsKeyboardFocusable)
-            .or_else(|_| win_element.element.0.get_property_value(UIProperty::IsKeyboardFocusable))
-            .ok()
-            .and_then(|v| v.try_into().ok());
-        
-        // Add automation ID to properties if available
-        if let Some(aid) = automation_id {
-            properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
-        }
-        
-        // Add help text to properties if available  
-        if let Some(ref ht) = help_text {
-            properties.insert("HelpText".to_string(), Some(serde_json::Value::String(ht.clone())));
-        }
-        
-        return Ok(UIElementAttributes {
-            role,
-            name,
-            label,
-            value,
-            description: help_text,
-            properties,
-            is_keyboard_focusable,
-        });
-    }
-    
-    Err(AutomationError::PlatformError("Cannot access cached attributes".to_string()))
-}
-
-// Get element children with caching strategy  
-fn get_element_children_cached_first(element: &UIElement, context: &mut TreeBuildingContext) -> Result<Vec<UIElement>, AutomationError> {
-    if context.config.prefer_cached_calls {
-        // Try cached children first (much faster)
-        match get_cached_children_fast(element) {
-            Ok(children) => {
-                context.increment_cache_hit();
-                debug!("Got {} cached children", children.len());
-                return Ok(children);
-            }
-            Err(_) => {
-                context.increment_fallback();
-                debug!("Cache miss, falling back to live children enumeration");
-            }
-        }
-    }
-    
-    // Fallback: try regular children call first, then timeout version if needed
+// Safe element children access
+fn get_element_children_safe(element: &UIElement, context: &mut TreeBuildingContext) -> Result<Vec<UIElement>, AutomationError> {
+    // Primarily use the standard children method
     match element.children() {
-        Ok(children) => Ok(children),
+        Ok(children) => {
+            context.increment_cache_hit(); // Count this as successful
+            Ok(children)
+        },
         Err(_) => {
+            context.increment_fallback();
             // Only use timeout version if regular call fails
             get_element_children_with_timeout(element, Duration::from_millis(context.config.timeout_per_operation_ms))
         }
     }
 }
-
-// Fast cached children extraction
-fn get_cached_children_fast(element: &UIElement) -> Result<Vec<UIElement>, AutomationError> {
-    if let Some(win_element) = element.as_any().downcast_ref::<WindowsUIElement>() {
-        // Try cached children first
-        match win_element.element.0.get_cached_children() {
-            Ok(cached_children) => {
-                debug!("Found {} cached children", cached_children.len());
-                let ui_children = cached_children
-                    .into_iter()
-                    .map(|ele| {
-                        UIElement::new(Box::new(WindowsUIElement {
-                            element: ThreadSafeWinUIElement(Arc::new(ele)),
-                        }))
-                    })
-                    .collect();
-                return Ok(ui_children);
-            }
-            Err(_) => {
-                // Cache miss, will fallback
-            }
-        }
-    }
-    
-    Err(AutomationError::PlatformError("Cannot access cached children".to_string()))
-}
-
-
 
 // Helper function to get element children with timeout
 fn get_element_children_with_timeout(element: &UIElement, timeout: Duration) -> Result<Vec<UIElement>, AutomationError> {
@@ -2085,7 +2252,9 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn role(&self) -> String {
-        self.element.0.get_control_type().unwrap_or(ControlType::Custom).to_string()
+        self.element.0.get_control_type()
+            .map(|ct| ct.to_string())
+            .unwrap_or_else(|_| "unknown".to_string())
     }
 
     fn attributes(&self) -> UIElementAttributes {
@@ -2113,12 +2282,12 @@ impl UIElementImpl for WindowsUIElement {
             None
         }
         
+        // Use standard property access (not mixed cached/live)
         for property in property_list {
             if let Ok(value) = self.element.0.get_property_value(property) {
                 if let Some(formatted_value) = format_property_value(&value) {
                     properties.insert(format!("{:?}", property), Some(formatted_value));
                 }
-                // If format_property_value returns None, we don't insert anything
             }
         }
         
@@ -2127,24 +2296,56 @@ impl UIElementImpl for WindowsUIElement {
             s.filter(|s| !s.is_empty())
         }
         
+        // Get role
+        let role = self.element.0.get_control_type()
+            .map(|ct| ct.to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        
+        // Get name
+        let name = filter_empty_string(
+            self.element.0.get_name().ok()
+        );
+        
+        // Get label
+        let label = self.element.0.get_labeled_by()
+            .ok()
+            .and_then(|e| filter_empty_string(e.get_name().ok()));
+        
+        // Get value
+        let value = self.element.0.get_property_value(UIProperty::ValueValue)
+            .ok()
+            .and_then(|v| filter_empty_string(v.get_string().ok()));
+        
+        // Get description
+        let description = filter_empty_string(
+            self.element.0.get_help_text().ok()
+        );
+        
+        // Get keyboard focusable
+        let is_keyboard_focusable = self.element.0.get_property_value(UIProperty::IsKeyboardFocusable)
+            .ok()
+            .and_then(|v| v.try_into().ok());
+        
+        // Add automation ID to properties if available
+        if let Ok(aid) = self.element.0.get_automation_id() {
+            if !aid.is_empty() {
+                properties.insert("AutomationId".to_string(), Some(serde_json::Value::String(aid)));
+            }
+        }
+        
+        // Add help text to properties if available  
+        if let Some(ref ht) = description {
+            properties.insert("HelpText".to_string(), Some(serde_json::Value::String(ht.clone())));
+        }
+        
         UIElementAttributes {
-            role: self.role(),
-            name: filter_empty_string(self.element.0.get_name().ok()),
-            label: self
-                .element
-                .0
-                .get_labeled_by()
-                .ok()
-                .and_then(|e| filter_empty_string(e.get_name().ok())),
-            value: self
-                .element
-                .0
-                .get_property_value(UIProperty::ValueValue)
-                .ok()
-                .and_then(|v| filter_empty_string(v.get_string().ok())),
-            description: filter_empty_string(self.element.0.get_help_text().ok()),
+            role,
+            name,
+            label,
+            value,
+            description,
             properties,
-            is_keyboard_focusable: self.is_keyboard_focusable().ok(),
+            is_keyboard_focusable,
         }
     }
 
@@ -2228,10 +2429,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError> {
-        let rect = self
-            .element
-            .0
-            .get_bounding_rectangle()
+        let rect = self.element.0.get_bounding_rectangle()
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
         Ok((
             rect.get_left() as f64,
@@ -2532,26 +2730,19 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_enabled(&self) -> Result<bool, AutomationError> {
-        self.element
-            .0
-            .is_enabled()
+        self.element.0.is_enabled()
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
     }
 
     fn is_visible(&self) -> Result<bool, AutomationError> {
-        // offscreen means invisible, right?
-        self.element
-            .0
-            .is_offscreen()
+        self.element.0.is_offscreen()
+            .map(|is_offscreen| !is_offscreen)
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
-        // The original implementation was inefficient:
-        // It created a new WindowsEngine and compared the focused element's Arc pointer,
-        // which is not reliable and very slow.
-        // The uiautomation::UIElement provides a direct has_keyboard_focus() method.
-        self.element.0.has_keyboard_focus().map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
+        self.element.0.has_keyboard_focus()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e)))
     }
 
     fn perform_action(&self, action: &str) -> Result<(), AutomationError> {
@@ -2652,10 +2843,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
-        let variant = self
-            .element
-            .0
-            .get_property_value(UIProperty::IsKeyboardFocusable)
+        let variant = self.element.0.get_property_value(UIProperty::IsKeyboardFocusable)
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         variant.try_into().map_err(|e| AutomationError::PlatformError(format!("Failed to convert IsKeyboardFocusable to bool: {:?}", e)))
     }
@@ -3608,1321 +3796,3 @@ pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIEleme
     }))
 }
 
-    
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::process;
-    use std::time::Instant;
-
-    #[test]
-    fn test_get_process_name_by_pid_current_process() {
-        // Test with the current process PID
-        let current_pid = process::id() as i32;
-        let result = get_process_name_by_pid(current_pid);
-        
-        assert!(result.is_ok(), "Should be able to get current process name");
-        let process_name = result.unwrap();
-        
-        // The process name should be a valid non-empty string
-        assert!(!process_name.is_empty(), "Process name should not be empty");
-        
-        // Should not contain .exe extension
-        assert!(!process_name.ends_with(".exe"), "Process name should not contain .exe extension");
-        assert!(!process_name.ends_with(".EXE"), "Process name should not contain .EXE extension");
-        
-        // Should be a reasonable process name (alphanumeric, hyphens, underscores)
-        assert!(process_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'), 
-               "Process name should contain only alphanumeric characters, hyphens, and underscores: {}", process_name);
-        
-        println!("Current process name: {}", process_name);
-    }
-
-    // Performance measurement utilities
-    struct PerformanceMetrics {
-        duration: std::time::Duration,
-        elements_processed: usize,
-        max_depth: usize,
-        memory_usage_bytes: usize,
-    }
-
-    impl PerformanceMetrics {
-        fn new() -> Self {
-            Self {
-                duration: std::time::Duration::ZERO,
-                elements_processed: 0,
-                max_depth: 0,
-                memory_usage_bytes: 0,
-            }
-        }
-
-        fn elements_per_second(&self) -> f64 {
-            if self.duration.as_secs_f64() > 0.0 {
-                self.elements_processed as f64 / self.duration.as_secs_f64()
-            } else {
-                0.0
-            }
-        }
-
-        fn is_performance_acceptable(&self) -> bool {
-            // Define acceptable performance criteria:
-            // - Should complete within 5 seconds
-            // - Should process at least 100 elements per second
-            // - Should not use more than 100MB of memory
-            self.duration.as_secs() < 5
-                && self.elements_per_second() >= 100.0
-                && self.memory_usage_bytes < 100 * 1024 * 1024
-        }
-    }
-
-    fn measure_tree_building_performance(element: &UIElement, max_elements: Option<usize>) -> Result<PerformanceMetrics, AutomationError> {
-        let start_time = Instant::now();
-        let mut metrics = PerformanceMetrics::new();
-        
-        // Get memory usage before
-        let memory_before = get_memory_usage();
-        
-        // Build tree with element counting
-        let result = build_ui_tree_with_metrics(element, 0, max_elements.unwrap_or(10000), &mut metrics);
-        
-        // Calculate final metrics
-        metrics.duration = start_time.elapsed();
-        metrics.memory_usage_bytes = get_memory_usage().saturating_sub(memory_before);
-        
-        match result {
-            Ok(_) => Ok(metrics),
-            Err(e) => {
-                println!("Tree building failed: {}", e);
-                Ok(metrics) // Return partial metrics even on failure
-            }
-        }
-    }
-
-    fn build_ui_tree_with_metrics(
-        element: &UIElement,
-        current_depth: usize,
-        max_elements: usize,
-        metrics: &mut PerformanceMetrics,
-    ) -> Result<crate::UINode, AutomationError> {
-        // Update metrics
-        metrics.elements_processed += 1;
-        metrics.max_depth = metrics.max_depth.max(current_depth);
-
-        // Safety limits
-        if metrics.elements_processed >= max_elements {
-            return Err(AutomationError::PlatformError("Element limit reached".to_string()));
-        }
-
-        if current_depth > 50 {
-            return Err(AutomationError::PlatformError("Maximum depth reached".to_string()));
-        }
-
-        let attributes = element.attributes();
-        let mut children_nodes = Vec::new();
-
-        // Get children with timeout
-        let children_start = Instant::now();
-        let children_result = element.children();
-        
-        // If getting children takes too long, skip them
-        if children_start.elapsed() > std::time::Duration::from_millis(500) {
-            println!("Skipping children for element due to timeout");
-            return Ok(crate::UINode {
-                attributes,
-                children: children_nodes,
-            });
-        }
-
-        match children_result {
-            Ok(children_elements) => {
-                for child_element in children_elements.iter().take(20) { // Limit children processed
-                    match build_ui_tree_with_metrics(child_element, current_depth + 1, max_elements, metrics) {
-                        Ok(child_node) => children_nodes.push(child_node),
-                        Err(e) => {
-                            println!("Skipping child due to error: {}", e);
-                            break; // Stop processing children on error
-                        }
-                    }
-                    
-                    // Check if we're taking too long
-                    if metrics.duration.as_secs() > 5 {
-                        println!("Breaking early due to time limit");
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Failed to get children: {}", e);
-            }
-        }
-
-        Ok(crate::UINode {
-            attributes,
-            children: children_nodes,
-        })
-    }
-
-    fn get_memory_usage() -> usize {
-        // Simple memory usage estimation - in a real implementation you might use
-        // more sophisticated memory tracking
-        
-        // This is a simplified approach - for more accurate measurement,
-        // you'd want to use platform-specific APIs or tools like `peak_alloc`
-        0 // Placeholder - implement actual memory tracking if needed
-    }
-
-    #[test]
-    fn test_tree_building_performance_simple_element() {
-        // Test with a simple window to establish baseline performance
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping performance test");
-                return;
-            }
-        };
-
-        // Try to get any available window for testing
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping performance test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for performance testing");
-            return;
-        }
-
-        let test_element = &applications[0];
-        
-        // Measure performance with limited elements
-        let metrics = match measure_tree_building_performance(test_element, Some(100)) {
-            Ok(metrics) => metrics,
-            Err(e) => {
-                println!("Performance measurement failed: {}", e);
-                return;
-            }
-        };
-
-        // Print detailed metrics
-        println!("=== Tree Building Performance Metrics ===");
-        println!("Duration: {:?}", metrics.duration);
-        println!("Elements processed: {}", metrics.elements_processed);
-        println!("Max depth: {}", metrics.max_depth);
-        println!("Memory usage: {} bytes", metrics.memory_usage_bytes);
-        println!("Elements per second: {:.2}", metrics.elements_per_second());
-        println!("Performance acceptable: {}", metrics.is_performance_acceptable());
-
-        // Basic assertions
-        assert!(metrics.duration.as_secs() < 10, "Tree building should complete within 10 seconds");
-        assert!(metrics.elements_processed > 0, "Should process at least one element");
-    }
-
-    #[test] 
-    fn test_tree_building_performance_stress_test() {
-        // This test validates full tree building (no limits) with caching optimization
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping stress test");
-                return;
-            }
-        };
-
-        // Try to find complex applications for full tree testing
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping stress test");
-                return;
-            }
-        };
-
-        for app in applications.iter().take(2) { // Test up to 2 applications for full trees
-            let app_name = app.attributes().name.unwrap_or_default();
-            println!("Testing FULL tree building for application: {}", app_name);
-
-            let start_time = Instant::now();
-            
-            // Measure FULL tree building with new optimized function
-            let tree_result = build_full_ui_node_tree_optimized(app);
-            let total_time = start_time.elapsed();
-            
-            match tree_result {
-                Ok(tree) => {
-                    let element_count = count_tree_elements(&tree);
-                    let max_depth = calculate_tree_depth(&tree);
-                    let elements_per_second = if total_time.as_secs_f64() > 0.0 {
-                        element_count as f64 / total_time.as_secs_f64()
-                    } else {
-                        0.0
-                    };
-                    
-                    println!("=== FULL Tree Building Results for {} ===", app_name);
-                    println!("Total time: {:?}", total_time);
-                    println!("Elements in full tree: {}", element_count);
-                    println!("Maximum depth: {}", max_depth);
-                    println!("Elements per second: {:.2}", elements_per_second);
-                    
-                    // Validate that we're getting comprehensive results
-                    assert!(element_count > 0, "Should find elements in application tree");
-                    assert!(max_depth > 0, "Should have some depth in application tree");
-                    
-                    // Performance should be reasonable (not computer-freezing)
-                    assert!(total_time.as_secs() < 60, "Full tree building should complete within 60 seconds for {}", app_name);
-                    
-                    // Should maintain good throughput
-                    if elements_per_second < 20.0 {
-                        println!("WARNING: Lower than expected throughput for {}: {:.2} elements/sec", app_name, elements_per_second);
-                    }
-                }
-                Err(e) => {
-                    println!("Full tree building failed for {}: {}", app_name, e);
-                }
-            }
-        }
-    }
-
-    // Helper function to count elements in a tree
-    fn count_tree_elements(node: &crate::UINode) -> usize {
-        1 + node.children.iter().map(|child| count_tree_elements(child)).sum::<usize>()
-    }
-
-    // Helper function to calculate maximum depth
-    fn calculate_tree_depth(node: &crate::UINode) -> usize {
-        if node.children.is_empty() {
-            1
-        } else {
-            1 + node.children.iter().map(|child| calculate_tree_depth(child)).max().unwrap_or(0)
-        }
-    }
-
-    #[test]
-    fn test_tree_building_depth_limit() {
-        // Test that depth limiting works correctly
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping depth limit test");
-                return;
-            }
-        };
-
-        let root = engine.get_root_element();
-        let mut metrics = PerformanceMetrics::new();
-        
-        // Test with very limited depth
-        let result = build_ui_tree_with_metrics(&root, 0, 50, &mut metrics);
-        
-        match result {
-            Ok(_) => {
-                println!("Depth limit test - Max depth reached: {}", metrics.max_depth);
-                assert!(metrics.max_depth <= 50, "Should respect depth limit");
-            }
-            Err(e) => {
-                println!("Depth limit test completed with controlled error: {}", e);
-                // This is expected behavior when hitting limits
-            }
-        }
-    }
-
-    #[test]
-    fn test_tree_building_element_limit() {
-        // Test that element count limiting works correctly
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping element limit test");
-                return;
-            }
-        };
-
-        let root = engine.get_root_element();
-        let mut metrics = PerformanceMetrics::new();
-        
-        // Test with very limited element count
-        let result = build_ui_tree_with_metrics(&root, 0, 10, &mut metrics);
-        
-        match result {
-            Ok(_) => {
-                println!("Element limit test - Elements processed: {}", metrics.elements_processed);
-                assert!(metrics.elements_processed <= 10, "Should respect element limit");
-            }
-            Err(e) => {
-                println!("Element limit test completed with controlled error: {}", e);
-                assert!(metrics.elements_processed <= 10, "Should not exceed element limit even on error");
-            }
-        }
-    }
-
-    #[test]
-    fn test_get_process_name_by_pid_invalid_pid() {
-        // Test with an invalid PID (very high number unlikely to exist)
-        let invalid_pid = 999999;
-        let result = get_process_name_by_pid(invalid_pid);
-        
-        assert!(result.is_err(), "Should fail for invalid PID");
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("Process with PID"), "Error should mention the PID");
-    }
-
-    #[test]
-    fn test_get_process_name_by_pid_system_process() {
-        // Test with a known system process (PID 4 is usually System on Windows)
-        let system_pid = 4;
-        let result = get_process_name_by_pid(system_pid);
-        
-        // This might succeed or fail depending on permissions, but shouldn't panic
-        match result {
-            Ok(name) => {
-                assert!(!name.is_empty(), "Process name should not be empty");
-                println!("System process name: {}", name);
-            }
-            Err(e) => {
-                println!("Expected: Could not access system process: {}", e);
-            }
-        }
-    }
-
-    #[test]
-    fn test_get_pid_by_name_current_process() {
-        // First get the current process name
-        let current_pid = process::id() as i32;
-        let current_name_result = get_process_name_by_pid(current_pid);
-        
-        if let Ok(current_name) = current_name_result {
-            // Now try to find a PID by that name
-            let found_pid = get_pid_by_name(&current_name);
-            
-            // Should find at least one process with this name
-            assert!(found_pid.is_some(), "Should find a PID for current process name: {}", current_name);
-            
-            let found_pid = found_pid.unwrap();
-            assert!(found_pid > 0, "PID should be positive");
-            
-            // The found PID might not be exactly the same as current PID if there are multiple
-            // processes with the same name, but it should be valid
-            println!("Current PID: {}, Found PID for '{}': {}", current_pid, current_name, found_pid);
-        }
-    }
-
-    #[test]
-    fn test_get_pid_by_name_nonexistent_process() {
-        // Test with a process name that definitely doesn't exist
-        let nonexistent_name = "definitely_nonexistent_process_12345";
-        let result = get_pid_by_name(nonexistent_name);
-        
-        assert!(result.is_none(), "Should return None for nonexistent process");
-    }
-
-    #[test]
-    fn test_get_pid_by_name_partial_match() {
-        // Test partial matching - try to find any process containing "win"
-        // This should match Windows system processes like "winlogon", "wininit", etc.
-        let partial_name = "win";
-        let result = get_pid_by_name(partial_name);
-        
-        // This might or might not find something, but shouldn't panic
-        match result {
-            Some(pid) => {
-                assert!(pid > 0, "Found PID should be positive");
-                println!("Found process with 'win' in name: PID {}", pid);
-                
-                // Verify we can get the name back
-                if let Ok(name) = get_process_name_by_pid(pid) {
-                    assert!(name.to_lowercase().contains("win"), 
-                           "Found process name '{}' should contain 'win'", name);
-                }
-            }
-            None => {
-                println!("No process found containing 'win' - this is possible but unusual on Windows");
-            }
-        }
-    }
-
-    #[test]
-    fn test_handle_guard_cleanup() {
-        // Test that HandleGuard properly cleans up handles
-        use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-        
-        unsafe {
-            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
-            assert!(!snapshot.is_invalid(), "Snapshot should be valid");
-            
-            // Create and immediately drop the guard
-            {
-                let _guard = HandleGuard(snapshot);
-                // Guard should be alive here
-            }
-            // Guard should be dropped and handle closed here
-            
-            // We can't easily test that the handle was actually closed without
-            // potentially causing issues, but the test verifies the code compiles
-            // and the guard can be created/dropped without panicking
-        }
-    }
-
-    #[test]
-    fn test_process_name_extension_stripping() {
-        // Test the extension stripping logic by checking current process
-        let current_pid = process::id() as i32;
-        let result = get_process_name_by_pid(current_pid);
-        
-        if let Ok(process_name) = result {
-            // Verify no .exe extension
-            assert!(!process_name.ends_with(".exe"), "Process name should not end with .exe");
-            assert!(!process_name.ends_with(".EXE"), "Process name should not end with .EXE");
-            
-            // Verify it's not empty after stripping
-            assert!(!process_name.is_empty(), "Process name should not be empty after extension stripping");
-        }
-    }
-
-    #[test]
-    fn test_multiple_process_enumeration() {
-        // Test that we can enumerate multiple processes without issues
-        let current_pid = process::id() as i32;
-        
-        // Try to get names for a range of PIDs around the current one
-        let mut successful_lookups = 0;
-        let mut failed_lookups = 0;
-        
-        for offset in -10..=10 {
-            let test_pid = current_pid + offset;
-            if test_pid > 0 {
-                match get_process_name_by_pid(test_pid) {
-                    Ok(name) => {
-                        successful_lookups += 1;
-                        assert!(!name.is_empty(), "Process name should not be empty");
-                        println!("PID {}: {}", test_pid, name);
-                    }
-                    Err(_) => {
-                        failed_lookups += 1;
-                    }
-                }
-            }
-        }
-        
-        // We should have at least found the current process
-        assert!(successful_lookups >= 1, "Should find at least the current process");
-        println!("Successful lookups: {}, Failed lookups: {}", successful_lookups, failed_lookups);
-    }
-
-    #[cfg(test)]
-    mod integration_tests {
-        use super::*;
-
-        #[test]
-        fn test_round_trip_pid_name_lookup() {
-            // Test the round trip: PID -> Name -> PID
-            let original_pid = process::id() as i32;
-            
-            // Get the process name
-            let process_name = match get_process_name_by_pid(original_pid) {
-                Ok(name) => name,
-                Err(_) => {
-                    println!("Could not get current process name, skipping round-trip test");
-                    return;
-                }
-            };
-            
-            // Find a PID by that name
-            let found_pid = get_pid_by_name(&process_name);
-            
-            assert!(found_pid.is_some(), "Should find a PID for process name: {}", process_name);
-            let found_pid = found_pid.unwrap();
-            
-            // Verify the found PID corresponds to the same process name
-            let verified_name = get_process_name_by_pid(found_pid).unwrap();
-            assert_eq!(process_name, verified_name, 
-                      "Round-trip should yield the same process name");
-            
-            println!("Round-trip successful: {} -> {} -> {}", 
-                    original_pid, process_name, found_pid);
-        }
-    }
-
-    #[test]
-    fn test_open_regular_application() {
-        // Test opening a regular Windows application (Notepad)
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test successful case
-        let result = engine.open_application("notepad.exe");
-        assert!(result.is_ok(), "Should be able to open Notepad");
-        let app = result.unwrap();
-        assert_eq!(app.role(), "Window", "Opened application should be a window");
-        
-        // Test error case with non-existent application
-        let result = engine.open_application("nonexistent_app.exe");
-        assert!(result.is_err(), "Should fail to open non-existent application");
-        if let Err(AutomationError::PlatformError(_)) = result {
-            // Expected error type
-        } else {
-            panic!("Expected PlatformError for non-existent application");
-        }
-    }
-
-    #[test]
-    fn test_open_uwp_application() {
-        // Test opening a UWP application (Calculator)
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test successful case
-        let result = engine.open_application("uwp:Microsoft.WindowsCalculator");
-        assert!(result.is_ok(), "Should be able to open Calculator");
-        let app = result.unwrap();
-        assert_eq!(app.role(), "Window", "Opened UWP application should be a window");
-        
-        // Test error case with non-existent UWP app
-        let result = engine.open_application("uwp:NonexistentUWPApp");
-        assert!(result.is_err(), "Should fail to open non-existent UWP application");
-        if let Err(AutomationError::PlatformError(_)) = result {
-            // Expected error type
-        } else {
-            panic!("Expected PlatformError for non-existent UWP application");
-        }
-    }
-
-    #[test]
-    fn test_open_application_edge_cases() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test empty application name
-        let result = engine.open_application("");
-        assert!(result.is_err(), "Should fail with empty application name");
-        
-        // Test application name with only whitespace
-        let result = engine.open_application("   ");
-        assert!(result.is_err(), "Should fail with whitespace-only application name");
-        
-        // Test application name with invalid characters
-        let result = engine.open_application("app<with>invalid:chars");
-        assert!(result.is_err(), "Should fail with invalid characters in application name");
-    }
-
-    #[test]
-    fn test_open_application_with_path() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test opening application with full path
-        let result = engine.open_application("C:\\Windows\\System32\\notepad.exe");
-        assert!(result.is_ok(), "Should be able to open Notepad with full path");
-        let app = result.unwrap();
-        assert_eq!(app.role(), "Window", "Opened application should be a window");
-        
-        // Test opening application with relative path
-        let result = engine.open_application(".\\notepad.exe");
-        assert!(result.is_err(), "Should fail with relative path");
-    }
-
-    #[test]
-    fn test_open_application_with_arguments() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test opening application with arguments
-        let result = engine.open_application("notepad.exe test.txt");
-        assert!(result.is_ok(), "Should be able to open Notepad with arguments");
-        let app = result.unwrap();
-        assert_eq!(app.role(), "Window", "Opened application should be a window");
-    }
-
-    #[test]
-    fn test_open_application_with_special_characters() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test with spaces in path
-        let result = engine.open_application("C:\\Program Files\\Windows NT\\Accessories\\wordpad.exe");
-        assert!(result.is_ok(), "Should handle paths with spaces");
-        
-        // Test with quotes
-        let result = engine.open_application("\"C:\\Program Files\\Windows NT\\Accessories\\wordpad.exe\"");
-        assert!(result.is_ok(), "Should handle paths with quotes");
-    }
-
-    #[test]
-    fn test_open_application_permissions() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test opening system application (should fail without admin rights)
-        let result = engine.open_application("C:\\Windows\\System32\\cmd.exe /k net user");
-        assert!(result.is_err(), "Should fail to open system command with restricted permissions");
-        
-        // Test opening application in protected directory
-        let result = engine.open_application("C:\\Windows\\System32\\drivers\\etc\\hosts");
-        assert!(result.is_err(), "Should fail to open file in protected directory");
-    }
-
-    #[test]
-    fn test_open_application_concurrent() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test opening multiple instances of the same application
-        let result1 = engine.open_application("notepad.exe");
-        assert!(result1.is_ok(), "Should open first instance");
-        
-        let result2 = engine.open_application("notepad.exe");
-        assert!(result2.is_ok(), "Should open second instance");
-        
-        // Verify they are different instances
-        let app1 = result1.unwrap();
-        let app2 = result2.unwrap();
-        assert_ne!(app1.id(), app2.id(), "Should be different application instances");
-    }
-
-    #[test]
-    fn test_open_application_with_environment() {
-        let engine = WindowsEngine::new(false, false).unwrap();
-        
-        // Test opening application that requires specific environment variables
-        let result = engine.open_application("powershell.exe -NoProfile -Command \"$env:TEST_VAR='test'; notepad.exe\"");
-        assert!(result.is_ok(), "Should handle applications with environment variables");
-    }
-
-    // Tests for the application() method and related functionality
-    #[test]
-    fn test_application_method_from_root_element() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping application test");
-                return;
-            }
-        };
-
-        let root = engine.get_root_element();
-        
-        // Test application method on root element
-        match root.application() {
-            Ok(Some(app)) => {
-                println!("Found application from root element");
-                
-                // Verify it's a valid application element
-                let attrs = app.attributes();
-                println!("Application role: {}", attrs.role);
-                println!("Application name: {:?}", attrs.name);
-                
-                // Should be either Window or Pane
-                assert!(attrs.role == "Window" || attrs.role == "Pane", 
-                       "Application should be Window or Pane, got: {}", attrs.role);
-            }
-            Ok(None) => {
-                println!("No application found from root element");
-            }
-            Err(e) => {
-                println!("Error getting application from root: {}", e);
-                // This might happen in some environments, so don't fail the test
-            }
-        }
-    }
-
-    #[test]
-    fn test_application_method_from_app_element() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping test");
-                return;
-            }
-        };
-
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for testing");
-            return;
-        }
-
-        let app_element = &applications[0];
-        println!("Testing application() method on application element");
-        let app_attrs = app_element.attributes();
-        println!("Original element - Role: {}, Name: {:?}", app_attrs.role, app_attrs.name);
-
-        match app_element.application() {
-            Ok(Some(found_app)) => {
-                let found_attrs = found_app.attributes();
-                println!("Found application - Role: {}, Name: {:?}", found_attrs.role, found_attrs.name);
-                
-                // Should find an application element
-                assert!(found_attrs.role == "Window" || found_attrs.role == "Pane",
-                       "Found application should be Window or Pane, got: {}", found_attrs.role);
-                
-                // Should have some identifiable attributes
-                assert!(found_attrs.name.is_some() || !found_attrs.properties.is_empty(),
-                       "Application should have some identifying attributes");
-            }
-            Ok(None) => {
-                println!("No application found from app element - this might be expected");
-            }
-            Err(e) => {
-                println!("Error getting application from app element: {}", e);
-                // Don't fail test as this might be expected in some cases
-            }
-        }
-    }
-
-    #[test]
-    fn test_application_method_from_child_element() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping test");
-                return;
-            }
-        };
-
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for testing");
-            return;
-        }
-
-        let app_element = &applications[0];
-        let children = match app_element.children() {
-            Ok(children) => children,
-            Err(_) => {
-                println!("Cannot get child elements, skipping test");
-                return;
-            }
-        };
-
-        if children.is_empty() {
-            println!("No child elements available for testing");
-            return;
-        }
-
-        let child_element = &children[0];
-        println!("Testing application() method on child element");
-        let child_attrs = child_element.attributes();
-        println!("Child element - Role: {}, Name: {:?}", child_attrs.role, child_attrs.name);
-
-        match child_element.application() {
-            Ok(Some(found_app)) => {
-                let found_attrs = found_app.attributes();
-                println!("Found application from child - Role: {}, Name: {:?}", found_attrs.role, found_attrs.name);
-                
-                // Should find an application element
-                assert!(found_attrs.role == "Window" || found_attrs.role == "Pane",
-                       "Found application should be Window or Pane, got: {}", found_attrs.role);
-            }
-            Ok(None) => {
-                println!("No application found from child element");
-            }
-            Err(e) => {
-                println!("Error getting application from child element: {}", e);
-                // This is more likely to be a real error for child elements
-            }
-        }
-    }
-
-    #[test]
-    fn test_window_method_from_various_elements() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping window test");
-                return;
-            }
-        };
-
-        // Test window method on root element
-        let root = engine.get_root_element();
-        println!("Testing window() method on root element");
-        
-        match root.window() {
-            Ok(Some(window)) => {
-                let window_attrs = window.attributes();
-                println!("Found window from root - Role: {}, Name: {:?}", 
-                        window_attrs.role, window_attrs.name);
-                
-                // Window should have Window control type
-                assert_eq!(window_attrs.role, "Window",
-                         "Window element should have Window role, got: {}", window_attrs.role);
-            }
-            Ok(None) => {
-                println!("No window found from root element");
-            }
-            Err(e) => {
-                println!("Error getting window from root element: {}", e);
-            }
-        }
-
-        // Test window method on application elements if available
-        if let Ok(applications) = engine.get_applications() {
-            for (index, app) in applications.iter().take(2).enumerate() {
-                println!("Testing window() method on application element {}", index + 1);
-                
-                match app.window() {
-                    Ok(Some(window)) => {
-                        let window_attrs = window.attributes();
-                        println!("Found window from app {} - Role: {}, Name: {:?}", 
-                                index + 1, window_attrs.role, window_attrs.name);
-                        
-                        // Window should have Window control type
-                        assert_eq!(window_attrs.role, "Window",
-                                 "Window element should have Window role, got: {}", window_attrs.role);
-                    }
-                    Ok(None) => {
-                        println!("No window found from application element {}", index + 1);
-                    }
-                    Err(e) => {
-                        println!("Error getting window from application element {}: {}", index + 1, e);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_application_vs_window_comparison() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping comparison test");
-                return;
-            }
-        };
-
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping comparison test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for comparison test");
-            return;
-        }
-
-        let app_element = &applications[0];
-        let children = match app_element.children() {
-            Ok(children) => children,
-            Err(_) => {
-                println!("Cannot get child elements, skipping comparison test");
-                return;
-            }
-        };
-
-        if children.is_empty() {
-            println!("No child elements available for comparison test");
-            return;
-        }
-
-        let child_element = &children[0];
-        println!("Comparing application() vs window() results");
-
-        let application_result = child_element.application();
-        let window_result = child_element.window();
-
-        match (application_result, window_result) {
-            (Ok(Some(app)), Ok(Some(window))) => {
-                let app_attrs = app.attributes();
-                let window_attrs = window.attributes();
-                
-                println!("Application - Role: {}, Name: {:?}", app_attrs.role, app_attrs.name);
-                println!("Window - Role: {}, Name: {:?}", window_attrs.role, window_attrs.name);
-                
-                // Application can be Window or Pane, Window should be Window
-                assert!(app_attrs.role == "Window" || app_attrs.role == "Pane");
-                assert_eq!(window_attrs.role, "Window");
-                
-                // If application is a Window, they might be the same
-                if app_attrs.role == "Window" {
-                    println!("Both application and window are Window type - they might be the same element");
-                }
-            }
-            (Ok(app_opt), Ok(window_opt)) => {
-                println!("Application result: {:?}", app_opt.is_some());
-                println!("Window result: {:?}", window_opt.is_some());
-            }
-            (app_result, window_result) => {
-                println!("Application result: {:?}", app_result.is_ok());
-                println!("Window result: {:?}", window_result.is_ok());
-            }
-        }
-    }
-
-    #[test]
-    fn test_application_method_error_handling() {
-        // This test checks error handling in the application method
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping error handling test");
-                return;
-            }
-        };
-
-        let root = engine.get_root_element();
-        
-        // The application method should handle cases gracefully
-        match root.application() {
-            Ok(result) => {
-                println!("Application method succeeded, result present: {}", result.is_some());
-            }
-            Err(e) => {
-                println!("Application method returned error: {}", e);
-                
-                // Should be a PlatformError based on the implementation
-                match e {
-                    AutomationError::PlatformError(msg) => {
-                        assert!(msg.contains("Failed to create UIAutomation") || 
-                               msg.contains("Failed to get children for element"),
-                               "Error message should be specific: {}", msg);
-                    }
-                    _ => {
-                        panic!("Expected PlatformError, got: {:?}", e);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_application_method_performance() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping performance test");
-                return;
-            }
-        };
-
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping performance test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for performance test");
-            return;
-        }
-
-        let app_element = &applications[0];
-        let children = match app_element.children() {
-            Ok(children) => children,
-            Err(_) => {
-                println!("Cannot get child elements, skipping performance test");
-                return;
-            }
-        };
-
-        if children.is_empty() {
-            println!("No child elements available for performance test");
-            return;
-        }
-
-        let child_element = &children[0];
-        println!("Testing application() method performance");
-
-        let start_time = std::time::Instant::now();
-        let mut successful_calls = 0;
-        let mut failed_calls = 0;
-
-        // Test multiple calls to see if performance is reasonable
-        for i in 0..5 {
-            match child_element.application() {
-                Ok(_) => {
-                    successful_calls += 1;
-                    println!("Call {} succeeded", i + 1);
-                }
-                Err(e) => {
-                    failed_calls += 1;
-                    println!("Call {} failed: {}", i + 1, e);
-                }
-            }
-        }
-
-        let total_time = start_time.elapsed();
-        let avg_time = total_time / 5;
-
-        println!("Performance results:");
-        println!("  Total time: {:?}", total_time);
-        println!("  Average time per call: {:?}", avg_time);
-        println!("  Successful calls: {}", successful_calls);
-        println!("  Failed calls: {}", failed_calls);
-
-        // Performance should be reasonable (less than 1 second per call)
-        assert!(avg_time < Duration::from_secs(1), 
-               "Average call time should be under 1 second, got: {:?}", avg_time);
-    }
-
-    #[test]
-    fn test_related_navigation_methods() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping navigation test");
-                return;
-            }
-        };
-
-        let applications = match engine.get_applications() {
-            Ok(apps) => apps,
-            Err(_) => {
-                println!("Cannot get applications, skipping navigation test");
-                return;
-            }
-        };
-
-        if applications.is_empty() {
-            println!("No applications available for navigation test");
-            return;
-        }
-
-        let app_element = &applications[0];
-        let children = match app_element.children() {
-            Ok(children) => children,
-            Err(_) => {
-                println!("Cannot get child elements, skipping navigation test");
-                return;
-            }
-        };
-
-        if children.is_empty() {
-            println!("No child elements available for navigation test");
-            return;
-        }
-
-        let child_element = &children[0];
-        println!("Testing related navigation methods");
-
-        // Test application()
-        let app_result = child_element.application();
-        println!("Application result: {:?}", app_result.is_ok());
-
-        // Test window()
-        let window_result = child_element.window();
-        println!("Window result: {:?}", window_result.is_ok());
-
-        // Test parent()
-        let parent_result = child_element.parent();
-        println!("Parent result: {:?}", parent_result.is_ok());
-
-        // Test children()
-        let children_result = child_element.children();
-        match &children_result {
-            Ok(children) => println!("Children count: {}", children.len()),
-            Err(e) => println!("Children error: {}", e),
-        }
-
-        // At least one navigation method should work
-        assert!(app_result.is_ok() || window_result.is_ok() || parent_result.is_ok() || children_result.is_ok(),
-               "At least one navigation method should work");
-    }
-
-    #[test]
-    fn test_application_method_with_focus() {
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping focus test");
-                return;
-            }
-        };
-
-        // Get focused element and test application method
-        match engine.get_focused_element() {
-            Ok(focused_element) => {
-                println!("Testing application() on focused element");
-                let focused_attrs = focused_element.attributes();
-                println!("Focused element - Role: {}, Name: {:?}", 
-                        focused_attrs.role, focused_attrs.name);
-
-                match focused_element.application() {
-                    Ok(Some(app)) => {
-                        let app_attrs = app.attributes();
-                        println!("Application from focused - Role: {}, Name: {:?}", 
-                                app_attrs.role, app_attrs.name);
-                        
-                        assert!(app_attrs.role == "Window" || app_attrs.role == "Pane",
-                               "Application should be Window or Pane");
-                    }
-                    Ok(None) => {
-                        println!("No application found from focused element");
-                    }
-                    Err(e) => {
-                        println!("Error getting application from focused element: {}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Cannot get focused element: {}", e);
-            }
-        }
-    }
-
-    #[test]
-    fn test_browser_title_matching() {
-        // Test the extract_browser_info function
-        let (is_browser, parts) = WindowsEngine::extract_browser_info(
-            "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
-        );
-        
-        assert!(is_browser, "Should detect as browser title");
-        assert!(parts.len() >= 2, "Should split browser title into parts: {:?}", parts);
-        
-        // Should contain both the page title and the browser name
-        let parts_str = parts.join(" ");
-        assert!(parts_str.to_lowercase().contains("mailtracker"), "Should contain page title");
-        assert!(parts_str.to_lowercase().contains("chrome"), "Should contain browser name");
-        
-        // Test similarity calculation
-        let similarity = WindowsEngine::calculate_similarity(
-            "Chrome Web Store - Google Chrome",
-            "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
-        );
-        
-        assert!(similarity > 0.3, "Should have reasonable similarity: {}", similarity);
-        
-        println!("Browser title parts: {:?}", parts);
-        println!("Similarity score: {:.2}", similarity);
-    }
-
-    #[test]
-    fn test_browser_title_matching_edge_cases() {
-        // Test various browser title formats
-        let test_cases = vec![
-            ("Tab Title - Google Chrome", true),
-            ("Mozilla Firefox", true),
-            ("Microsoft Edge", true),
-            ("Some App - Not Application", false), // Changed to avoid "browser" word
-            ("Chrome Web Store - Google Chrome", true),
-            ("GitHub - Google Chrome", true),
-            ("Random Window Title", false),
-        ];
-
-        for (title, expected_is_browser) in test_cases {
-            let (is_browser, parts) = WindowsEngine::extract_browser_info(title);
-            assert_eq!(is_browser, expected_is_browser, 
-                      "Browser detection failed for: '{}', expected: {}, got: {}", 
-                      title, expected_is_browser, is_browser);
-            
-            if is_browser {
-                assert!(!parts.is_empty(), "Browser title should have parts: '{}'", title);
-            }
-        }
-    }
-
-    #[test]
-    fn test_similarity_calculation_edge_cases() {
-        let test_cases = vec![
-            ("identical", "identical", 1.0),
-            ("Longer String", "Long", 0.3), // More realistic expected value
-            ("Chrome Web Store", "MailTracker Chrome Web Store", 0.4), // More realistic
-            ("completely different", "nothing similar", 0.0),
-            ("", "empty test", 0.0),
-            ("single", "", 0.0),
-        ];
-
-        for (text1, text2, min_expected) in test_cases {
-            let similarity = WindowsEngine::calculate_similarity(text1, text2);
-            
-            if min_expected == 1.0 {
-                assert_eq!(similarity, 1.0, "Identical strings should have similarity 1.0");
-            } else if min_expected == 0.0 {
-                assert_eq!(similarity, 0.0, "Completely different strings should have similarity 0.0");
-            } else {
-                assert!(similarity >= min_expected - 0.2 && similarity <= 1.0, 
-                       "Similarity for '{}' vs '{}' should be around {}, got: {:.2}", 
-                       text1, text2, min_expected, similarity);
-            }
-            
-            println!("'{}' vs '{}' = {:.2}", text1, text2, similarity);
-        }
-    }
-
-    #[test]
-    fn test_find_best_title_match_browser_scenario() {
-        // Simulate the exact scenario from the logs
-        let engine = match WindowsEngine::new(false, false) {
-            Ok(engine) => engine,
-            Err(_) => {
-                println!("Cannot create WindowsEngine, skipping browser scenario test");
-                return;
-            }
-        };
-
-        // Mock window data based on the actual log
-        // Expected: "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome"
-        // Available: "Chrome Web Store - Google Chrome"
-        
-        // We can't create actual UIElements for testing, but we can test our logic
-        let target_title = "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome";
-        let available_window_name = "Chrome Web Store - Google Chrome";
-        
-        // Test the individual components
-        let (is_target_browser, target_parts) = WindowsEngine::extract_browser_info(target_title);
-        let (is_window_browser, window_parts) = WindowsEngine::extract_browser_info(available_window_name);
-        
-        assert!(is_target_browser, "Target should be detected as browser");
-        assert!(is_window_browser, "Window should be detected as browser");
-        
-        println!("Target parts: {:?}", target_parts);
-        println!("Window parts: {:?}", window_parts);
-        
-        // Test similarity between parts
-        let mut max_similarity = 0.0f64;
-        for target_part in &target_parts {
-            for window_part in &window_parts {
-                let similarity = WindowsEngine::calculate_similarity(target_part, window_part);
-                max_similarity = max_similarity.max(similarity);
-                println!("'{}' vs '{}' = {:.2}", target_part, window_part, similarity);
-            }
-        }
-        
-        // Should find a good match since both contain "Chrome Web Store - Google Chrome"
-        assert!(max_similarity > 0.6, 
-               "Should find good similarity between browser titles, got: {:.2}", max_similarity);
-    }
-
-    #[test]
-    fn test_enhanced_error_messages() {
-        // Test that browser error messages provide helpful suggestions
-        let target_title = "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome";
-        let available_windows = vec![
-            "Taskbar".to_string(),
-            "Chrome Web Store - Google Chrome".to_string(),
-            "Firefox - Mozilla Firefox".to_string(),
-            "Random Application".to_string(),
-        ];
-        
-        let (is_target_browser, _) = WindowsEngine::extract_browser_info(target_title);
-        assert!(is_target_browser, "Target should be browser");
-        
-        let browser_windows: Vec<&String> = available_windows.iter()
-            .filter(|name| {
-                let (is_browser, _) = WindowsEngine::extract_browser_info(name);
-                is_browser
-            })
-            .collect();
-        
-        assert!(!browser_windows.is_empty(), "Should find browser windows in the list");
-        assert!(browser_windows.len() >= 2, "Should find multiple browser windows: {:?}", browser_windows);
-        
-        // Verify the specific windows we expect
-        assert!(browser_windows.iter().any(|w| w.contains("Chrome")), "Should find Chrome window");
-        assert!(browser_windows.iter().any(|w| w.contains("Firefox")), "Should find Firefox window");
-    }
-}

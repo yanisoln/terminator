@@ -386,6 +386,12 @@ export declare class Element {
    * @returns {ScreenshotResult} The screenshot data containing image data and dimensions.
    */
   capture(): ScreenshotResult
+  /**
+   * Get the process ID of the application containing this element.
+   *
+   * @returns {number} The process ID.
+   */
+  processId(): number
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -682,4 +688,11 @@ export declare class Locator {
    * @returns {Promise<ScreenshotResult>} The screenshot data containing image data and dimensions.
    */
   capture(timeoutMs?: number | undefined | null): Promise<ScreenshotResult>
+  /**
+   * (async) Get the process ID of the application containing the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<number>} The process ID of the application.
+   */
+  processId(timeoutMs?: number | undefined | null): Promise<number>
 }

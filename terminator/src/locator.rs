@@ -419,10 +419,16 @@ impl Locator {
         element.highlight(color, duration)
     }
 
-    /// Capture a screenshot of the element
+    /// Capture a screenshot of the first matching element
     pub async fn capture(&self, timeout: Option<Duration>) -> Result<ScreenshotResult, AutomationError> {
         let element = self.wait(timeout).await?;
         element.capture()
+    }
+
+    /// Get the process ID of the application containing the first matching element
+    pub async fn process_id(&self, timeout: Option<Duration>) -> Result<u32, AutomationError> {
+        let element = self.wait(timeout).await?;
+        element.process_id()
     }
 
 }

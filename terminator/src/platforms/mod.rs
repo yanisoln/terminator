@@ -102,6 +102,27 @@ pub trait AccessibilityEngine: Send + Sync {
 
     /// Get the name of the currently active monitor
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError>;
+
+    /// Enable downcasting to concrete engine types
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Enable or disable background cache warming for improved performance
+    /// 
+    /// This spawns a background thread that periodically fetches UI trees for frequently used applications
+    /// to keep the platform's native cache warm, improving performance when applications need to be queried.
+    /// 
+    /// Default implementation returns UnsupportedOperation - platforms should override as needed.
+    fn enable_background_cache_warmer(
+        &self,
+        enable: bool,
+        interval_seconds: Option<u64>,
+        max_apps_to_cache: Option<usize>,
+    ) -> Result<(), AutomationError>;
+
+    /// Check if the background cache warmer is currently running
+    /// 
+    /// Default implementation returns false - platforms should override as needed.
+    fn is_cache_warmer_enabled(&self) -> bool;
 }
 
 #[cfg(target_os = "linux")]
@@ -112,6 +133,8 @@ pub mod macos;
 pub mod tree_search;
 #[cfg(target_os = "windows")]
 pub mod windows;
+#[cfg(all(target_os = "windows", test))]
+pub mod windows_tests;
 
 /// Create the appropriate engine for the current platform
 pub fn create_engine(
