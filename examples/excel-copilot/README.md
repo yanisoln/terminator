@@ -27,6 +27,7 @@ Excel Copilot enables AI-powered Excel automation through direct window manipula
 
 ## Installation
 
+0. Install [webview2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH)
 1. Clone the repository
 2. Install dependencies:
    ```bash
@@ -149,4 +150,4 @@ npm run tauri:build
 - Microsoft Excel installed and running
 - Valid Google Gemini API key
 - Node.js and Rust development environment
-
+- WebView2 : https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH
