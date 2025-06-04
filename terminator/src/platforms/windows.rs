@@ -39,7 +39,7 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Com::CLSCTX_ALL;
 use windows::Win32::System::Com::CoCreateInstance;
 use windows::Win32::System::Com::CoInitializeEx;
-use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+use windows::Win32::System::Com::COINIT_MULTITHREADED;
 
 use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
 use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
@@ -153,8 +153,23 @@ pub struct WindowsEngine {
 
 impl WindowsEngine {
     pub fn new(use_background_apps: bool, activate_app: bool) -> Result<Self, AutomationError> {
+        // Initialize COM in multithreaded mode for thread safety
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
+                // Only return error if it's not the "already initialized" case
+                return Err(AutomationError::PlatformError(format!("Failed to initialize COM in multithreaded mode: {}", hr)));
+            }
+            // If we get here, either initialization succeeded or it was already initialized
+            if hr == HRESULT(0x80010106u32 as i32) {
+                debug!("COM already initialized in this thread");
+            } else {
+                debug!("Successfully initialized COM in multithreaded mode");
+            }
+        }
+
         let automation =
-            UIAutomation::new().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+            UIAutomation::new_direct().map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         let arc_automation = ThreadSafeWinUIAutomation(Arc::new(automation));
         Ok(Self {
             automation: arc_automation,
@@ -240,6 +255,15 @@ impl WindowsEngine {
         interval: Duration,
         max_apps: usize,
     ) {
+        // Initialize COM in multithreaded mode for this thread
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
+                error!("Failed to initialize COM in cache warmer thread: {}", hr);
+                return;
+            }
+        }
+
         info!("Cache warmer thread started");
         
         while enabled_flag.load(Ordering::SeqCst) {
@@ -2203,6 +2227,7 @@ fn get_element_children_with_timeout(element: &UIElement, timeout: Duration) -> 
     use std::sync::mpsc;
     use std::thread;
     
+    
     let (sender, receiver) = mpsc::channel();
     let element_clone = element.clone();
     
@@ -2358,9 +2383,9 @@ impl UIElementImpl for WindowsUIElement {
                 info!("Found {} cached children.", cached_children.len());
                 cached_children
             }
-            Err(cache_err) => {
+            Err(_) => {
                 // Fallback logic (similar to explore_element_children)
-                match uiautomation::UIAutomation::new() {
+                match create_ui_automation_with_com_init() {
                     Ok(temp_automation) => {
                         match temp_automation.create_true_condition() {
                             Ok(true_condition) => {
@@ -2368,10 +2393,10 @@ impl UIElementImpl for WindowsUIElement {
                                     .0
                                     .find_all(uiautomation::types::TreeScope::Children, &true_condition)
                                     .map_err(|find_err| {
-                                        error!(
-                                            "Failed to get children via find_all fallback: CacheErr={}, FindErr={}",
-                                            cache_err, find_err
-                                        );
+                                        // error!(
+                                        //     "Failed to get children via find_all fallback: CacheErr={}, FindErr={}",
+                                        //     cache_err, find_err
+                                        // );
                                         AutomationError::PlatformError(format!(
                                             "Failed to get children (cached and non-cached): {}",
                                             find_err
@@ -2647,7 +2672,7 @@ impl UIElementImpl for WindowsUIElement {
                     // Create a temporary instance here for the fallback.
                     // Note: Creating a new UIAutomation instance here might be inefficient.
                     // Consider passing it down or finding another way if performance is critical.
-                    match uiautomation::UIAutomation::new() {
+                    match create_ui_automation_with_com_init() {
                         Ok(temp_automation) => {
                             match temp_automation.create_true_condition() {
                                 Ok(true_condition) => {
@@ -2663,11 +2688,11 @@ impl UIElementImpl for WindowsUIElement {
                                             );
                                             found_children
                                         }
-                                        Err(find_err) => {
-                                            error!(
-                                                "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
-                                                cache_err, find_err
-                                            );
+                                        Err(_) => {
+                                            // error!(
+                                            //     "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
+                                            //     cache_err, find_err
+                                            // );
                                             // Return an empty vec to avoid erroring out the whole text extraction
                                             vec![]
                                         }
@@ -3275,7 +3300,7 @@ fn launch_uwp_app(engine: &WindowsEngine, uwp_app_name: &str) -> Result<UIElemen
     // Launch the UWP app using Windows API
     let pid = unsafe {
         // Initialize COM with proper error handling
-        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
         if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
             // Only return error if it's not the "already initialized" case
             return Err(AutomationError::PlatformError(format!("Failed to initialize COM: {}", hr)));
@@ -3794,5 +3819,18 @@ pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIEleme
     UIElement::new(Box::new(WindowsUIElement {
         element: arc_element,
     }))
+}
+
+// Helper function to create UIAutomation instance with proper COM initialization
+fn create_ui_automation_with_com_init() -> Result<UIAutomation, AutomationError> {
+    unsafe {
+        let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+        if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
+            // Only return error if it's not the "already initialized" case
+            return Err(AutomationError::PlatformError(format!("Failed to initialize COM: {}", hr)));
+        }
+    }
+    
+    UIAutomation::new_direct().map_err(|e| AutomationError::PlatformError(e.to_string()))
 }
 

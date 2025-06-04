@@ -191,23 +191,3 @@ async fn demo_basic_usage(desktop: &Desktop) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-fn demo_recommended_usage() {
-    println!("\n💡 RECOMMENDED USAGE PATTERNS");
-    println!("=============================");
-    
-    println!("🎯 For workflow recording applications:");
-    println!("   desktop.enable_background_cache_warmer(true, Some(30), Some(10))?;");
-    println!("   // 30 second intervals, cache up to 10 most recent apps");
-    
-    println!("\n🎯 For interactive automation:");
-    println!("   desktop.enable_background_cache_warmer(true, Some(10), Some(5))?;");
-    println!("   // 10 second intervals, cache up to 5 apps for faster response");
-    
-    println!("\n🎯 For resource-constrained systems:");
-    println!("   desktop.enable_background_cache_warmer(true, Some(60), Some(3))?;");
-    println!("   // 60 second intervals, cache only 3 apps to minimize resource usage");
-    
-    println!("\n⚠️  Remember to disable when done:");
-    println!("   desktop.enable_background_cache_warmer(false, None, None)?;");
-} 
