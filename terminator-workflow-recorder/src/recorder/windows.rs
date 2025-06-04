@@ -5,7 +5,6 @@ use crate::{
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType, Key};
-use regex::Regex;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},

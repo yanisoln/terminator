@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use tracing::{error, info, instrument, debug, warn, Level};
+use tracing::{error, info, instrument, debug};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 // Cache entry with timestamp for expiration
@@ -493,11 +493,6 @@ struct ExploreResponse {
     children: Vec<ExploredElementDetail>, // List of direct children details
 }
 
-// Response structure for application names
-#[derive(Serialize)]
-struct ApplicationNamesResponse {
-    names: Vec<String>,
-}
 
 // Request structure for getting windows of an application (reuses OpenApplicationRequest fields)
 #[derive(Deserialize)]
@@ -1685,7 +1680,6 @@ async fn mouse_release_handler(
 async fn get_running_applications(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
-    let span = tracing::Span::current();
     let start = std::time::Instant::now();
     info!("Attempting to get all running application names");
     match state.desktop.applications() {
@@ -1730,7 +1724,7 @@ async fn get_running_applications(
 }
 
 async fn get_installed_application_names(
-    State(state): State<Arc<AppState>>,
+    State(_): State<Arc<AppState>>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
     info!("Attempting to get all installed application names");
     Ok(Json(ElementsResponse { elements: Vec::new() }))
