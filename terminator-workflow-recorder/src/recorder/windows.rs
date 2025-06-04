@@ -17,8 +17,8 @@ use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
-use windows::Win32::Foundation::{LPARAM, WPARAM};
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+use windows::Win32::{Foundation::{LPARAM, WPARAM}, System::Com::COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
@@ -618,7 +618,7 @@ impl WindowsRecorder {
             // CRITICAL: Initialize COM apartment as STA for UI Automation events
             // This is required because UI Automation events need STA threading
             let com_initialized = unsafe {
-                let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
                 if hr.is_ok() {
                     info!(
                         "✅ Successfully initialized COM apartment as STA for UI Automation events"
