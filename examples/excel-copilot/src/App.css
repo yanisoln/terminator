@@ -468,10 +468,10 @@ body {
 }
 
 .message-content {
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-lg);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
+  max-width: 80%;
+  word-wrap: break-word;
   white-space: pre-wrap;
 }
 
