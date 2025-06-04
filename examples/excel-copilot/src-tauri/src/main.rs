@@ -12,7 +12,12 @@ use commands::{
     setup_gemini_client, chat_with_gemini, chat_with_gemini_pdf, get_chat_history, clear_chat_history,
     excel_read_cell, excel_write_cell, excel_read_range, excel_set_formula,
     select_pdf_files, get_locale_info,
-    AppStateStruct
+    AppStateStruct,
+    open_google_sheets,
+    google_sheets_send_prompt,
+    google_sheets_send_data,
+    google_sheets_interact,
+    check_google_sheets_availability
 };
 
 /// Initialize and run the Tauri application
@@ -45,7 +50,14 @@ pub fn run() {
             excel_set_formula,
             
             // System info
-            get_locale_info
+            get_locale_info,
+            
+            // Add new Google Sheets commands
+            open_google_sheets,
+            google_sheets_send_prompt,
+            google_sheets_send_data,
+            google_sheets_interact,
+            check_google_sheets_availability
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

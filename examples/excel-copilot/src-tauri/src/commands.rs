@@ -423,7 +423,7 @@ async fn execute_excel_tool_with_path(
                 format!("SUCCESS: Wrote '{}' to cell {} (normalized from '{}'). VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified with locale-aware number formatting.", 
                           normalized_value, cell_address, value, verification.address, verification.value)
             } else {
-                format!("SUCCESS: Wrote '{}' to cell {}. VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified.", 
+            format!("SUCCESS: Wrote '{}' to cell {}. VERIFICATION: Cell {} now contains '{}'. The write operation is complete and verified.", 
                           normalized_value, cell_address, verification.address, verification.value)
             }
         }
@@ -541,11 +541,15 @@ async fn execute_excel_tool_with_path(
             format!("SUCCESS: Excel Copilot created {} chart from range {}. Result: {}", chart_type, data_range, result)
         }
         "apply_conditional_formatting_with_copilot" => {
-            let range = args["range"].as_str()
-                .ok_or("Missing or invalid range parameter")?;
-            let condition = args["condition"].as_str()
-                .ok_or("Missing or invalid condition parameter")?;
+            let range = args.get("range")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'range' parameter")?;
             
+            let condition = args.get("condition")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'condition' parameter")?;
+            
+            let automation = get_excel_automation().await?;
             let result = automation.apply_conditional_formatting_with_copilot(range, condition).await
                 .map_err(|e| format!("Failed to apply conditional formatting with Copilot: {}", e))?;
                 
@@ -555,9 +559,49 @@ async fn execute_excel_tool_with_path(
                 
             format!("SUCCESS: Excel Copilot applied conditional formatting to range {} with condition '{}'. Result: {}", range, condition, result)
         }
-        _ => {
-            return Err(format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, get_excel_ui_context, paste_tsv_batch_data, set_excel_formula, send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot", function_name).into());
+        // Google Sheets commands
+        "open_google_sheets_app" => {
+            let automation = get_excel_automation().await?;
+            let result = automation.open_google_sheets_app().await
+                .map_err(|e| format!("Failed to open Google Sheets: {}", e))?;
+            format!("SUCCESS: {}", result)
         }
+
+        "check_google_sheets_availability" => {
+            let automation = get_excel_automation().await?;
+            let result = automation.check_google_sheets_availability().await
+                .map_err(|e| format!("Failed to check Google Sheets: {}", e))?;
+            format!("AVAILABILITY: {}", result)
+        }
+
+        "send_request_to_google_sheets_gemini" => {
+            let request = args.get("request")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'request' parameter")?;
+            
+            let automation = get_excel_automation().await?;
+            let result = automation.interact_with_google_sheets_gemini(request).await
+                .map_err(|e| format!("Failed to send request to Google Sheets Gemini: {}", e))?;
+            format!("SUCCESS: Google Sheets Gemini executed '{}'. Result: {}", request, result)
+        }
+
+        "send_data_to_google_sheets_gemini" => {
+            let data = args.get("data")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'data' parameter")?;
+            
+            let description = args.get("description")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'description' parameter")?;
+            
+            let automation = get_excel_automation().await?;
+            let result = automation.send_data_to_google_sheets_gemini(data, description).await
+                .map_err(|e| format!("Failed to send data to Google Sheets Gemini: {}", e))?;
+            format!("SUCCESS: Google Sheets Gemini processed data. Description: '{}'. Result: {}", description, result)
+        }
+
+        // Default case
+        _ => format!("ERROR: Unknown function '{}'. Available functions: read_excel_cell, write_excel_cell, read_excel_range, get_excel_sheet_overview, get_excel_ui_context, paste_tsv_batch_data, set_excel_formula, send_request_to_excel_copilot, format_cells_with_copilot, create_chart_with_copilot, apply_conditional_formatting_with_copilot, open_google_sheets_app, check_google_sheets_availability, send_request_to_google_sheets_gemini, send_data_to_google_sheets_gemini", function_name)
     };
 
     // Always append complete Excel status after every operation
@@ -864,4 +908,35 @@ pub async fn excel_set_formula(
 #[tauri::command]
 pub async fn get_locale_info() -> Result<String, String> {
     Ok(get_system_locale_info())
+}
+
+// Google Sheets specific Tauri commands
+#[tauri::command]
+pub async fn check_google_sheets_availability() -> Result<String, String> {
+    let excel = get_excel_automation().await.map_err(|e| e.to_string())?;
+    excel.check_google_sheets_availability().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn open_google_sheets() -> Result<String, String> {
+    let excel = get_excel_automation().await.map_err(|e| e.to_string())?;
+    excel.open_google_sheets_app().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn google_sheets_send_prompt(prompt: String) -> Result<String, String> {
+    let excel = get_excel_automation().await.map_err(|e| e.to_string())?;
+    excel.send_prompt_to_google_sheets_gemini(&prompt).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn google_sheets_send_data(data: String, description: String) -> Result<String, String> {
+    let excel = get_excel_automation().await.map_err(|e| e.to_string())?;
+    excel.send_data_to_google_sheets_gemini(&data, &description).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn google_sheets_interact(task: String) -> Result<String, String> {
+    let excel = get_excel_automation().await.map_err(|e| e.to_string())?;
+    excel.interact_with_google_sheets_gemini(&task).await.map_err(|e| e.to_string())
 } 

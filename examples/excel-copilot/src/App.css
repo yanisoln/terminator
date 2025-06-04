@@ -863,3 +863,534 @@ body {
   font-size: 13px;
   font-weight: 500;
 }
+
+/* Improved Mode Selector */
+.app-mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.mode-option {
+  position: relative;
+}
+
+.mode-radio {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mode-label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+.mode-label:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.mode-radio:checked + .mode-label {
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  border-color: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
+}
+
+.mode-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.mode-info {
+  flex: 1;
+}
+
+.mode-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: inherit;
+}
+
+.mode-subtitle {
+  font-size: 13px;
+  opacity: 0.8;
+  color: inherit;
+}
+
+.google-sheets-info {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+}
+
+.info-header {
+  font-weight: 600;
+  color: #60a5fa;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.info-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-step {
+  font-size: 13px;
+  color: #93c5fd;
+  line-height: 1.4;
+  padding-left: 12px;
+  position: relative;
+}
+
+.info-step::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #60a5fa;
+  font-weight: bold;
+}
+
+.google-sheets-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.requirement-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.requirement-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.requirement-content {
+  flex: 1;
+}
+
+.requirement-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e5e7eb;
+  margin-bottom: 6px;
+}
+
+.requirement-text {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+/* Enhanced Responsiveness */
+@media (max-width: 1200px) {
+  .main {
+    max-width: 100%;
+    padding: 0 16px;
+  }
+  
+  .sidebar {
+    width: 280px;
+  }
+}
+
+@media (max-width: 968px) {
+  .main {
+    flex-direction: column;
+    padding: 0;
+  }
+  
+  .sidebar {
+    width: 100%;
+    max-height: 40vh;
+    overflow-y: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: 16px;
+  }
+  
+  .app-mode-selector {
+    padding: 12px;
+  }
+  
+  .mode-label {
+    padding: 10px 12px;
+  }
+  
+  .mode-icon {
+    font-size: 20px;
+  }
+  
+  .chat-section {
+    flex: 1;
+    min-height: 60vh; 
+    height: 60vh;
+  }
+  
+
+  .google-sheets-info {
+    padding: 12px;
+    margin-top: 8px;
+  }
+  
+  .info-steps {
+    gap: 6px;
+  }
+  
+  .info-step {
+    padding: 6px 0;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-content {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .logo-text {
+    display: none;
+  }
+  
+  .sidebar {
+    padding: 12px;
+    max-height: 35vh; 
+  }
+  
+  .app-mode-selector {
+    padding: 8px;
+    gap: 6px;
+  }
+  
+  .mode-label {
+    padding: 8px 10px;
+    gap: 10px;
+  }
+  
+  .mode-icon {
+    font-size: 18px;
+  }
+  
+  .mode-title {
+    font-size: 13px;
+  }
+  
+  .mode-subtitle {
+    font-size: 11px;
+  }
+  
+  .button-group {
+    gap: 6px;
+  }
+  
+  .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  
+  .chat-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .chat-title {
+    font-size: 16px;
+  }
+  
+  .chat-section {
+    min-height: 65vh; 
+    height: 65vh;
+  }
+  
+  .chat-messages {
+    padding: 12px 16px;
+    height: calc(100% - 160px); 
+    overflow-y: auto;
+  }
+  
+  .message {
+    max-width: 95%;
+  }
+  
+  .message-content {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  
+  .chat-input {
+    padding: 10px 16px;
+    position: sticky;
+    bottom: 0;
+    background: var(--color-background);
+    border-top: 2px solid var(--color-border);
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  
+  .input-controls {
+    gap: 8px;
+    align-items: stretch;
+  }
+  
+  .message-input {
+    font-size: 14px;
+    padding: 8px 10px;
+    min-height: 36px;
+  }
+  
+  .attach-btn,
+  .send-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+  
+  .google-sheets-info {
+    padding: 8px;
+    margin-top: 8px;
+  }
+  
+  .requirement-item {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .requirement-icon {
+    font-size: 16px;
+  }
+  
+  .requirement-title {
+    font-size: 13px;
+  }
+  
+  .requirement-text {
+    font-size: 11px;
+  }
+  
+  /* Make copilot section more compact */
+  .copilot-requirements {
+    padding: 8px;
+    margin-top: 8px;
+  }
+  
+  .requirements-list {
+    margin: 8px 0;
+  }
+  
+  .requirements-list li {
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+}
+
+
+@media (max-width: 480px) {
+  .app {
+    font-size: 14px;
+  }
+  
+  .header {
+    padding: 6px 12px;
+  }
+  
+  .header-content {
+    padding: 6px 0;
+  }
+  
+  .sidebar {
+    max-height: 30vh; /* Very compact sidebar */
+    padding: 8px;
+  }
+  
+  .chat-section {
+    min-height: 70vh; /* Give most space to chat */
+    height: 70vh;
+  }
+  
+  .chat-input {
+    padding: 8px 12px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--color-background);
+    border-top: 2px solid var(--color-border);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+  }
+  
+  .chat-messages {
+    padding: 8px 12px;
+    padding-bottom: 80px; 
+    height: calc(100% - 140px);
+  }
+  
+
+  .app-mode-selector {
+    padding: 6px;
+    gap: 4px;
+  }
+  
+  .mode-label {
+    padding: 6px 8px;
+    gap: 8px;
+  }
+  
+  .mode-title {
+    font-size: 12px;
+  }
+  
+  .mode-subtitle {
+    display: none; 
+  }
+  
+
+  .google-sheets-details .requirement-item:nth-child(n+3) {
+    display: none;
+  }
+  
+  .copilot-requirements {
+    padding: 6px;
+  }
+  
+  .requirements-note {
+    font-size: 10px;
+  }
+}
+
+
+.app-mode-toggle,
+.mode-toggle-label,
+.mode-text {
+  display: none;
+}
+
+
+.availability-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.availability-status.ready {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.availability-status.warning {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 70px;
+  left: 16px;
+  z-index: 1000;
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-toggle:hover {
+  transform: scale(1.1);
+}
+
+.sidebar-collapsed {
+  transform: translateY(-100%);
+  transition: transform 0.3s ease;
+}
+
+@media (max-width: 640px) {
+  .sidebar-toggle {
+    display: block;
+  }
+  
+  .sidebar {
+    position: relative;
+    transition: transform 0.3s ease, max-height 0.3s ease;
+  }
+  
+  .sidebar.collapsed {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 12px;
+    border-bottom: none;
+  }
+  
+  .chat-section.expanded {
+    min-height: 85vh;
+    height: 85vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-toggle {
+    top: 60px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+  
+  .chat-section.expanded {
+    min-height: 90vh;
+    height: 90vh;
+  }
+}

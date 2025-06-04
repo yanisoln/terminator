@@ -999,16 +999,38 @@ impl ExcelAutomation {
         Ok((row_index, col_index))
     }
 
-    /// Set clipboard content
+    /// Set clipboard content using arboard
     async fn set_clipboard_content(&self, content: &str) -> Result<()> {
         let mut clipboard = arboard::Clipboard::new()
-            .map_err(|e| anyhow!("Failed to access clipboard: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to access clipboard: {}", e))?;
         
         clipboard.set_text(content)
-            .map_err(|e| anyhow!("Failed to set clipboard content: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to set clipboard text: {}", e))?;
         
-        // Wait a moment for clipboard to be updated
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    }
+
+    /// Type a prompt with proper line break handling (DEPRECATED - now using clipboard)
+    async fn type_prompt_with_line_breaks(&self, window: &terminator::UIElement, prompt: &str) -> Result<()> {
+        println!("Using deprecated line break typing method, prefer clipboard paste");
+        
+        // Split the prompt by newlines and type each part
+        let lines: Vec<&str> = prompt.split('\n').collect();
+        
+        for (i, line) in lines.iter().enumerate() {
+            // Type the current line
+            if !line.is_empty() {
+                window.type_text(line, false)?;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            
+            // Add line break with Shift+Enter if not the last line
+            if i < lines.len() - 1 {
+                println!("Adding line break with Shift+Enter");
+                window.press_key("{shift}{enter}")?;
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
         
         Ok(())
     }
@@ -1016,6 +1038,260 @@ impl ExcelAutomation {
     /// Clear clipboard content
     async fn clear_clipboard(&self) -> Result<()> {
         self.set_clipboard_content("").await
+    }
+
+    /// Google Sheets specific functionality
+    /// ===================================
+    
+    /// Find Google Sheets browser window
+    pub async fn find_google_sheets_window(&self) -> Result<terminator::UIElement> {
+        println!("Searching for Google Sheets window...");
+        
+        // Strategy 1: Look for window with "Google Sheets" in title
+        match self.desktop.find_window_by_criteria(Some("Google Sheets"), Some(Duration::from_millis(5000))).await {
+            Ok(window) => {
+                println!("Found Google Sheets window using title criteria");
+                Ok(window)
+            }
+            Err(_) => {
+                // Strategy 2: Look for window with "sheets.google.com" or similar
+                match self.desktop.find_window_by_criteria(Some("sheets.google"), Some(Duration::from_millis(3000))).await {
+                    Ok(window) => {
+                        println!("Found Google Sheets window using URL criteria");
+                        Ok(window)
+                    }
+                    Err(_) => {
+                        // Strategy 3: Look for any browser window and check if it contains Google Sheets elements
+                        println!("Fallback: searching browser windows for Google Sheets elements");
+                        
+                        let browsers = vec!["Chrome", "Edge", "Firefox", "msedge"];
+                        for browser in browsers {
+                            match self.desktop.application(browser) {
+                                Ok(browser_app) => {
+                                    // Check if this browser window has Google Sheets elements
+                                    let ask_gemini_selector = Selector::Name("Ask Gemini".to_string());
+                                    match browser_app.locator(ask_gemini_selector)?.first(Some(Duration::from_millis(2000))).await {
+                                        Ok(_) => {
+                                            println!("Found Google Sheets via '{}' browser (detected 'Ask Gemini' button)", browser);
+                                            return Ok(browser_app);
+                                        }
+                                        Err(_) => continue,
+                                    }
+                                }
+                                Err(_) => continue,
+                            }
+                        }
+                        
+                        Err(anyhow!("Could not find Google Sheets window. Make sure Google Sheets is open in a browser."))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Open Google Sheets Gemini panel (only if not already open)
+    pub async fn open_google_sheets_gemini(&self) -> Result<String> {
+        println!("Checking if Google Sheets Gemini panel is already open");
+        
+        let sheets_window = self.find_google_sheets_window().await?;
+        sheets_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // First check if the prompt input field is already visible
+        let prompt_input_selector = Selector::Name("Enter a prompt here".to_string());
+        match sheets_window.locator(prompt_input_selector.clone())?.first(Some(Duration::from_millis(2000))).await {
+            Ok(_) => {
+                println!("Gemini panel is already open - prompt field is visible");
+                return Ok("Google Sheets Gemini panel is already open".to_string());
+            }
+            Err(_) => {
+                println!("Prompt field not visible, need to open Gemini panel");
+            }
+        }
+        
+        // Look for "Ask Gemini" button only if prompt field is not visible
+        let ask_gemini_selector = Selector::Name("Ask Gemini".to_string());
+        match sheets_window.locator(ask_gemini_selector)?.first(Some(Duration::from_millis(5000))).await {
+            Ok(ask_gemini_button) => {
+                println!("Found 'Ask Gemini' button, clicking it");
+                ask_gemini_button.click()?;
+                tokio::time::sleep(Duration::from_millis(2000)).await;
+                
+                // Verify that the prompt field is now visible
+                match sheets_window.locator(prompt_input_selector)?.first(Some(Duration::from_millis(3000))).await {
+                    Ok(_) => {
+                        println!("Successfully opened Gemini panel - prompt field is now visible");
+                        Ok("Google Sheets Gemini panel opened successfully".to_string())
+                    }
+                    Err(_) => {
+                        Err(anyhow!("Clicked 'Ask Gemini' but prompt field did not appear. The panel may not have opened correctly."))
+                    }
+                }
+            }
+            Err(_) => {
+                Err(anyhow!("Could not find 'Ask Gemini' button in Google Sheets. Make sure you're in a Google Sheets document with Gemini enabled."))
+            }
+        }
+    }
+
+    /// Send a prompt to Google Sheets Gemini
+    pub async fn send_prompt_to_google_sheets_gemini(&self, prompt: &str) -> Result<String> {
+        println!("=== SENDING PROMPT TO GOOGLE SHEETS GEMINI ===");
+        println!("Prompt: {}", prompt);
+        
+        let sheets_window = self.find_google_sheets_window().await?;
+        sheets_window.focus()?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        
+        // Ensure Gemini panel is open (this function now checks if it's already open)
+        println!("Ensuring Gemini panel is accessible...");
+        self.open_google_sheets_gemini().await?;
+        
+        // Look for the prompt input textbox (should be visible now)
+        println!("Looking for prompt input field...");
+        let prompt_input_selector = Selector::Name("Enter a prompt here".to_string());
+        match sheets_window.locator(prompt_input_selector)?.first(Some(Duration::from_millis(3000))).await {
+            Ok(prompt_input) => {
+                println!("✓ Found prompt input field, proceeding with prompt submission");
+                
+                // Click on the input field
+                prompt_input.click()?;
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                
+                // Clear any existing content
+                sheets_window.press_key("{ctrl}a")?;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                
+                // Use clipboard to paste the entire prompt at once
+                println!("Pasting prompt via clipboard...");
+                self.paste_prompt_via_clipboard(&sheets_window, prompt).await?;
+                
+                // Send the prompt (Enter key) - only at the very end
+                println!("Submitting prompt to Gemini...");
+                sheets_window.press_key("{enter}")?;
+                
+                // Wait for Gemini to respond
+                println!("Waiting for Gemini response...");
+                tokio::time::sleep(Duration::from_millis(5000)).await;
+                
+                // Press Enter again to apply the response automatically
+                println!("Applying Gemini response...");
+                sheets_window.press_key("{enter}")?;
+                tokio::time::sleep(Duration::from_millis(2000)).await;
+                
+                println!("✓ Successfully completed prompt submission and response application");
+                Ok(format!("Prompt sent to Google Sheets Gemini successfully and response applied"))
+            }
+            Err(_) => {
+                println!("✗ Could not find prompt input field after panel check");
+                Err(anyhow!("Could not find 'Enter a prompt here' textbox even after trying to open Gemini panel. Make sure the Gemini panel is accessible in Google Sheets."))
+            }
+        }
+    }
+
+    /// Paste prompt via clipboard to avoid line break issues
+    async fn paste_prompt_via_clipboard(&self, window: &terminator::UIElement, prompt: &str) -> Result<()> {
+        println!("Pasting prompt via clipboard to avoid line break issues");
+        
+        // Set clipboard content
+        match self.set_clipboard_content(prompt).await {
+            Ok(_) => {
+                println!("Prompt copied to clipboard successfully");
+                
+                // Paste using Ctrl+V
+                window.press_key("{ctrl}v")?;
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                
+                println!("Prompt pasted successfully via clipboard");
+                Ok(())
+            }
+            Err(e) => {
+                println!("Failed to copy to clipboard: {}, falling back to direct typing", e);
+                
+                // Fallback: type directly without line break handling
+                window.type_text(prompt, false)?;
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                
+                Ok(())
+            }
+        }
+    }
+
+    /// Check if Google Sheets window is available (without opening new one)
+    pub async fn check_google_sheets_availability(&self) -> Result<String> {
+        match self.find_google_sheets_window().await {
+            Ok(sheets_window) => {
+                // First check if Gemini prompt field is already visible
+                let prompt_input_selector = Selector::Name("Enter a prompt here".to_string());
+                match sheets_window.locator(prompt_input_selector.clone())?.first(Some(Duration::from_millis(2000))).await {
+                    Ok(_) => {
+                        println!("Google Sheets found with Gemini panel already open");
+                        return Ok("Google Sheets with Gemini is available and ready (panel already open)".to_string());
+                    }
+                    Err(_) => {
+                        println!("Google Sheets found but checking if Gemini is available");
+                    }
+                }
+                
+                // Check if Gemini is available by trying to open it
+                match self.open_google_sheets_gemini().await {
+                    Ok(_) => Ok("Google Sheets with Gemini is available and ready".to_string()),
+                    Err(e) => Ok(format!("Google Sheets found but Gemini not available: {}", e))
+                }
+            }
+            Err(_) => Ok("No Google Sheets window found. Please open Google Sheets manually.".to_string())
+        }
+    }
+
+    /// Send data to Google Sheets Gemini (with TSV formatting for structured data)
+    pub async fn send_data_to_google_sheets_gemini(&self, data: &str, description: &str) -> Result<String> {
+        let prompt = if data.contains('\t') || data.contains('\n') {
+            // Data appears to be structured - keep real tabs and provide clear instructions
+            format!("{}\n\nPlease create a table with this tab-separated data (columns separated by tabs, rows separated by new lines):\n\n{}", description, data)
+        } else {
+            // Simple text data
+            format!("{}\n\nData: {}", description, data)
+        };
+        
+        self.send_prompt_to_google_sheets_gemini(&prompt).await
+    }
+
+    /// Open Google Sheets application (only when explicitly requested)
+    pub async fn open_google_sheets_app(&self) -> Result<String> {
+        println!("Opening Google Sheets application");
+        
+        // Use PowerShell to open Google Sheets as web app in Edge
+        let command = r#"Start-Process -FilePath msedge -ArgumentList '--app=https://docs.google.com/spreadsheets/'"#;
+        
+        match self.desktop.run_command(Some(command), None).await {
+            Ok(output) => {
+                println!("Google Sheets opened successfully");
+                tokio::time::sleep(Duration::from_millis(3000)).await; // Wait for app to load
+                Ok(format!("Google Sheets opened successfully. Output: {}", output.stdout))
+            }
+            Err(e) => {
+                Err(anyhow!("Failed to open Google Sheets: {}", e))
+            }
+        }
+    }
+
+    /// Interact with Google Sheets Gemini (main entry point) - Check availability first
+    pub async fn interact_with_google_sheets_gemini(&self, task_description: &str) -> Result<String> {
+        println!("Interacting with Google Sheets Gemini for task: {}", task_description);
+        
+        // First check if Google Sheets is available
+        match self.find_google_sheets_window().await {
+            Ok(sheets_window) => {
+                sheets_window.focus()?;
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                
+                // Send the request to Google Sheets Gemini
+                self.send_prompt_to_google_sheets_gemini(task_description).await
+            }
+            Err(_) => {
+                Err(anyhow!("No Google Sheets window found. Please open Google Sheets manually first, then try again."))
+            }
+        }
     }
 }
 

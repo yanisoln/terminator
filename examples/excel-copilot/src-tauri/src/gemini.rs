@@ -375,13 +375,67 @@ impl GeminiClient {
             ]);
         }
 
+        // Add Google Sheets tools (always available)
+        tools.extend(vec![
+            FunctionDeclaration {
+                name: "check_google_sheets_availability".to_string(),
+                description: "Check if Google Sheets is open and available with Gemini access. Use this FIRST before any Google Sheets operations to verify availability.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            FunctionDeclaration {
+                name: "open_google_sheets_app".to_string(),
+                description: "Open Google Sheets application in browser as a web app. Use this only when user explicitly requests to open a new Google Sheets window.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            FunctionDeclaration {
+                name: "send_request_to_google_sheets_gemini".to_string(),
+                description: "Send a request to Google Sheets' built-in Gemini for any spreadsheet task. This is the ONLY way to interact with Google Sheets - all operations must go through Gemini. Use for data entry, analysis, formatting, charts, formulas, etc.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "request": {
+                            "type": "string",
+                            "description": "The request to send to Google Sheets Gemini (e.g., 'Create a table with columns Name, Age, City', 'Analyze this data and create a chart', 'Format the header row with bold text')"
+                        }
+                    },
+                    "required": ["request"]
+                }),
+            },
+            FunctionDeclaration {
+                name: "send_data_to_google_sheets_gemini".to_string(),
+                description: "Send structured data to Google Sheets Gemini with instructions. Use this to insert tabular data by providing real TSV format (actual tab characters). Gemini will format and insert it appropriately.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "string",
+                            "description": "The data to send - TSV format with real tab characters (\\t), raw text, or structured data"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Instructions for how to handle the data (e.g., 'Create a table with this data and add headers', 'Insert this financial data into the spreadsheet')"
+                        }
+                    },
+                    "required": ["data", "description"]
+                }),
+            },
+        ]);
+
         self.tools = tools;
     }
 
     /// Setup the system instruction for the Excel Copilot (Probably need to be improved)
     fn setup_system_instruction(&mut self) {
         // Get locale information
-        let locale_info = get_locale_info();
+        let _locale_info = get_locale_info();
         let decimal_sep = get_decimal_separator();
         
         // Create locale-specific formatting rules
@@ -417,22 +471,70 @@ COPILOT USAGE:
             "\nCOPILOT: Disabled"
         };
 
-        let system_prompt = format!(r#"Excel automation assistant. {}{}{number_format_rules}
+        let google_sheets_rules = r#"
+
+GOOGLE SHEETS COMMUNICATION STRATEGY:
+- ALWAYS start with check_google_sheets_availability before any Google Sheets operations
+- Use open_google_sheets_app ONLY when user explicitly asks to open NEW Google Sheets
+- System now intelligently checks if Gemini panel is already open before clicking "Ask Gemini"
+
+GOOGLE SHEETS PROMPTING BEST PRACTICES:
+1. Be DIRECT and ACTION-ORIENTED - tell Gemini exactly what to DO, not what you want to achieve
+2. Use SPECIFIC language that Google Sheets understands:
+   ✓ Good: "Create a table with these columns: Date, Vendor, Amount. Add this data: [data]. Format the Amount column as currency."
+   ✗ Bad: "Create a table with this data including headers, and format the Amount column as currency"
+   
+3. BREAK DOWN complex requests into clear steps:
+   ✓ Good: "Add these 5 rows of data to the sheet: [data]. Then format column C as currency. Then make row 1 bold."
+   ✗ Bad: "Process this financial data with proper formatting"
+
+4. Use GOOGLE SHEETS VOCABULARY:
+   - "Add to the sheet" / "Insert in the spreadsheet"
+   - "Format as currency/percentage/date"
+   - "Make bold/italic"
+   - "Create chart from range A1:C10"
+   - "Apply conditional formatting"
+   - "Add formula =SUM(A1:A10)"
+
+5. ALWAYS END with action words:
+   - "Add it to the sheet"
+   - "Apply this formatting"
+   - "Create the chart now"
+   - "Insert this data"
+
+SUCCESSFUL PROMPTING EXAMPLES:
+- Data entry: "Add this data to the spreadsheet starting in cell A1: [TSV data]. Make the first row bold as headers."
+- Formatting: "Format column B as currency. Make all text in row 1 bold and centered."
+- Charts: "Create a bar chart using data from A1:B10. Add it below the data."
+- Calculations: "Add a formula in cell D2 that calculates =B2*C2. Copy it down to row 10."
+
+AVOID THESE PATTERNS (they trigger "not supported"):
+- Complex conditional logic requests
+- Multi-step operations in one sentence
+- Vague terms like "process", "handle", "manage"
+- References to external data sources
+- Advanced Excel-specific functions
+
+ALL OPERATIONS go through send_request_to_google_sheets_gemini or send_data_to_google_sheets_gemini
+For TSV data: provide REAL tab characters, clear instructions
+Panel status is checked automatically to avoid unnecessary "Ask Gemini" clicks"#;
+
+        let system_prompt = format!(r#"Excel & Google Sheets automation assistant. {}{}{number_format_rules}
 
 RULES:
 1. Always use tools, never fake results
-2. Start with get_excel_sheet_overview
+2. Start with get_excel_sheet_overview for Excel OR check_google_sheets_availability for Google Sheets
 3. TSV paste for batch data, verify_safe=true unless confirmed
 4. UI issues → get_excel_ui_context first
 5. Fix formula errors immediately
 
-
 PROTOCOL:
-- Read data → read tools
-- Write single cells → write_excel_cell  
+- Read data → read tools (Excel only)
+- Write single cells → write_excel_cell (Excel only)
 - Need context? → READ THE FILE, before asking user for information
-- Bulk data → paste_tsv_batch_data
-- Formulas → set_excel_formula{copilot_rules}"#, base_tools, copilot_tools, number_format_rules = number_format_rules);
+- Bulk data → paste_tsv_batch_data (Excel) OR send_data_to_google_sheets_gemini (Google Sheets)
+- Formulas → set_excel_formula (Excel) OR send_request_to_google_sheets_gemini (Google Sheets)
+- Google Sheets: Use CLEAR, SIMPLE prompts with action verbs{copilot_rules}{google_sheets_rules}"#, base_tools, copilot_tools, number_format_rules = number_format_rules);
 
         self.system_instruction = SystemInstruction {
             parts: vec![GeminiPart::text(system_prompt)],
