@@ -1,3 +1,5 @@
+use tracing::{debug, instrument};
+
 use crate::platforms::AccessibilityEngine;
 use crate::element::{ExploreResponse, UIElement};
 use crate::ScreenshotResult;
@@ -61,16 +63,26 @@ impl Locator {
 
     /// Wait for an element matching the locator to appear, up to the specified timeout.
     /// If no timeout is provided, uses the locator's default timeout.
+    #[instrument(level = "debug", skip(self, timeout))]
     pub async fn wait(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
+        debug!("Waiting for element matching selector: {:?}", self.selector);
         let effective_timeout = timeout.unwrap_or(self.timeout);
         let start = std::time::Instant::now();
 
         loop {
-            // Directly use find_element with the timeout
+            // Calculate remaining time, preventing overflow if already timed out.
+            let remaining_time = if start.elapsed() >= effective_timeout {
+                Duration::ZERO
+            } else {
+                effective_timeout - start.elapsed()
+            };
+            debug!("New wait loop iteration, remaining_time: {:?}", remaining_time);
+
+            // Directly use find_element with the calculated (or zero) remaining timeout
             match self.engine.find_element(
                 &self.selector,
                 self.root.as_ref(),
-                Some(effective_timeout - start.elapsed()), // Pass remaining time
+                Some(remaining_time), // Pass the safely calculated remaining time
             ) {
                 Ok(element) => return Ok(element),
                 Err(AutomationError::ElementNotFound(_)) => {

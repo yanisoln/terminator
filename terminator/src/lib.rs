@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::fmt;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 pub mod element;
 pub mod errors;
@@ -608,6 +608,59 @@ impl Desktop {
         );
 
         Ok(window_tree_root)
+    }
+
+    /// Get all window elements for a given application by name
+    #[instrument(skip(self, app_name))]
+    pub async fn windows_for_application(&self, app_name: &str) -> Result<Vec<UIElement>, AutomationError> {
+        let start = Instant::now();
+        debug!(app_name, "Getting windows for application");
+
+        // 1. Find the application element
+        let app_element = match self.application(app_name) {
+            Ok(app) => app,
+            Err(e) => {
+                error!("Application '{}' not found: {}", app_name, e);
+                return Err(e);
+            }
+        };
+        debug!("Found application element for '{}'", app_name);
+
+        // 2. Get children of the application element
+        let children = match app_element.children() {
+            Ok(ch) => ch,
+            Err(e) => {
+                error!("Failed to get children for application '{}': {}", app_name, e);
+                return Err(e);
+            }
+        };
+        debug!(child_count = children.len(), "Found children for application '{}" , app_name);
+
+        // 3. Filter children to find windows (cross-platform)
+        let windows: Vec<UIElement> = children
+            .into_iter()
+            .filter(|el| {
+                let role = el.role().to_lowercase();
+                #[cfg(target_os = "macos")]
+                {
+                    role == "axwindow" || role == "window"
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    role == "window"
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                {
+                    // Fallback: just look for 'window' role
+                    role == "window"
+                }
+            })
+            .collect();
+
+            debug!(window_count = windows.len(), "Found windows for application '{}'", app_name);
+        let duration = start.elapsed();
+        debug!(duration_ms = duration.as_millis(), "windows_for_application complete");
+        Ok(windows)
     }
 }
 

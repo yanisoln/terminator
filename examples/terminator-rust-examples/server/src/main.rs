@@ -7,13 +7,13 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, env};
+use std::{collections::{HashMap, HashSet}, env};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use terminator::{AutomationError, Desktop, Locator, Selector, UIElement};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use tracing::{error, info, instrument, debug};
+use tracing::{error, info, instrument, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 // Cache entry with timestamp for expiration
@@ -297,6 +297,7 @@ struct ElementResponse {
     focused: Option<bool>,
     is_keyboard_focusable: Option<bool>,
     bounds: Option<(f64, f64, f64, f64)>,
+    children: Option<Vec<ElementResponse>>,
 }
 
 impl ElementResponse {
@@ -312,6 +313,7 @@ impl ElementResponse {
             focused: None,
             is_keyboard_focusable: None,
             bounds: None,
+            children: None,
         };
 
         if detail_level == DetailLevel::Minimal {
@@ -334,6 +336,34 @@ impl ElementResponse {
         response.is_keyboard_focusable = element.is_keyboard_focusable().ok();
 
         response
+    }
+
+    // New: recursive constructor for tree
+    fn from_element_with_children(element: &UIElement, detail_level: DetailLevel, max_depth: usize) -> Self {
+        let mut resp = Self::from_element(element, detail_level);
+        // If max_depth is 0, treat as unlimited depth
+        let should_recurse = max_depth == 0 || max_depth > 0;
+        if should_recurse {
+            if let Ok(children) = element.children() {
+                if !children.is_empty() {
+                    resp.children = Some(
+                        children
+                            .iter()
+                            .map(|child| {
+                                if max_depth == 0 {
+                                    // Unlimited depth
+                                    Self::from_element_with_children(child, detail_level, 0)
+                                } else {
+                                    // Decrement depth
+                                    Self::from_element_with_children(child, detail_level, max_depth - 1)
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+            }
+        }
+        resp
     }
 }
 
@@ -461,6 +491,18 @@ struct ExploredElementDetail {
 struct ExploreResponse {
     parent: ElementResponse, // Details of the parent element explored
     children: Vec<ExploredElementDetail>, // List of direct children details
+}
+
+// Response structure for application names
+#[derive(Serialize)]
+struct ApplicationNamesResponse {
+    names: Vec<String>,
+}
+
+// Request structure for getting windows of an application (reuses OpenApplicationRequest fields)
+#[derive(Deserialize)]
+struct GetWindowsRequest {
+    app_name: String,
 }
 
 // Custom error type for API responses
@@ -784,8 +826,10 @@ async fn get_full_tree(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChainedRequest>,
 ) -> Result<Json<ElementsResponse>, ApiError> {
-    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to get full tree");
+    let depth = payload.depth.unwrap_or(0);
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, depth = depth, "Attempting to get full tree");
 
+    /*
     // Define the recursive helper function
     fn get_children_recursive(element: &UIElement) -> Result<Vec<ElementResponse>, ApiError> {
         let direct_children_elements = element.children()?;
@@ -817,6 +861,7 @@ async fn get_full_tree(
 
         Ok(all_descendants) // Return the accumulated list
     }
+    */
 
     // Handle empty selector chain case
     if payload.selector_chain.is_empty() {
@@ -828,23 +873,10 @@ async fn get_full_tree(
 
         // Process each application and its children
         for app in applications {
-            // Add the application itself
-            all_elements.push(ElementResponse::from_element(&app, DetailLevel::Full));
-
-            // Get all descendants of this application
-            match get_children_recursive(&app) {
-                Ok(descendants) => {
-                    all_elements.extend(descendants);
-                }
-                Err(e) => {
-                    error!(
-                        "Error getting descendants for application {:?}: {:?}",
-                        app.id(),
-                        e
-                    );
-                    // Continue with other applications
-                }
-            }
+            // Add the application itself as a tree
+            all_elements.push(ElementResponse::from_element_with_children(&app, DetailLevel::Full, depth));
+            // let descendants = get_children_recursive(&app)?;
+            // all_elements.extend(descendants); // <-- Commented out: flat list logic
         }
 
         return Ok(Json(ElementsResponse {
@@ -859,11 +891,11 @@ async fn get_full_tree(
     // Find the root element for the subtree
     let root_element = locator.wait(timeout).await?;
 
-    // Call the recursive function starting from the found root element
-    let elements_in_subtree = get_children_recursive(&root_element)?;
+    // Build the tree from the found root element
+    let tree = ElementResponse::from_element_with_children(&root_element, DetailLevel::Full, depth);
 
     Ok(Json(ElementsResponse {
-        elements: elements_in_subtree,
+        elements: vec![tree],
     }))
 }
 
@@ -1648,6 +1680,126 @@ async fn mouse_release_handler(
     }))
 }
 
+// Handler for getting all application names
+#[tracing::instrument(name = "get_running_applications", skip(state))]
+async fn get_running_applications(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ElementsResponse>, ApiError> {
+    let span = tracing::Span::current();
+    let start = std::time::Instant::now();
+    info!("Attempting to get all running application names");
+    match state.desktop.applications() {
+        Ok(apps) => {
+            info!("Found {} applications", apps.len());
+
+            let mut elements = Vec::with_capacity(apps.len());
+            for (i, app) in apps.iter().enumerate() {
+                let app_span = tracing::info_span!("map_app", app_index = i, total = apps.len());
+                let app_start = std::time::Instant::now();
+                let _enter = app_span.enter();
+                info!("Mapping application {}/{}...", i + 1, apps.len());
+                let attrs = app.attributes();
+                elements.push(ElementResponse {
+                    role: attrs.role.clone(),
+                    label: attrs.label.clone(),
+                    name: attrs.name.clone(),
+                    id: app.id(),
+                    text: None,
+                    bounds: None,
+                    is_keyboard_focusable: None,
+                    // visible: Some(app.is_visible().unwrap_or_default()),
+                    // enabled: Some(app.is_enabled().unwrap_or_default()),
+                    // focused: Some(app.is_focused().unwrap_or_default()),
+                    visible: None,
+                    enabled: None,
+                    focused: None,
+                    children: None,
+                });
+                let elapsed = app_start.elapsed();
+                debug!("Mapped application {}/{} in {:?}", i + 1, apps.len(), elapsed);
+            }
+            let total_elapsed = start.elapsed();
+            info!("Successfully retrieved {} application elements in {:?}", elements.len(), total_elapsed);
+            Ok(Json(ElementsResponse { elements }))
+        }
+        Err(e) => {
+            error!("Failed to get applications: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+async fn get_installed_application_names(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ElementsResponse>, ApiError> {
+    info!("Attempting to get all installed application names");
+    Ok(Json(ElementsResponse { elements: Vec::new() }))
+}
+
+// Handler for getting windows of a specific application
+async fn get_application_windows(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<GetWindowsRequest>, // Use new request struct
+) -> Result<Json<ElementsResponse>, ApiError> { // Return ElementsResponse
+    info!(app_name = %payload.app_name, "Attempting to get windows for application");
+
+    // 1. Find the application element
+    let app_element = match state.desktop.application(&payload.app_name) {
+        Ok(app) => app,
+        Err(e @ AutomationError::ElementNotFound(_)) => {
+            error!("Application '{}' not found: {}", payload.app_name, e);
+            return Err(e.into()); // Return 404 specifically for app not found
+        }
+        Err(e) => {
+            error!("Error finding application '{}': {}", payload.app_name, e);
+            return Err(e.into()); // Return 500 for other errors
+        }
+    };
+    info!("Found application element for '{}'", payload.app_name);
+
+    // 2. Get children of the application element
+    let children = match app_element.children() {
+        Ok(ch) => ch,
+        Err(e) => {
+            error!("Failed to get children for application '{}': {}", payload.app_name, e);
+            return Err(e.into());
+        }
+    };
+    info!("Found {} children for application '{}'", children.len(), payload.app_name);
+
+    // 3. Filter children to find windows (e.g., role == "AXWindow" on macOS)
+    //    Note: The exact role might differ on Windows/Linux. AXWindow is macOS specific.
+    //    A more robust approach might involve checking platform or having platform-specific logic here.
+    let mut seen_ids = HashSet::new();
+    let mut windows: Vec<ElementResponse> = Vec::new();
+    for el in children.iter().filter(|el| {
+        match el.role().as_str() {
+            #[cfg(target_os = "macos")]
+            "AXWindow" => true,
+            #[cfg(target_os = "windows")]
+            "Window" => true, // Example role for Windows, adjust as needed
+            _ => false,
+        }
+    }) {
+        let resp = ElementResponse::from_element(el, DetailLevel::Standard);
+        if let Some(ref id) = resp.id {
+            if seen_ids.insert(id.clone()) {
+                windows.push(resp);
+            }
+        } else {
+            // If no id, include anyway (rare)
+            windows.push(resp);
+        }
+    }
+
+    info!("Found {} windows for application '{}'", windows.len(), payload.app_name);
+
+    Ok(Json(ElementsResponse { elements: windows })) // Reuse ElementsResponse
+}
+
+// --- END NEW HANDLERS ---
+
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing with timestamps and more detailed formatting
@@ -1660,6 +1812,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_names(false)
         .with_file(true)
         .with_line_number(true)
+        // .with_max_level(Level::DEBUG) // Default to INFO, can override with RUST_LOG=debug
         .init();
 
     info!("Starting Terminator server");
@@ -1709,6 +1862,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/current_browser_window",
             get(get_current_browser_window_handler),
         )
+        // +++ New Application/Window Routes +++
+        .route("/applications/installed", get(get_installed_application_names)) // GET list of app names
+        .route("/applications/running", get(get_running_applications)) // GET list of app names
+        .route("/applications/windows", post(get_application_windows)) // POST to get windows for an app
+        // --- End New Routes ---
         // State and Layers
         .route("/mouse_drag", post(mouse_drag_handler))
         .route("/mouse_click_and_hold", post(mouse_click_and_hold_handler))
