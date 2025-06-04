@@ -14,7 +14,7 @@ async fn main() -> Result<(), AutomationError> {
     info!("Starting accessibility tree print for app: {}", app_name);
 
     // Create desktop automation instance
-    let desktop = Desktop::new(false, true).await?;
+    let desktop = Desktop::new(false, true)?;
 
     // Open or get the application
     let app = desktop.application(app_name)?;
