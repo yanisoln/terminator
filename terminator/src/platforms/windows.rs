@@ -777,7 +777,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(win_control_type)
                     .depth(actual_depth)
                     .timeout(timeout_ms as u64);
-   
                 
                 let elements = matcher_builder.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
@@ -787,6 +786,7 @@ impl AccessibilityEngine for WindowsEngine {
                 })?;
 
                 debug!("found {} elements with role: {} (mapped to {:?}), name_filter: {:?}", elements.len(), role, win_control_type, name);
+
                 return Ok(elements
                     .into_iter()
                     .map(|ele| {
@@ -1090,7 +1090,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(win_control_type)
                     .depth(50) // Default depth for find_element
                     .timeout(timeout_ms as u64);
-
 
                 let element = matcher_builder.find_first().map_err(|e| {
                      AutomationError::ElementNotFound(format!(
