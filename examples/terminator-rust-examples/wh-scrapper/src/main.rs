@@ -44,7 +44,7 @@ async fn main() -> Result<(), AutomationError> {
 
     let messages_list = engine.find_element(&msg_list, Some(&wh_root), None)?;
 
-    let individual_msg_block = Selector::UINativeId("BubbleListItem".to_string());
+    let individual_msg_block = Selector::NativeId("BubbleListItem".to_string());
 
     let individual_msg_block_eles = engine.find_elements(&individual_msg_block, Some(&messages_list), None, Some(usize::MAX))?;
     

@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/schemas/resources.js"; // Import resource schemas
 import {
   TerminatorTools,
   FindWindowSchema,
@@ -65,138 +64,136 @@ const server = new McpServer(serverInfo, {
   instructions: serverInstructions,
   capabilities: {
     resources: {},
-  }
+  },
 });
-
 
 // --- Tool Definitions ---
 
 // findWindow Tool
 server.tool(
-    "findWindow",
-    "Finds a top-level window by title.",
-    FindWindowSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.findWindow(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "findWindow",
+  "Finds a top-level window by title.",
+  FindWindowSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.findWindow(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // getElementText Tool
 server.tool(
-    "getElementText",
-    "Reads text content from a UI element.",
-    GetElementTextSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.getElementText(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "getElementText",
+  "Reads text content from a UI element.",
+  GetElementTextSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.getElementText(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // typeIntoElement Tool
 server.tool(
-    "typeIntoElement",
-    "Types text into a UI element.",
-    TypeIntoElementSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.typeIntoElement(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "typeIntoElement",
+  "Types text into a UI element.",
+  TypeIntoElementSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.typeIntoElement(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // clickElement Tool
 server.tool(
-    "clickElement",
-    "Clicks a UI element.",
-    LocatorSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.clickElement(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "clickElement",
+  "Clicks a UI element.",
+  LocatorSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.clickElement(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // pressKey Tool
 server.tool(
-    "pressKey",
-    "Sends a key press to a UI element.",
-    PressKeySchema.shape,
-    async (args) => {
-      const result = await terminatorTools.pressKey(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "pressKey",
+  "Sends a key press to a UI element.",
+  PressKeySchema.shape,
+  async (args) => {
+    const result = await terminatorTools.pressKey(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
-
 
 // runCommand Tool
 server.tool(
-    "runCommand",
-    "Executes a shell command.",
-    RunCommandSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.runCommand(args)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "runCommand",
+  "Executes a shell command.",
+  RunCommandSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.runCommand(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // explore Tool
 server.tool(
-    "explore",
-    "Explores UI elements and their children.",
-    ExploreSchema.shape,
-    async (args) => {
-      const result = await terminatorTools.explore(args)
-      console.log(result)
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "explore",
+  "Explores UI elements and their children.",
+  ExploreSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.explore(args);
+    console.log(result);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // activateElement Tool (New)
 server.tool(
-    "activateElement",
-    "Activates the window containing the specified element, bringing it to the foreground.",
-    LocatorSchema.shape, // Reuses schema needing selectorChain + timeoutMs
-    async (args) => {
-      // Assuming terminatorTools has an activateApp method mapped to the backend
-      const result = await terminatorTools.activateApp(args); 
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
+  "activateElement",
+  "Activates the window containing the specified element, bringing it to the foreground.",
+  LocatorSchema.shape, // Reuses schema needing selectorChain + timeoutMs
+  async (args) => {
+    // Assuming terminatorTools has an activateApp method mapped to the backend
+    const result = await terminatorTools.activateApp(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
 );
 
 // captureScreen Tool (New)
 server.tool(
-    "captureScreen",
-    "Captures a screenshot of the primary monitor and returns the recognized text content (OCR).",
-    CaptureScreenSchema.shape,
-    async (args) => { 
-      const result = await terminatorTools.captureScreen(); 
-      if ('error' in result) {
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          isError: true 
-        };
-      } else {
-        // Result now directly contains { text: "..." }
-        return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
-        };
-      }
+  "captureScreen",
+  "Captures a screenshot of the primary monitor and returns the recognized text content (OCR).",
+  CaptureScreenSchema.shape,
+  async (args) => {
+    const result = await terminatorTools.captureScreen();
+    if ("error" in result) {
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        isError: true,
+      };
+    } else {
+      // Result now directly contains { text: "..." }
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
     }
+  }
 );
 
 // --- Resource Definitions ---
@@ -205,35 +202,41 @@ const OPEN_WINDOWS_URI = "terminator://windows/open";
 
 // Use server.resource() instead of setRequestHandler
 server.resource(
-    "open-windows", // A unique name for this resource registration
-    OPEN_WINDOWS_URI, // The static URI for this resource
-    {
-        // Metadata for the resource (used for listing/discovery)
-        name: "Open Windows",
-        description: "Lists the titles and selectors of currently open top-level windows.",
-        mimeType: "application/json",
-    },
-    async (uri) => { // The handler function to read the resource
-        console.log(`[MCP Server] Reading resource: ${uri.href}`);
-        const result = await terminatorTools.listOpenWindows();
+  "open-windows", // A unique name for this resource registration
+  OPEN_WINDOWS_URI, // The static URI for this resource
+  {
+    // Metadata for the resource (used for listing/discovery)
+    name: "Open Windows",
+    description:
+      "Lists the titles and selectors of currently open top-level windows.",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    // The handler function to read the resource
+    console.log(`[MCP Server] Reading resource: ${uri.href}`);
+    const result = await terminatorTools.listOpenWindows();
 
-        if ("error" in result) {
-            console.error(`[MCP Server] Error reading resource ${uri.href}: ${result.error}`);
-            // Throw an error to indicate failure
-            throw new Error(`Failed to list open windows: ${result.error}`);
-        }
-
-        console.log(`[MCP Server] Successfully listed ${result.windows.length} windows for ${uri.href}.`);
-        return {
-            contents: [
-                {
-                    uri: uri.href, // Use the requested URI
-                    mimeType: "application/json",
-                    text: JSON.stringify(result.windows, null, 2), // Return the list as JSON
-                },
-            ],
-        };
+    if ("error" in result) {
+      console.error(
+        `[MCP Server] Error reading resource ${uri.href}: ${result.error}`
+      );
+      // Throw an error to indicate failure
+      throw new Error(`Failed to list open windows: ${result.error}`);
     }
+
+    console.log(
+      `[MCP Server] Successfully listed ${result.windows.length} windows for ${uri.href}.`
+    );
+    return {
+      contents: [
+        {
+          uri: uri.href, // Use the requested URI
+          mimeType: "application/json",
+          text: JSON.stringify(result.windows, null, 2), // Return the list as JSON
+        },
+      ],
+    };
+  }
 );
 
 // --- Start Server ---
