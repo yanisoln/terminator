@@ -14,9 +14,12 @@ Brief description of changes in this PR.
 🎥 **Please include a video demo** showing your changes in action! We might use it to post on social media and grow the community.
 
 **Suggested editing tools:**
+- [Cap.so](https://cap.so/)
+- [Screen.studio](https://screen.studio/)
+- [CapCut](https://www.capcut.com/)
 - [Kapwing](https://www.kapwing.com/)
 - [Descript](https://www.descript.com/)
-- [CapCut](https://www.capcut.com/)
+
 
 ### AI Review & Code Quality
 - [ ] I asked AI to critique my PR and incorporated feedback
