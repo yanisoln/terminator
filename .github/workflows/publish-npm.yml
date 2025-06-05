@@ -141,6 +141,8 @@ jobs:
       - name: Publish main package
         run: |
           cd bindings/nodejs
+          # Install dependencies including @napi-rs/cli
+          npm install
           # Remove any tgz files that might interfere
           rm -f *.tgz
           npm publish --access public
