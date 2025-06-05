@@ -36,4 +36,25 @@ if (packageContent.optionalDependencies) {
 // Write back to package.json
 fs.writeFileSync(packagePath, JSON.stringify(packageContent, null, 2) + '\n');
 
-console.log(`Updated package.json version to: ${version}`); 
+console.log(`Updated package.json version to: ${version}`);
+
+// Also update platform packages
+const npmDir = path.join(__dirname, 'npm');
+if (fs.existsSync(npmDir)) {
+    const platforms = fs.readdirSync(npmDir);
+    for (const platform of platforms) {
+        const platformPath = path.join(npmDir, platform);
+        const platformPackagePath = path.join(platformPath, 'package.json');
+        
+        if (fs.existsSync(platformPackagePath) && fs.statSync(platformPath).isDirectory()) {
+            try {
+                const platformPackage = JSON.parse(fs.readFileSync(platformPackagePath, 'utf8'));
+                platformPackage.version = version;
+                fs.writeFileSync(platformPackagePath, JSON.stringify(platformPackage, null, 2) + '\n');
+                console.log(`Updated ${platform} package version to: ${version}`);
+            } catch (error) {
+                console.warn(`Failed to update ${platform} package:`, error.message);
+            }
+        }
+    }
+} 

@@ -10,20 +10,19 @@ jobs:
     strategy:
       matrix:
         settings:
-          # - host: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   docker: |
-          #     docker run --rm -v ~/.cargo/git:/usr/local/cargo/git -v ~/.cargo/registry:/usr/local/cargo/registry -v $(pwd):/build -w /build node:18-slim sh -c "apt update && apt install -y build-essential && npm run build"
-          #   build: |
-          #     cd bindings/nodejs
-          #     npm run build
-          #     cp terminator.linux-x64-gnu.node npm/linux-x64-gnu/
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             build: |
               cd bindings/nodejs
               npm run build  
               cp terminator.win32-x64-msvc.node npm/win32-x64-msvc/
+          # Enable these when you're ready to build for other platforms
+          # - host: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   build: |
+          #     cd bindings/nodejs
+          #     npm run build
+          #     cp terminator.linux-x64-gnu.node npm/linux-x64-gnu/
           # - host: macos-latest
           #   target: x86_64-apple-darwin
           #   build: |
@@ -68,7 +67,11 @@ jobs:
       - name: Install dependencies
         run: |
           cd bindings/nodejs
-          npm ci
+          # Remove any existing tgz files that might cause issues
+          rm -f *.tgz
+          # Remove node_modules and package-lock to avoid local package issues
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Sync version
         run: |
@@ -83,7 +86,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: bindings/nodejs/npm/*/
+          path: |
+            bindings/nodejs/npm/*/
+            !bindings/nodejs/npm/*/*.tgz
 
   publish:
     name: Publish NPM packages
@@ -106,7 +111,12 @@ jobs:
 
       - name: Copy artifacts to npm packages
         run: |
-          cp -r artifacts/bindings-*/npm/* bindings/nodejs/npm/
+          cp -r artifacts/bindings-*/npm/* bindings/nodejs/npm/ || true
+
+      - name: Sync version for publish
+        run: |
+          cd bindings/nodejs
+          npm run sync-version
 
       - name: Publish platform packages
         run: |
@@ -115,7 +125,12 @@ jobs:
             if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
               echo "Publishing $(basename "$dir")"
               cd "$dir"
-              npm publish --access public || echo "Package already published or failed"
+              # Check if .node file exists before publishing
+              if ls *.node 1> /dev/null 2>&1; then
+                npm publish --access public || echo "Package already published or failed"
+              else
+                echo "No .node file found, skipping $(basename "$dir")"
+              fi
               cd ../..
             fi
           done
@@ -125,6 +140,8 @@ jobs:
       - name: Publish main package
         run: |
           cd bindings/nodejs
+          # Remove any tgz files that might interfere
+          rm -f *.tgz
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
