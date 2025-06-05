@@ -50,10 +50,10 @@
     "linux"
   ],
   "optionalDependencies": {
-    "terminator.js-darwin-arm64": "0.4.3",
-    "terminator.js-darwin-x64": "0.4.3",
-    "terminator.js-linux-x64-gnu": "0.4.3",
-    "terminator.js-win32-x64-msvc": "0.4.3"
+    "terminator.js-darwin-arm64": "0.4.4",
+    "terminator.js-darwin-x64": "0.4.4",
+    "terminator.js-linux-x64-gnu": "0.4.4",
+    "terminator.js-win32-x64-msvc": "0.4.4"
   },
-  "version": "0.4.3"
+  "version": "0.4.4"
 }
