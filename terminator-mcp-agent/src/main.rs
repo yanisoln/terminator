@@ -1,23 +1,25 @@
-use tokio::runtime::Runtime;
-use terminator_mcp_agent::{create_server, register_tools};
-use terminator::Desktop;
+use anyhow::Result;
+use rmcp::{ServiceExt, transport::stdio};
+use crate::utils::{init_logging, DesktopWrapper};
+
+pub mod utils;
+pub mod server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize the Desktop instance
-    #[cfg(target_os = "windows")]
-    let desktop = Desktop::new(false, false);
+    init_logging()?;
 
-    // Create the MCP server
-    let mut server = create_server()?;
+    tracing::info!("Initializing Terminator MCP server...");
 
-    // Register tools
-    register_tools(&mut server, desktop);
+    let service = DesktopWrapper::new()
+        .await?
+        .serve(stdio())
+        .await
+        .inspect_err(|e| {
+            tracing::error!("Serving error: {:?}", e);
+        })?;
 
-    // Connect the server to stdio transport
-    server.connect("stdio").await?;
-
+    service.waiting().await?;
     Ok(())
 }
-
 
