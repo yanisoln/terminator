@@ -5477,7 +5477,11 @@ dependencies = [
 
 [[package]]
 name = "terminator"
+<<<<<<< HEAD
 version = "0.4.2"
+=======
+version = "0.4.3"
+>>>>>>> 80735cb (fix macos js binding)
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -5509,7 +5513,11 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
+<<<<<<< HEAD
 version = "0.4.2"
+=======
+version = "0.4.3"
+>>>>>>> 80735cb (fix macos js binding)
 dependencies = [
  "napi",
  "napi-build",
@@ -5521,7 +5529,11 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
+<<<<<<< HEAD
 version = "0.4.2"
+=======
+version = "0.4.3"
+>>>>>>> 80735cb (fix macos js binding)
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -5536,7 +5548,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "arboard",
