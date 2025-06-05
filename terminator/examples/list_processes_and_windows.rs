@@ -76,7 +76,7 @@ async fn main() -> Result<(), AutomationError> {
 
     // List all window names for each application/process using the new windows_for_application method
     println!("\n=== Windows for Each Application/Process (via windows_for_application) ===");
-    for (index, app) in applications.iter().enumerate() {
+    for (_, app) in applications.iter().enumerate() {
         let pid = match app.process_id() {
             Ok(pid) => pid,
             Err(_) => continue,

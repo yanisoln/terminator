@@ -154,7 +154,16 @@ server.tool(
   ExploreSchema.shape,
   async (args) => {
     const result = await terminatorTools.explore(args);
-    console.log(result);
+    console.log(JSON.stringify({
+      type: "mcp_tool_result",
+      tool: "explore",
+      args: args,
+      result_summary: {
+        success: !("error" in result),
+        children_count: "error" in result ? 0 : result.children.length,
+        has_error: "error" in result
+      }
+    }));
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -213,20 +222,33 @@ server.resource(
   },
   async (uri) => {
     // The handler function to read the resource
-    console.log(`[MCP Server] Reading resource: ${uri.href}`);
+    console.log(JSON.stringify({
+      type: "mcp_resource_request",
+      resource: "open-windows",
+      uri: uri.href,
+      timestamp: new Date().toISOString()
+    }));
     const result = await terminatorTools.listOpenWindows();
 
     if ("error" in result) {
-      console.error(
-        `[MCP Server] Error reading resource ${uri.href}: ${result.error}`
-      );
+      console.error(JSON.stringify({
+        type: "mcp_resource_error",
+        resource: "open-windows",
+        uri: uri.href,
+        error: result.error,
+        timestamp: new Date().toISOString()
+      }));
       // Throw an error to indicate failure
       throw new Error(`Failed to list open windows: ${result.error}`);
     }
 
-    console.log(
-      `[MCP Server] Successfully listed ${result.windows.length} windows for ${uri.href}.`
-    );
+    console.log(JSON.stringify({
+      type: "mcp_resource_success",
+      resource: "open-windows",
+      uri: uri.href,
+      windows_count: result.windows.length,
+      timestamp: new Date().toISOString()
+    }));
     return {
       contents: [
         {
@@ -241,14 +263,30 @@ server.resource(
 
 // --- Start Server ---
 async function main() {
-  console.log(`Starting ${serverInfo.name} v${serverInfo.version}...`);
+  console.log(JSON.stringify({
+    type: "mcp_server_start",
+    server: serverInfo.name,
+    version: serverInfo.version,
+    timestamp: new Date().toISOString()
+  }));
 
   try {
     // Initialize TerminatorTools here so errors are caught before server connection
     terminatorTools = new TerminatorTools(TERMINATOR_BASE_URL);
-    console.log("TerminatorTools initialized successfully.");
+    console.log(JSON.stringify({
+      type: "mcp_initialization",
+      status: "success",
+      component: "TerminatorTools",
+      timestamp: new Date().toISOString()
+    }));
   } catch (error) {
-    console.error("Failed to initialize TerminatorTools:", error);
+    console.error(JSON.stringify({
+      type: "mcp_initialization",
+      status: "error",
+      component: "TerminatorTools",
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    }));
     process.exit(1); // Exit if tools can't be initialized
   }
 
@@ -256,10 +294,19 @@ async function main() {
   try {
     // Connect the server to the transport (stdio in this case)
     await server.connect(transport);
-    console.log("Server connected and listening on stdio.");
-    console.log("Ready to receive MCP requests.");
+    console.log(JSON.stringify({
+      type: "mcp_server_ready",
+      status: "connected",
+      transport: "stdio",
+      timestamp: new Date().toISOString()
+    }));
   } catch (error) {
-    console.error("Failed to start or connect server:", error);
+    console.error(JSON.stringify({
+      type: "mcp_server_error",
+      status: "connection_failed",
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    }));
     process.exit(1); // Exit if connection fails
   }
 }
