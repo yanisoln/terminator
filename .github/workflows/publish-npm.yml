@@ -72,6 +72,7 @@ jobs:
           # Remove node_modules and package-lock to avoid local package issues
           rm -rf node_modules package-lock.json
           npm install
+        shell: bash
 
       - name: Sync version
         run: |
