@@ -1,5 +1,5 @@
 {
-  "name": "terminator-linux-x64-gnu",
+  "name": "terminator.js-linux-x64-gnu",
   "repository": {
     "type": "git",
     "url": "https://github.com/mediar-ai/terminator"
@@ -20,5 +20,5 @@
   "libc": [
     "glibc"
   ],
-  "version": "0.3.7"
+  "version": "0.3.8"
 }

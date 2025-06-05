@@ -27,7 +27,7 @@ packageContent.version = version;
 // Update optionalDependencies to use the same version
 if (packageContent.optionalDependencies) {
     for (const dep in packageContent.optionalDependencies) {
-        if (dep.startsWith('terminator-')) {
+        if (dep.startsWith('terminator.js-')) {
             packageContent.optionalDependencies[dep] = version;
         }
     }

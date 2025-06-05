@@ -7,6 +7,11 @@
     "type": "git",
     "url": "https://github.com/mediar-ai/terminator"
   },
+  "homepage": "https://github.com/mediar-ai/terminator",
+  "bugs": {
+    "url": "https://github.com/mediar-ai/terminator/issues"
+  },
+  "author": "mediar-ai",
   "napi": {
     "name": "terminator",
     "triples": {
@@ -26,20 +31,31 @@
     "artifacts": "npx napi artifacts",
     "build": "npm run sync-version && npx napi build --platform --release --strip",
     "build:debug": "npm run sync-version && npx napi build --platform",
-    "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm"
+    "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
+    "test": "node node_example.js"
   },
   "keywords": [
     "napi",
     "rust",
     "native",
     "terminator",
-    "automation"
+    "automation",
+    "desktop",
+    "gui",
+    "ui",
+    "testing",
+    "windows",
+    "macos",
+    "linux"
   ],
   "optionalDependencies": {
-    "terminator.js-win32-x64-msvc": "0.3.7",
-    "terminator.js-darwin-x64": "0.3.7",
-    "terminator.js-linux-x64-gnu": "0.3.7",
-    "terminator.js-darwin-arm64": "0.3.7"
+    "terminator.js-win32-x64-msvc": "0.3.8",
+    "terminator.js-darwin-x64": "0.3.8",
+    "terminator.js-linux-x64-gnu": "0.3.8",
+    "terminator.js-darwin-arm64": "0.3.8"
   },
-  "version": "0.3.7"
+  "version": "0.3.8",
+  "dependencies": {
+    "terminator.js": "file:terminator.js-0.3.8.tgz"
+  }
 }

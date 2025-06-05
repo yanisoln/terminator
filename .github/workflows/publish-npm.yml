@@ -24,18 +24,18 @@ jobs:
               cd bindings/nodejs
               npm run build  
               cp terminator.win32-x64-msvc.node npm/win32-x64-msvc/
-          - host: macos-latest
-            target: x86_64-apple-darwin
-            build: |
-              cd bindings/nodejs
-              npm run build
-              cp terminator.darwin-x64.node npm/darwin-x64/
-          - host: macos-latest
-            target: aarch64-apple-darwin
-            build: |
-              cd bindings/nodejs
-              npm run build
-              cp terminator.darwin-arm64.node npm/darwin-arm64/
+          # - host: macos-latest
+          #   target: x86_64-apple-darwin
+          #   build: |
+          #     cd bindings/nodejs
+          #     npm run build
+          #     cp terminator.darwin-x64.node npm/darwin-x64/
+          # - host: macos-latest
+          #   target: aarch64-apple-darwin
+          #   build: |
+          #     cd bindings/nodejs
+          #     npm run build
+          #     cp terminator.darwin-arm64.node npm/darwin-arm64/
 
     name: stable - ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}

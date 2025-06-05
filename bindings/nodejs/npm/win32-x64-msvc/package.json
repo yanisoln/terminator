@@ -1,5 +1,5 @@
 {
-  "name": "terminator-win32-x64-msvc",
+  "name": "terminator.js-win32-x64-msvc",
   "repository": {
     "type": "git",
     "url": "https://github.com/mediar-ai/terminator"
@@ -17,5 +17,5 @@
   "engines": {
     "node": ">= 10"
   },
-  "version": "0.3.7"
+  "version": "0.3.8"
 }
