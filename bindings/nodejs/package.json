@@ -32,7 +32,8 @@
     "build": "npm run sync-version && npx napi build --platform --release --strip",
     "build:debug": "npm run sync-version && npx napi build --platform",
     "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
-    "test": "node node_example.js"
+    "test": "node node_example.js",
+    "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "keywords": [
     "napi",
