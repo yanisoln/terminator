@@ -415,4 +415,56 @@ impl UIElementImpl for LinuxUIElement {
             "Linux implementation is not yet available".to_string(),
         ))
     }
+
+    fn activate_window(&self) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn mouse_drag(&self, _start_x: f64, _start_y: f64, _end_x: f64, _end_y: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn mouse_click_and_hold(&self, _x: f64, _y: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn mouse_move(&self, _x: f64, _y: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn mouse_release(&self) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn process_id(&self) -> Result<u32, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn close(&self) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
 }

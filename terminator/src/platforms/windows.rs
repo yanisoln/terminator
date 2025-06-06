@@ -3177,6 +3177,48 @@ impl UIElementImpl for WindowsUIElement {
         })
     }
 
+    fn close(&self) -> Result<(), AutomationError> {
+        // Check the control type to determine if this element is closable
+        let control_type = self.element.0.get_control_type()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get control type: {}", e)))?;
+            
+        match control_type {
+            ControlType::Window | ControlType::Pane => {
+                // For windows and panes, try to close them
+                
+                // First try using the WindowPattern to close the window
+                if let Ok(window_pattern) = self.element.0.get_pattern::<patterns::UIWindowPattern>() {
+                    debug!("Attempting to close window using WindowPattern");
+                    return window_pattern.close()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to close window: {}", e)));
+                }
+                
+                // Fallback: try to send Alt+F4 to close the window
+                debug!("WindowPattern not available, trying Alt+F4 as fallback");
+                self.element.0.try_focus(); // Focus first
+                self.element.0.send_keys("%{F4}", 10) // Alt+F4
+                    .map_err(|e| AutomationError::PlatformError(format!("Failed to send Alt+F4: {}", e)))
+            },
+            ControlType::Button => {
+                // For buttons, check if it's a close button by name/text
+                let name = self.element.0.get_name().unwrap_or_default().to_lowercase();
+                if name.contains("close") || name.contains("×") || name.contains("✕") {
+                    debug!("Clicking close button: {}", name);
+                    self.click().map(|_| ())
+                } else {
+                    // Regular button - do nothing
+                    debug!("Button '{}' is not a close button, doing nothing", name);
+                    Ok(())
+                }
+            },
+            _ => {
+                // For other control types (text, edit, etc.), do nothing
+                debug!("Element type {:?} is not closable, doing nothing", control_type);
+                Ok(())
+            }
+        }
+    }
+
     fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
         // Get the raw UIAutomation bounds
         let rect = self.element.0.get_bounding_rectangle()

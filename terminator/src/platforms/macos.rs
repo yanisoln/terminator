@@ -5,7 +5,7 @@ use crate::{
 use crate::{ClickResult, ScreenshotResult};
 
 use accessibility::AXUIElementAttributes;
-use accessibility::{AXAttribute, AXUIElement};
+use accessibility::{AXAttribute, AXUIElement, AXAction};
 use anyhow::Result;
 use core_foundation::array::{
     __CFArray, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
@@ -1639,6 +1639,64 @@ impl UIElementImpl for MacOSUIElement {
             Ok(pid as u32)
         } else {
             Err(AutomationError::PlatformError("Failed to get process ID for element".to_string()))
+        }
+    }
+
+    fn close(&self) -> Result<(), AutomationError> {
+        // Check the element role to determine if it's closable
+        let role = self.role();
+        
+        match role.as_str() {
+            "AXWindow" | "AXDialog" | "AXSheet" => {
+                // For windows and dialogs, try to find and click the close button
+                
+                // First try to use the AXCloseButton action if available
+                let close_button_attr = AXAttribute::new(&CFString::new("AXCloseButton"));
+                if let Ok(close_button_value) = self.element.0.attribute(&close_button_attr) {
+                    if let Some(close_button) = close_button_value.downcast_into::<AXUIElement>() {
+                        let press_action = AXAction::new(&CFString::new("AXPress"));
+                        if close_button.perform_action(&press_action).is_ok() {
+                            return Ok(());
+                        }
+                    }
+                }
+                
+                // Fallback: try to send Cmd+W to close the window
+                match self.press_key("cmd+w") {
+                    Ok(_) => Ok(()),
+                    Err(_) => {
+                        // Final fallback: try Cmd+Q to quit the application (for windows that don't support Cmd+W)
+                        self.press_key("cmd+q").map_err(|e| {
+                            AutomationError::PlatformError(format!("Failed to close window: {}", e))
+                        })
+                    }
+                }
+            },
+            "AXButton" => {
+                // For buttons, check if it's a close button by name/identifier
+                if let Some(name) = self.name() {
+                    if name.to_lowercase().contains("close") || name.contains("✕") || name.contains("×") {
+                        return self.click().map(|_| ());
+                    }
+                }
+                
+                // Check identifier for close button indicators
+                if let Ok(identifier_attr) = self.element.0.attribute(&AXAttribute::new(&CFString::new("AXIdentifier"))) {
+                    if let Some(identifier) = identifier_attr.downcast_into::<CFString>() {
+                        let id_str = identifier.to_string().to_lowercase();
+                        if id_str.contains("close") || id_str.contains("dismiss") {
+                            return self.click().map(|_| ());
+                        }
+                    }
+                }
+                
+                // Regular button - do nothing
+                Ok(())
+            },
+            _ => {
+                // For other element types, do nothing (safely)
+                Ok(())
+            }
         }
     }
 }

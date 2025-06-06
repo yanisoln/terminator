@@ -293,6 +293,10 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // New method to capture a screenshot of the element
     fn capture(&self) -> Result<ScreenshotResult, AutomationError>;
+
+    /// Close the element if it's closable (like windows, applications)
+    /// Does nothing for non-closable elements (like buttons, text, etc.)
+    fn close(&self) -> Result<(), AutomationError>;
 }
 
 impl UIElement {
@@ -475,6 +479,12 @@ impl UIElement {
     /// Capture a screenshot of the element
     pub fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
         self.inner.capture()
+    }
+
+    /// Close the element if it's closable (like windows, applications)
+    /// Does nothing for non-closable elements (like buttons, text, etc.)
+    pub fn close(&self) -> Result<(), AutomationError> {
+        self.inner.close()
     }
 
     /// Convenience methods to reduce verbosity with optional properties

@@ -136,6 +136,10 @@ pub mod windows;
 #[cfg(all(target_os = "windows", test))]
 pub mod windows_tests;
 
+#[cfg(target_os = "windows")]
+#[cfg(test)]
+pub mod windows_benchmarks;
+
 /// Create the appropriate engine for the current platform
 pub fn create_engine(
     use_background_apps: bool,
