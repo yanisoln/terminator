@@ -6,7 +6,7 @@ import {
   ClickResult,
   CommandOutput,
   UIElementAttributes
-} from "../../bindings/nodejs/index.js";
+} from "terminator.js";
 import { z } from "zod";
 
 // --- Zod Schemas for Tool Parameters (used in index.ts) ---
