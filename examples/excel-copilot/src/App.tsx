@@ -24,24 +24,36 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isGeminiConfigured, setIsGeminiConfigured] = useState(false);
+  const [isOpenAIConfigured, setIsOpenAIConfigured] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [selectedLlm, setSelectedLlm] = useState<'gemini' | 'openai'>('gemini');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('ready');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [attachedPdfs, setAttachedPdfs] = useState<string[]>([]);
   const [copilotEnabled, setCopilotEnabled] = useState(false);
   const [sheetsMode, setSheetsMode] = useState<'excel' | 'googlesheets'>('excel');
   const [googleSheetsStatus, setGoogleSheetsStatus] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Stop functionality
+  const [isRequestCancelled, setIsRequestCancelled] = useState(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     loadChatHistory();
+    loadLlmProvider();
   }, []);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  const loadLlmProvider = async () => {
+    try {
+      const provider = await invoke<string>('get_llm_provider');
+      setSelectedLlm(provider as 'gemini' | 'openai');
+    } catch (error) {
+      console.error('failed to load LLM provider:', error);
+    }
+  };
 
   // Check if screen is small
   useEffect(() => {
@@ -136,15 +148,48 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if (sheetsMode === 'googlesheets') {
-      checkGoogleSheetsAvailability();
-    }
-  }, [sheetsMode]);
+  // Removed automatic Google Sheets availability check when switching to Google Sheets mode
+  // The user should manually click "check availability" when they want to verify
 
-  const isChatInputDisabled = isLoading || 
-                            !isGeminiConfigured || 
-                            (sheetsMode === 'googlesheets' && !googleSheetsStatus.toLowerCase().includes("available and ready"));
+  // Reconfigure clients when Copilot setting changes
+  useEffect(() => {
+    const reconfigureClients = async () => {
+      if (isGeminiConfigured && geminiApiKey.trim()) {
+        console.log(`Reconfiguring Gemini with Copilot ${copilotEnabled ? 'enabled' : 'disabled'}`);
+        try {
+          await invoke('setup_gemini_client', { 
+            apiKey: geminiApiKey, 
+            copilotEnabled: copilotEnabled 
+          });
+          showStatus(`gemini reconfigured with copilot ${copilotEnabled ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+          console.error('Error reconfiguring Gemini:', error);
+        }
+      }
+      
+      if (isOpenAIConfigured && openaiApiKey.trim()) {
+        console.log(`Reconfiguring OpenAI with Copilot ${copilotEnabled ? 'enabled' : 'disabled'}`);
+        try {
+          await invoke('setup_openai_client', { 
+            apiKey: openaiApiKey, 
+            copilotEnabled: copilotEnabled 
+          });
+          showStatus(`openai reconfigured with copilot ${copilotEnabled ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+          console.error('Error reconfiguring OpenAI:', error);
+        }
+      }
+    };
+
+    // Only reconfigure if we have configured clients
+    if (isGeminiConfigured || isOpenAIConfigured) {
+      reconfigureClients();
+    }
+  }, [copilotEnabled, isGeminiConfigured, isOpenAIConfigured, geminiApiKey, openaiApiKey]); // Trigger when copilotEnabled changes
+
+  const isLlmConfigured = selectedLlm === 'gemini' ? isGeminiConfigured : isOpenAIConfigured;
+  
+  const isChatInputDisabled = isLoading || !isLlmConfigured;
 
   const setupGemini = async () => {
     if (!geminiApiKey.trim()) return;
@@ -166,10 +211,88 @@ function App() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!currentMessage.trim() || !isGeminiConfigured || isLoading) return;
-
+  const setupOpenAI = async () => {
+    if (!openaiApiKey.trim()) return;
+    
     setIsLoading(true);
+    try {
+      await invoke('setup_openai_client', { 
+        apiKey: openaiApiKey, 
+        copilotEnabled: copilotEnabled 
+      });
+      setIsOpenAIConfigured(true);
+      setShowApiKeyInput(false);
+      showStatus('openai configured successfully');
+    } catch (error) {
+      console.error('error setting up openai:', error);
+      showStatus('failed to configure openai');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const switchLlmProvider = async (provider: 'gemini' | 'openai') => {
+    try {
+      await invoke('set_llm_provider', { provider });
+      setSelectedLlm(provider);
+      showStatus(`switched to ${provider}`);
+    } catch (error) {
+      console.error('error switching LLM provider:', error);
+      showStatus('failed to switch LLM provider');
+    }
+  };
+
+  const stopCurrentRequest = async () => {
+    console.log('🛑 User requested to stop current request');
+    setIsRequestCancelled(true);
+    
+    try {
+      // Call the backend to stop the LLM request
+      await invoke('stop_llm_request');
+      console.log('✓ Backend cancellation signal sent');
+    } catch (error) {
+      console.error('Error stopping request:', error);
+    }
+    
+    // Stop polling interval if active
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+      console.log('✓ Polling interval cleared');
+    }
+    
+    // Abort the request if possible
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      console.log('✓ Request aborted');
+    }
+    
+    // Reset loading state
+    setIsLoading(false);
+    
+    // Show status
+    showStatus('request stopped by user');
+    
+    // Update the assistant placeholder to show cancellation
+    setChatMessages(prev => {
+      const updated = [...prev];
+      const lastMessage = updated[updated.length - 1];
+      if (lastMessage && lastMessage.role === 'model' && lastMessage.content === 'thinking...') {
+        lastMessage.content = '❌ Request stopped by user';
+        lastMessage.response_details = { has_tool_calls: false, iterations: 0 };
+      }
+      return updated;
+    });
+  };
+
+  const sendMessage = async () => {
+    if (!currentMessage.trim() || !isLlmConfigured || isLoading) return;
+
+    // Reset cancellation state
+    setIsRequestCancelled(false);
+    setIsLoading(true);
+    
     const userMessageText = currentMessage;
     const pdfsToProcess = [...attachedPdfs];
     setCurrentMessage('');
@@ -190,87 +313,142 @@ function App() {
     };
 
     const chatLengthBeforeLocalUpdate = chatMessages.length;
+    console.log(`📤 Sending message: "${userMessageText}"`);
 
     // Display user message and placeholder
     setChatMessages(prev => [...prev, newUserMessage, assistantPlaceholder]);
 
+    let pollingTimeout: NodeJS.Timeout | null = null;
+
     try {
+      // Create AbortController for request cancellation
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      
       const processingPromise = pdfsToProcess.length > 0
-        ? invoke('chat_with_gemini_pdf', { message: userMessageText, pdfFiles: pdfsToProcess })
-        : invoke('chat_with_gemini', { message: userMessageText });
+        ? invoke('chat_with_llm_pdf', { message: userMessageText, pdfFiles: pdfsToProcess })
+        : invoke('chat_with_llm', { message: userMessageText });
 
       const pollForUpdates = setInterval(async () => {
+        // Check if request was cancelled
+        if (isRequestCancelled) {
+          clearInterval(pollForUpdates);
+          return;
+        }
         try {
           const backendHistory = await invoke<ChatMessage[]>('get_chat_history');
           
           setChatMessages(currentLocalMessages => {
-
-            const userMessageConfirmedByBackend = backendHistory.some(
-              m => m.role === 'user' && m.timestamp === newUserMessage.timestamp
-            );
-
-            if (!userMessageConfirmedByBackend && backendHistory.length < chatLengthBeforeLocalUpdate + 1) {
-              return currentLocalMessages;
-            }
-
-            // At this point, the backend should have the user's message.
-            const lastBackendMessage = backendHistory.length > 0 ? backendHistory[backendHistory.length - 1] : null;
-
-            if (lastBackendMessage && lastBackendMessage.role === 'model' && lastBackendMessage.content !== 'thinking...') {
-              // The assistant has provided a final response (content is not 'thinking...').
-              // It's safe to take the full backend history now.
-              return backendHistory;
-            } else {
-              // Assistant is still 'thinking...' or might be showing intermediate tool calls via the placeholder's evolution.
-              // We try to update our local placeholder with the backend's version of it.
-              const updatedMessages = [...currentLocalMessages];
-              const localPlaceholderIndex = updatedMessages.findIndex(
-                m => m.role === 'model' && m.timestamp === assistantPlaceholder.timestamp
-              );
-
-              if (localPlaceholderIndex !== -1) {
-                // Try to find the corresponding message from the backend for our placeholder
-                // This message in the backend might have updated tool_calls or content (still 'thinking...' or final)
-                const backendEquivalentOfPlaceholder = backendHistory.find(
-                  m => m.role === 'model' && m.timestamp >= assistantPlaceholder.timestamp // Match by timestamp or if it's a newer evolution
-                );
-
-                if (backendEquivalentOfPlaceholder) {
-                  updatedMessages[localPlaceholderIndex] = backendEquivalentOfPlaceholder;
-                  return updatedMessages;
-                } else if (backendHistory.length >= currentLocalMessages.length && lastBackendMessage && lastBackendMessage.role === 'model'){
-                  return backendHistory;
-                } 
-                // If no clear update for placeholder, stick to current local messages for now.
-                return currentLocalMessages;
-              } else {
-                 // No local placeholder was found (should ideally not happen if UI is in sync).
-                 // If backend history seems more complete, use it.
-                if (backendHistory.length >= currentLocalMessages.length) {
-                  return backendHistory;
-                }
-                return currentLocalMessages;
+            // Simple check: if backend has more messages than what we expect, update
+            const expectedLength = chatLengthBeforeLocalUpdate + 2; // user message + assistant response
+            
+            if (backendHistory.length >= expectedLength) {
+              const lastBackendMessage = backendHistory[backendHistory.length - 1];
+              
+              // If the last message is from the model and is not "thinking...", the response is complete
+              if (lastBackendMessage && 
+                  lastBackendMessage.role === 'model' && 
+                  lastBackendMessage.content !== 'thinking...') {
+                console.log('📝 Response complete detected, updating UI');
+                return backendHistory;
               }
             }
+            
+            // Check if we have a partial response with tool calls to update the placeholder
+            if (backendHistory.length > currentLocalMessages.length) {
+              const lastBackendMessage = backendHistory[backendHistory.length - 1];
+              if (lastBackendMessage && lastBackendMessage.role === 'model') {
+                // Update the placeholder with new tool calls or status
+                const updatedMessages = [...currentLocalMessages];
+                const localPlaceholderIndex = updatedMessages.findIndex(
+                  m => m.role === 'model' && m.timestamp === assistantPlaceholder.timestamp
+                );
+                
+                if (localPlaceholderIndex !== -1) {
+                  // Replace placeholder with backend version that may have tool calls
+                  updatedMessages[localPlaceholderIndex] = lastBackendMessage;
+                  return updatedMessages;
+                }
+              }
+            }
+            
+            return currentLocalMessages;
           });
         } catch (error) {
           console.error('Error polling chat history:', error);
-          // Optional: handle polling error, maybe stop polling or show a message
         }
-      }, 750); // Polling interval
+      }, 500); // Reduced polling interval for better responsiveness
+
+      // Store polling interval reference for cancellation
+      pollingIntervalRef.current = pollForUpdates;
+
+      // Safety timeout to stop polling after 2 minutes (in case backend doesn't respond properly)
+      pollingTimeout = setTimeout(() => {
+        console.log('⚠️ Polling timeout reached, forcing stop');
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        // Force final sync
+        loadChatHistory();
+      }, 120000); // 2 minutes timeout
 
       const responseSummary = await processingPromise; // Wait for the main backend operation to complete
 
+      // Check if request was cancelled during processing
+      if (isRequestCancelled) {
+        console.log('Request was cancelled, stopping here');
+        clearInterval(pollForUpdates);
+        return;
+      }
+
+      console.log('🏁 Backend processing complete, stopping polling');
       clearInterval(pollForUpdates); // Stop polling
-      await loadChatHistory(); // Perform a final, definitive sync with the backend history
+      if (pollingTimeout) clearTimeout(pollingTimeout); // Clear timeout
+      pollingIntervalRef.current = null;
+      
+      // Final sync with backend history - this ensures UI is up to date
+      console.log('🔄 Final sync with backend history');
+      await loadChatHistory();
 
       showStatus(responseSummary ? `message sent: ${responseSummary}`: 'Message processed');
     } catch (error: any) {
+      // Check if error is due to cancellation
+      if (isRequestCancelled) {
+        console.log('Request was cancelled');
+        return;
+      }
+      
       console.error('Error sending message:', error);
       showStatus(`error: ${error.message || error}`);
-      // On error, remove the assistant placeholder, keeping the user's message
-      setChatMessages(prev => prev.filter(msg => msg.timestamp !== assistantPlaceholder.timestamp));
+      
+      // Clear polling if still active
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      // Clear timeout as well
+      if (pollingTimeout) clearTimeout(pollingTimeout);
+      
+      // Add error message to chat and remove placeholder
+      setChatMessages(prev => {
+        const updated = prev.filter(msg => msg.timestamp !== assistantPlaceholder.timestamp);
+        // Add error message
+        updated.push({
+          role: 'model',
+          content: `❌ Error: ${error.message || error}`,
+          timestamp: Date.now(),
+          tool_calls: [],
+          response_details: { has_tool_calls: false, iterations: 0 },
+        });
+        return updated;
+      });
     } finally {
+      // Clean up references
+      abortControllerRef.current = null;
+      pollingIntervalRef.current = null;
+      
+      // ALWAYS reset loading state in finally block
       setIsLoading(false);
     }
   };
@@ -372,10 +550,10 @@ function App() {
             <span className="status-text">{status}</span>
             {isLoading && <div className="loading-spinner"></div>}
           </div>
-          <div className="gemini-indicator">
-            <div className={`indicator-dot ${isGeminiConfigured ? 'connected' : 'disconnected'}`}></div>
+          <div className="llm-indicator">
+            <div className={`indicator-dot ${isLlmConfigured ? 'connected' : 'disconnected'}`}></div>
             <span className="indicator-text">
-              {isGeminiConfigured ? 'gemini ready' : 'configure gemini'}
+              {isLlmConfigured ? `${selectedLlm} ready` : `configure ${selectedLlm}`}
             </span>
           </div>
         </div>
@@ -590,7 +768,7 @@ function App() {
         <section className={`chat-section ${sidebarCollapsed ? 'expanded' : ''}`}>
           <div className="chat-header">
             <h2 className="chat-title">
-              chat with gemini - {sheetsMode === 'excel' ? 'excel mode' : 'google sheets mode'}
+              chat with {selectedLlm} - {sheetsMode === 'excel' ? 'excel mode' : 'google sheets mode'}
             </h2>
             <div className="chat-controls">
               <button 
@@ -613,17 +791,70 @@ function App() {
 
           {showApiKeyInput && (
             <div className="api-key-input">
-              <input
-                type="password"
-                placeholder="enter gemini api key"
-                value={geminiApiKey}
-                onChange={(e) => setGeminiApiKey(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && setupGemini()}
-                className="api-input"
-              />
-              <button onClick={setupGemini} disabled={isLoading} className="btn btn-primary">
-                save
-              </button>
+              <div className="llm-selector">
+                <div className="llm-option">
+                  <input
+                    type="radio"
+                    id="llm-gemini"
+                    name="llmProvider"
+                    value="gemini"
+                    checked={selectedLlm === 'gemini'}
+                    onChange={(e) => switchLlmProvider(e.target.value as 'gemini' | 'openai')}
+                    className="llm-radio"
+                  />
+                  <label htmlFor="llm-gemini" className="llm-label">
+                    <span className="llm-icon">🤖</span>
+                    <span className="llm-name">Gemini</span>
+                    <span className="llm-status">{isGeminiConfigured ? '✅' : '❌'}</span>
+                  </label>
+                </div>
+                <div className="llm-option">
+                  <input
+                    type="radio"
+                    id="llm-openai"
+                    name="llmProvider"
+                    value="openai"
+                    checked={selectedLlm === 'openai'}
+                    onChange={(e) => switchLlmProvider(e.target.value as 'gemini' | 'openai')}
+                    className="llm-radio"
+                  />
+                  <label htmlFor="llm-openai" className="llm-label">
+                    <span className="llm-icon">🧠</span>
+                    <span className="llm-name">OpenAI GPT-4o-mini</span>
+                    <span className="llm-status">{isOpenAIConfigured ? '✅' : '❌'}</span>
+                  </label>
+                </div>
+              </div>
+              
+              {selectedLlm === 'gemini' ? (
+                <div className="api-input-row">
+                  <input
+                    type="password"
+                    placeholder="enter gemini api key"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && setupGemini()}
+                    className="api-input"
+                  />
+                  <button onClick={setupGemini} disabled={isLoading} className="btn btn-primary">
+                    save
+                  </button>
+                </div>
+              ) : (
+                <div className="api-input-row">
+                  <input
+                    type="password"
+                    placeholder="enter openai api key"
+                    value={openaiApiKey}
+                    onChange={(e) => setOpenaiApiKey(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && setupOpenAI()}
+                    className="api-input"
+                  />
+                  <button onClick={setupOpenAI} disabled={isLoading} className="btn btn-primary">
+                    save
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -632,7 +863,7 @@ function App() {
               <div className="empty-chat">
                 <div className="welcome-content">
                   <h3>welcome to excel copilot</h3>
-                  <p>connect with gemini to start analyzing your {sheetsMode === 'excel' ? 'excel' : 'google sheets'} data.</p>
+                  <p>connect with {selectedLlm} to start analyzing your {sheetsMode === 'excel' ? 'excel' : 'google sheets'} data.</p>
                   <ul className="feature-list">
                     <li>ask questions about your data</li>
                     <li>request summaries and insights</li>
@@ -706,12 +937,22 @@ function App() {
                 </div>
               ))
             )}
-            <div ref={messagesEndRef} />
           </div>
 
-          {isGeminiConfigured && (
             <div className="chat-input">
-              {attachedPdfs.length > 0 && (
+            {!isLlmConfigured && (
+              <div className="llm-setup-message">
+                <div className="setup-message-content">
+                  <span className="setup-icon">🔑</span>
+                  <div className="setup-text">
+                    <strong>Configure {selectedLlm} API first</strong>
+                    <span>Click the settings button (⚙) above to enter your {selectedLlm} API key</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {isLlmConfigured && attachedPdfs.length > 0 && (
                 <div className="pdf-attachments">
                   <div className="attachments-header">
                     attached pdf files ({attachedPdfs.length})
@@ -737,30 +978,44 @@ function App() {
                 <button 
                   className="attach-btn"
                   onClick={selectPdfFiles}
-                  disabled={isLoading}
-                  title="attach pdf files"
+                disabled={isLoading || !isLlmConfigured}
+                title={!isLlmConfigured ? `Configure ${selectedLlm} first` : "attach pdf files"}
                 >
                   📎
                 </button>
                 <input
                   type="text"
-                  placeholder={`ask me anything about your ${sheetsMode === 'excel' ? 'excel' : 'google sheets'} data...`}
+                                  placeholder={
+                  !isLlmConfigured 
+                    ? `Please configure your ${selectedLlm} API key first...` 
+                    : `ask me anything about your ${sheetsMode === 'excel' ? 'excel' : 'google sheets'} data...`
+                }
                   value={currentMessage}
                   onChange={(e) => setCurrentMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                   disabled={isChatInputDisabled}
                   className="message-input"
                 />
-                <button 
-                  className="send-btn"
-                  onClick={sendMessage}
-                  disabled={isChatInputDisabled || !currentMessage.trim()}
-                >
-                  {isLoading ? '⏳' : '→'}
-                </button>
+                {isLoading ? (
+                  <button 
+                    className="stop-btn"
+                    onClick={stopCurrentRequest}
+                    title="Stop current request"
+                  >
+                    ⏹️
+                  </button>
+                ) : (
+                  <button 
+                    className="send-btn"
+                    onClick={sendMessage}
+                    disabled={isChatInputDisabled || !currentMessage.trim()}
+                    title={!isLlmConfigured ? `Configure ${selectedLlm} first` : "Send message"}
+                  >
+                    →
+                  </button>
+                )}
               </div>
             </div>
-          )}
         </section>
       </main>
     </div>

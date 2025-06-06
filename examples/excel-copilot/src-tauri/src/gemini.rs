@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use base64::{Engine as _, engine::general_purpose};
+use tokio_util::sync::CancellationToken;
 use crate::locale_utils::{get_decimal_separator, get_locale_info};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -546,6 +547,14 @@ PROTOCOL:
     where
         F: Fn(&str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>> + Send + Sync,
     {
+        self.send_message_with_tools_detailed_cancellable(message, tool_executor, None).await
+    }
+
+    /// Send a message to Gemini with detailed tool calling support and cancellation
+    pub async fn send_message_with_tools_detailed_cancellable<F>(&mut self, message: &str, tool_executor: F, cancellation_token: Option<CancellationToken>) -> Result<GeminiResponseDetails, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(&str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>> + Send + Sync,
+    {
         // Add user message to conversation history
         let user_message = GeminiMessage {
             role: "user".to_string(),
@@ -558,7 +567,7 @@ PROTOCOL:
         let mut total_iterations = 0;
         
         // Start the conversation turn
-        let final_response = self.process_conversation_turn(&tool_executor, &mut all_tool_calls, &mut total_iterations).await?;
+        let final_response = self.process_conversation_turn_cancellable(&tool_executor, &mut all_tool_calls, &mut total_iterations, cancellation_token).await?;
         
         // Add the final response to conversation history
         let final_message = GeminiMessage {
@@ -583,6 +592,14 @@ PROTOCOL:
     where
         F: Fn(&str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>> + Send + Sync,
     {
+        self.process_conversation_turn_cancellable(tool_executor, all_tool_calls, total_iterations, None).await
+    }
+
+    /// Process a complete conversation turn with cancellation support
+    async fn process_conversation_turn_cancellable<F>(&mut self, tool_executor: &F, all_tool_calls: &mut Vec<ToolCallInfo>, total_iterations: &mut i32, cancellation_token: Option<CancellationToken>) -> Result<String, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(&str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>> + Send + Sync,
+    {
         let max_total_iterations = 50;
         let mut accumulated_text = String::new();
         
@@ -590,6 +607,13 @@ PROTOCOL:
         let mut working_conversation = self.conversation_history.clone();
         
         loop {
+            // Check for cancellation before starting iteration
+            if let Some(ref token) = cancellation_token {
+                if token.is_cancelled() {
+                    return Err("Request was cancelled by user".into());
+                }
+            }
+
             *total_iterations += 1;
             if *total_iterations > max_total_iterations {
                 return Err(format!("Maximum iterations ({}) reached", max_total_iterations).into());
@@ -698,6 +722,13 @@ PROTOCOL:
                 let mut function_response_parts = Vec::new();
                 
                 for function_call in function_calls_in_response {
+                    // Check for cancellation before executing function
+                    if let Some(ref token) = cancellation_token {
+                        if token.is_cancelled() {
+                            return Err("Request was cancelled by user".into());
+                        }
+                    }
+
                     println!("Executing function: {}", function_call.name);
                     
                     // Execute the function

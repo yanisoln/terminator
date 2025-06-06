@@ -1219,29 +1219,85 @@ impl ExcelAutomation {
 
     /// Check if Google Sheets window is available (without opening new one)
     pub async fn check_google_sheets_availability(&self) -> Result<String> {
-        match self.find_google_sheets_window().await {
-            Ok(sheets_window) => {
-                // First check if Gemini prompt field is already visible
-                let prompt_input_selector = Selector::Name("Enter a prompt here".to_string());
-                match sheets_window.locator(prompt_input_selector.clone())?.first(Some(Duration::from_millis(2000))).await {
+        println!("=== CHECKING GOOGLE SHEETS AVAILABILITY ===");
+        
+        // Simple approach: just try to find the window without complex async spawning
+        match self.find_google_sheets_window_safe().await {
+            Ok(()) => {
+                println!("Google Sheets window found, checking Gemini availability...");
+                
+                // Create a new automation instance to check Gemini
+                match ExcelAutomation::new().await {
+                    Ok(temp_automation) => {
+                        match temp_automation.check_gemini_availability_simple().await {
+                            Ok(msg) => Ok(msg),
+                            Err(e) => Ok(format!("Google Sheets found but Gemini check failed: {}", e))
+                        }
+                    }
+                    Err(e) => Ok(format!("Google Sheets found but automation setup failed: {}", e))
+                }
+            }
+            Err(_) => {
+                println!("No Google Sheets window found during search");
+                Ok("No Google Sheets window found. Please open Google Sheets manually.".to_string())
+            }
+        }
+    }
+    
+    /// Safe window finding that won't panic
+    async fn find_google_sheets_window_safe(&self) -> Result<()> {
+        println!("Safely searching for Google Sheets window...");
+        
+        // Strategy 1: Look for window with "Google Sheets" in title (short timeout)
+        match self.desktop.find_window_by_criteria(Some("Google Sheets"), Some(Duration::from_millis(2000))).await {
                     Ok(_) => {
-                        println!("Google Sheets found with Gemini panel already open");
-                        return Ok("Google Sheets with Gemini is available and ready (panel already open)".to_string());
+                println!("Found Google Sheets window using title criteria");
+                return Ok(());
                     }
                     Err(_) => {
-                        println!("Google Sheets found but checking if Gemini is available");
+                println!("No Google Sheets window with title found");
+            }
+        }
+        
+        // Strategy 2: Look for window with "sheets.google.com" (short timeout)
+        match self.desktop.find_window_by_criteria(Some("sheets.google"), Some(Duration::from_millis(1500))).await {
+            Ok(_) => {
+                println!("Found Google Sheets window using URL criteria");
+                return Ok(());
+            }
+            Err(_) => {
+                println!("No Google Sheets window with URL found");
                     }
                 }
                 
-                // Check if Gemini is available by trying to open it
-                match self.open_google_sheets_gemini().await {
-                    Ok(_) => Ok("Google Sheets with Gemini is available and ready".to_string()),
-                    Err(e) => Ok(format!("Google Sheets found but Gemini not available: {}", e))
-                }
+        Err(anyhow!("Could not find Google Sheets window"))
+    }
+    
+    /// Simple Gemini availability check
+    async fn check_gemini_availability_simple(&self) -> Result<String> {
+        println!("Checking if Gemini is available in Google Sheets");
+        
+        match self.find_google_sheets_window().await {
+            Ok(sheets_window) => {
+                sheets_window.focus()?;
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                
+                // Look for "Ask Gemini" button with short timeout
+                let ask_gemini_selector = Selector::Name("Ask Gemini".to_string());
+                match sheets_window.locator(ask_gemini_selector)?.first(Some(Duration::from_millis(1500))).await {
+                    Ok(_) => {
+                        println!("Found 'Ask Gemini' button - Gemini is available");
+                        Ok("Google Sheets with Gemini is available and ready".to_string())
             }
-            Err(_) => Ok("No Google Sheets window found. Please open Google Sheets manually.".to_string())
+                    Err(_) => {
+                        Ok("Google Sheets found but Gemini not available. Make sure you're in a Google Sheets document with Gemini enabled.".to_string())
         }
     }
+            }
+            Err(e) => Err(e)
+        }
+    }
+    
 
     /// Send data to Google Sheets Gemini (with TSV formatting for structured data)
     pub async fn send_data_to_google_sheets_gemini(&self, data: &str, description: &str) -> Result<String> {

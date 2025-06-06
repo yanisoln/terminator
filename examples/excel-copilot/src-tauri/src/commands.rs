@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{State, AppHandle};
 use tauri_plugin_dialog::DialogExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::excel::{ExcelWorkbook, ExcelSheet};
 use crate::gemini::GeminiClient;
+use crate::openai::OpenAIClient;
 use crate::excel_interaction::{get_excel_automation};
 use crate::locale_utils::{normalize_number_for_excel, get_locale_info as get_system_locale_info};
 use anyhow::Result;
@@ -95,12 +97,27 @@ impl From<ExcelWorkbook> for ExcelData {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum LlmProvider {
+    Gemini,
+    OpenAI,
+}
+
+impl Default for LlmProvider {
+    fn default() -> Self {
+        LlmProvider::Gemini
+    }
+}
+
 #[derive(Default)]
 pub struct AppStateStruct {
     pub excel_workbook: Mutex<Option<ExcelWorkbook>>,
     pub gemini_client: Mutex<Option<GeminiClient>>,
+    pub openai_client: Mutex<Option<OpenAIClient>>,
     pub chat_history: Mutex<Vec<ChatMessage>>,
     pub current_file_path: Mutex<Option<String>>,
+    pub selected_llm: Mutex<LlmProvider>,
+    pub cancellation_token: Mutex<Option<CancellationToken>>,
 }
 
 /// Open an Excel file using the system dialog
@@ -266,16 +283,121 @@ pub async fn setup_gemini_client(
     Ok(status_msg.to_string())
 }
 
-/// Send a chat message to Gemini with tool calling support
+/// Configure the OpenAI client with API key
 #[tauri::command]
-pub async fn chat_with_gemini(
+pub async fn setup_openai_client(
+    state: State<'_, AppStateStruct>,
+    api_key: String,
+    copilot_enabled: Option<bool>,
+) -> Result<String, String> {
+    let mut openai_state = state.openai_client.lock().unwrap();
+    
+    let use_copilot = copilot_enabled.unwrap_or(false);
+    
+    let client = OpenAIClient::new(api_key, use_copilot);
+    
+    *openai_state = Some(client);
+    
+    let status_msg = if use_copilot {
+        "✅ OpenAI client configured successfully with Copilot support"
+    } else {
+        "✅ OpenAI client configured successfully (Copilot disabled)"
+    };
+    
+    Ok(status_msg.to_string())
+}
+
+/// Set the LLM provider (Gemini or OpenAI)
+#[tauri::command]
+pub async fn set_llm_provider(
+    state: State<'_, AppStateStruct>,
+    provider: String,
+) -> Result<String, String> {
+    let mut selected_llm = state.selected_llm.lock().unwrap();
+    
+    match provider.to_lowercase().as_str() {
+        "gemini" => {
+            *selected_llm = LlmProvider::Gemini;
+            Ok("✅ Switched to Gemini".to_string())
+        }
+        "openai" => {
+            *selected_llm = LlmProvider::OpenAI;
+            Ok("✅ Switched to OpenAI".to_string())
+        }
+        _ => Err("❌ Invalid provider. Use 'gemini' or 'openai'".to_string())
+    }
+}
+
+/// Get the current LLM provider
+#[tauri::command]
+pub async fn get_llm_provider(
+    state: State<'_, AppStateStruct>,
+) -> Result<String, String> {
+    let selected_llm = state.selected_llm.lock().unwrap();
+    match *selected_llm {
+        LlmProvider::Gemini => Ok("gemini".to_string()),
+        LlmProvider::OpenAI => Ok("openai".to_string()),
+    }
+}
+
+/// Stop the current LLM request
+#[tauri::command]
+pub async fn stop_llm_request(
+    state: State<'_, AppStateStruct>,
+) -> Result<String, String> {
+    let mut cancellation_token = state.cancellation_token.lock().unwrap();
+    
+    if let Some(token) = cancellation_token.take() {
+        token.cancel();
+        println!("🛑 Request cancellation signal sent");
+        Ok("Request stopped successfully".to_string())
+    } else {
+        Ok("No active request to stop".to_string())
+    }
+}
+
+/// Send a chat message to the selected LLM with tool calling support
+#[tauri::command]
+pub async fn chat_with_llm(
     state: State<'_, AppStateStruct>,
     message: String,
 ) -> Result<String, String> {
+    // Create and store cancellation token
+    let cancellation_token = CancellationToken::new();
+    {
+        let mut token_guard = state.cancellation_token.lock().unwrap();
+        *token_guard = Some(cancellation_token.clone());
+    }
+
+    let selected_llm = {
+        let llm = state.selected_llm.lock().unwrap();
+        llm.clone()
+    };
+    
+    let result = match selected_llm {
+        LlmProvider::Gemini => chat_with_gemini_with_cancellation(&state, message, cancellation_token.clone()).await,
+        LlmProvider::OpenAI => chat_with_openai_with_cancellation(&state, message, cancellation_token.clone()).await,
+    };
+
+    // Clear the cancellation token
+    {
+        let mut token_guard = state.cancellation_token.lock().unwrap();
+        *token_guard = None;
+    }
+
+    result
+}
+
+/// Send a chat message to OpenAI with tool calling support and cancellation
+async fn chat_with_openai_with_cancellation(
+    state: &State<'_, AppStateStruct>,
+    message: String,
+    cancellation_token: CancellationToken,
+) -> Result<String, String> {
     // Clone the client to avoid holding the lock across await
     let client_opt = {
-        let gemini_state = state.gemini_client.lock().unwrap();
-        gemini_state.clone()
+        let openai_state = state.openai_client.lock().unwrap();
+        openai_state.clone()
     };
     
     if let Some(mut client) = client_opt {
@@ -313,7 +435,109 @@ pub async fn chat_with_gemini(
         };
 
 
-        match client.send_message_with_tools_detailed(&message, tool_executor).await {
+        match client.send_message_with_tools_detailed_cancellable(&message, tool_executor, Some(cancellation_token)).await {
+            Ok(response) => {
+                // Convert tool calls to our format
+                let tool_calls: Vec<ToolCall> = response.tool_calls.iter().map(|tc| ToolCall {
+                    function_name: tc.function_name.clone(),
+                    arguments: tc.arguments.clone(),
+                    result: tc.result.clone(),
+                }).collect();
+
+                // Add final assistant response to history
+                {
+                    let mut chat_history = state.chat_history.lock().unwrap();
+                    chat_history.push(ChatMessage {
+                        role: "model".to_string(),
+                        content: response.content.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+                        response_details: Some(ResponseDetails {
+                            has_tool_calls: response.has_tool_calls,
+                            iterations: response.iterations,
+                        }),
+                    });
+                }
+
+                // Update the client state with the updated client that contains conversation history
+                {
+                    let mut openai_state = state.openai_client.lock().unwrap();
+                    *openai_state = Some(client);
+                }
+
+                Ok(response.content)
+            }
+            Err(e) => {
+                // Don't add error to chat history - just return the error
+                // The error will be handled by the frontend
+                Err(format!("OpenAI API error: {}", e))
+            }
+        }
+    } else {
+        Err("OpenAI client not configured. Please set up your API key first.".to_string())
+    }
+}
+
+/// Send a chat message to OpenAI with tool calling support
+#[tauri::command]
+pub async fn chat_with_openai(
+    state: State<'_, AppStateStruct>,
+    message: String,
+) -> Result<String, String> {
+    let cancellation_token = CancellationToken::new();
+    chat_with_openai_with_cancellation(&state, message, cancellation_token).await
+}
+
+/// Send a chat message to Gemini with tool calling support and cancellation
+async fn chat_with_gemini_with_cancellation(
+    state: &State<'_, AppStateStruct>,
+    message: String,
+    cancellation_token: CancellationToken,
+) -> Result<String, String> {
+    // Clone the client to avoid holding the lock across await
+    let client_opt = {
+        let gemini_state = state.gemini_client.lock().unwrap();
+        gemini_state.clone()
+    };
+    
+    if let Some(mut client) = client_opt {
+        // Add user message to history
+        {
+            let mut chat_history = state.chat_history.lock().unwrap();
+            chat_history.push(ChatMessage {
+                role: "user".to_string(),
+                content: message.clone(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                tool_calls: None,
+                response_details: None,
+            });
+        }
+
+        // Create tool executor that uses the original state directly
+        let tool_executor = |function_name: &str, args: &Value| {
+            let function_name_owned = function_name.to_string();
+            let args_owned = args.clone();
+            
+            // Get the current file path directly from state when needed
+            let current_file_path = {
+                let current_path = state.current_file_path.lock().unwrap();
+                current_path.as_ref().map(|p| p.to_string())
+            };
+            
+            Box::pin(async move {
+                execute_excel_tool_with_path(&function_name_owned, &args_owned, current_file_path.as_deref()).await
+                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { format!("{}", e).into() })
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>>
+        };
+
+
+        match client.send_message_with_tools_detailed_cancellable(&message, tool_executor, Some(cancellation_token)).await {
             Ok(response) => {
                 // Convert tool calls to our format
                 let tool_calls: Vec<ToolCall> = response.tool_calls.iter().map(|tc| ToolCall {
@@ -349,27 +573,24 @@ pub async fn chat_with_gemini(
                 Ok(response.content)
             }
             Err(e) => {
-                // Add error message to history
-                {
-                    let mut chat_history = state.chat_history.lock().unwrap();
-                    chat_history.push(ChatMessage {
-                        role: "model".to_string(),
-                        content: format!("Error: {}", e),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        tool_calls: None,
-                        response_details: None,
-                    });
-                }
-                
+                // Don't add error to chat history - just return the error
+                // The error will be handled by the frontend
                 Err(format!("Gemini API error: {}", e))
             }
         }
     } else {
         Err("Gemini client not configured. Please set up your API key first.".to_string())
     }
+}
+
+/// Send a chat message to Gemini with tool calling support
+#[tauri::command]
+pub async fn chat_with_gemini(
+    state: State<'_, AppStateStruct>,
+    message: String,
+) -> Result<String, String> {
+    let cancellation_token = CancellationToken::new();
+    chat_with_gemini_with_cancellation(&state, message, cancellation_token).await
 }
 
 /// Execute Excel tools via automation with file path
@@ -473,8 +694,17 @@ async fn execute_excel_tool_with_path(
             }
         }
         "get_excel_sheet_overview" => {
-            get_complete_excel_status_from_file(file_path).await
-                .map_err(|e| format!("Failed to get sheet overview: {}", e))?
+            match get_complete_excel_status_from_file(file_path).await {
+                Ok(overview) => overview,
+                Err(e) => {
+                    // Return a helpful error message to the model instead of throwing an error
+                    if file_path.is_none() {
+                        "ERROR: No Excel file is currently open. Please ask the user to open an Excel file first using 'Open Excel File' or create a new one with 'New Excel File'. Cannot read sheet overview without an active file.".to_string()
+                    } else {
+                        format!("ERROR: Failed to read Excel file: {}. The file might be corrupted, locked by another application, or inaccessible. Please ask the user to check if the file is still available and not being used by another program.", e)
+                    }
+                }
+            }
         }
         "get_excel_ui_context" => {
             let ui_context = automation.get_excel_ui_context().await
@@ -810,6 +1040,127 @@ pub async fn chat_with_gemini_pdf(
     } else {
         Err("Gemini client not configured. Please set up your API key first.".to_string())
     }
+}
+
+/// Send a chat message to OpenAI with PDF attachments
+#[tauri::command]
+pub async fn chat_with_openai_pdf(
+    state: State<'_, AppStateStruct>,
+    message: String,
+    pdf_files: Vec<String>,
+) -> Result<String, String> {
+    // Clone the client to avoid holding the lock across await
+    let client_opt = {
+        let openai_state = state.openai_client.lock().unwrap();
+        openai_state.clone()
+    };
+    
+    if let Some(mut client) = client_opt {
+        // Create tool executor
+        let tool_executor = |function_name: &str, args: &Value| {
+            let function_name_owned = function_name.to_string();
+            let args_owned = args.clone();
+            
+            let current_file_path = {
+                let current_path = state.current_file_path.lock().unwrap();
+                current_path.as_ref().map(|p| p.to_string())
+            };
+            
+            Box::pin(async move {
+                execute_excel_tool_with_path(&function_name_owned, &args_owned, current_file_path.as_deref()).await
+                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { format!("{}", e).into() })
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Box<dyn std::error::Error + Send + Sync>>> + Send>>
+        };
+
+        // Clone pdf_files to avoid move issues
+        let pdf_files_clone = pdf_files.clone();
+        
+        // Use PDF-enabled method
+        match client.send_message_with_pdf(&message, pdf_files_clone, tool_executor).await {
+            Ok(response) => {
+                // Convert tool calls to our format
+                let tool_calls: Vec<ToolCall> = response.tool_calls.iter().map(|tc| ToolCall {
+                    function_name: tc.function_name.clone(),
+                    arguments: tc.arguments.clone(),
+                    result: tc.result.clone(),
+                }).collect();
+
+                // Add user message to history
+                {
+                    let mut chat_history = state.chat_history.lock().unwrap();
+                    chat_history.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: format!("{} [with {} PDF attachment(s)]", message, pdf_files.len()),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        tool_calls: None,
+                        response_details: None,
+                    });
+
+                    // Add assistant response
+                    chat_history.push(ChatMessage {
+                        role: "model".to_string(),
+                        content: response.content.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+                        response_details: Some(ResponseDetails {
+                            has_tool_calls: response.has_tool_calls,
+                            iterations: response.iterations,
+                        }),
+                    });
+                }
+
+                // Update the client state
+                {
+                    let mut openai_state = state.openai_client.lock().unwrap();
+                    *openai_state = Some(client);
+                }
+
+                Ok(response.content)
+            }
+            Err(e) => Err(format!("OpenAI PDF API error: {}", e))
+        }
+    } else {
+        Err("OpenAI client not configured. Please set up your API key first.".to_string())
+    }
+}
+
+/// Send a chat message to the selected LLM with PDF attachments
+#[tauri::command]
+pub async fn chat_with_llm_pdf(
+    state: State<'_, AppStateStruct>,
+    message: String,
+    pdf_files: Vec<String>,
+) -> Result<String, String> {
+    // Create and store cancellation token
+    let cancellation_token = CancellationToken::new();
+    {
+        let mut token_guard = state.cancellation_token.lock().unwrap();
+        *token_guard = Some(cancellation_token.clone());
+    }
+
+    let selected_llm = {
+        let llm = state.selected_llm.lock().unwrap();
+        llm.clone()
+    };
+    
+    let result = match selected_llm {
+        LlmProvider::Gemini => chat_with_gemini_pdf(state.clone(), message, pdf_files).await,
+        LlmProvider::OpenAI => chat_with_openai_pdf(state.clone(), message, pdf_files).await,
+    };
+
+    // Clear the cancellation token
+    {
+        let mut token_guard = state.cancellation_token.lock().unwrap();
+        *token_guard = None;
+    }
+
+    result
 }
 
 /// Select PDF files for attachment

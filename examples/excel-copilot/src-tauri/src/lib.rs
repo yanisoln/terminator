@@ -6,15 +6,25 @@
 mod excel;
 mod excel_interaction;
 mod gemini;
+mod openai;
 mod commands;
 mod locale_utils;
 
 use commands::{
     open_excel_file, create_new_excel, save_excel_file, get_excel_content,
-    setup_gemini_client, chat_with_gemini, chat_with_gemini_pdf, get_chat_history, clear_chat_history,
+    setup_gemini_client, setup_openai_client, 
+    chat_with_gemini, chat_with_gemini_pdf, chat_with_openai, chat_with_openai_pdf,
+    chat_with_llm, chat_with_llm_pdf,
+    set_llm_provider, get_llm_provider,
+    get_chat_history, clear_chat_history,
     excel_read_cell, excel_write_cell, excel_read_range, excel_set_formula,
     select_pdf_files, get_locale_info,
-    AppStateStruct
+    AppStateStruct,
+    open_google_sheets,
+    google_sheets_send_prompt,
+    google_sheets_send_data,
+    google_sheets_interact,
+    check_google_sheets_availability
 };
 
 /// Initialize and run the Tauri application
@@ -24,24 +34,48 @@ pub fn run() {
         .manage(AppStateStruct::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            // File operations
             open_excel_file,
             create_new_excel,
             save_excel_file,
             get_excel_content,
             select_pdf_files,
             
+            // LLM configuration
             setup_gemini_client,
+            setup_openai_client,
+            set_llm_provider,
+            get_llm_provider,
+            
+            // Universal chat commands
+            chat_with_llm,
+            chat_with_llm_pdf,
+            
+            // Specific LLM chat commands
             chat_with_gemini,
+            chat_with_gemini_pdf,
+            chat_with_openai,
+            chat_with_openai_pdf,
+            
+            // Chat management
             get_chat_history,
             clear_chat_history,
             
-            chat_with_gemini_pdf,
-            
+            // Excel interaction via automation
             excel_read_cell,
             excel_write_cell,
             excel_read_range,
             excel_set_formula,
-            get_locale_info
+            
+            // System info
+            get_locale_info,
+            
+            // Google Sheets commands
+            open_google_sheets,
+            google_sheets_send_prompt,
+            google_sheets_send_data,
+            google_sheets_interact,
+            check_google_sheets_availability
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
