@@ -391,6 +391,15 @@ impl UIElement {
             .map_err(|e| automation_error_to_pyerr(e))
     }
 
+    #[pyo3(name = "process_id", text_signature = "($self)")]
+    /// Get the process ID of the application containing this element.
+    /// 
+    /// Returns:
+    ///     int: The process ID.
+    pub fn process_id(&self) -> PyResult<u32> {
+        self.inner.process_id().map_err(|e| automation_error_to_pyerr(e))
+    }
+
     #[pyo3(name = "highlight", signature = (color=None, duration_ms=None))]
     #[pyo3(text_signature = "($self, color, duration_ms)")]
     /// Highlights the element with a colored border.
@@ -404,5 +413,20 @@ impl UIElement {
     pub fn highlight(&self, color: Option<u32>, duration_ms: Option<u64>) -> PyResult<()> {
         let duration = duration_ms.map(std::time::Duration::from_millis);
         self.inner.highlight(color, duration).map_err(|e| automation_error_to_pyerr(e))
+    }
+
+    #[pyo3(name = "capture", text_signature = "($self)")]
+    /// Capture a screenshot of this element.
+    /// 
+    /// Returns:
+    ///     ScreenshotResult: The screenshot data containing image data and dimensions.
+    pub fn capture(&self) -> PyResult<crate::types::ScreenshotResult> {
+        self.inner.capture()
+            .map(|result| crate::types::ScreenshotResult {
+                image_data: result.image_data,
+                width: result.width,
+                height: result.height,
+            })
+            .map_err(|e| automation_error_to_pyerr(e))
     }
 } 

@@ -151,6 +151,100 @@ impl AccessibilityEngine for LinuxEngine {
             format!("get_window_tree_by_title for '{}' not yet implemented for Linux", title)
         ))
     }
+
+    async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn get_element_by_id(&self, _id: i32) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn find_element(
+        &self,
+        _selector: &Selector,
+        _root: Option<&UIElement>,
+        _timeout: Option<Duration>,
+    ) -> Result<UIElement, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn find_elements(
+        &self,
+        _selector: &Selector,
+        _root: Option<&UIElement>,
+        _timeout: Option<Duration>,
+        _depth: Option<usize>,
+    ) -> Result<Vec<UIElement>, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn get_window_tree_by_pid_and_title(&self, _pid: u32, _title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn activate_browser_window_by_title(&self, _title: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn activate_application(&self, _app_name: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    async fn run_command(
+        &self,
+        _windows_command: Option<&str>,
+        _unix_command: Option<&str>,
+    ) -> Result<crate::CommandOutput, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    async fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    async fn capture_monitor_by_name(&self, _name: &str) -> Result<ScreenshotResult, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn enable_background_cache_warmer(
+        &self,
+        _enable: bool,
+        _interval_seconds: Option<u64>,
+        _max_apps_to_cache: Option<usize>,
+    ) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "Background cache warming is not yet implemented for Linux".to_string()
+        ))
+    }
+
+    fn is_cache_warmer_enabled(&self) -> bool {
+        false
+    }
 }
 
 // Placeholder LinuxUIElement that implements UIElementImpl
@@ -282,10 +376,6 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
     fn create_locator(&self, _selector: Selector) -> Result<Locator, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
@@ -315,6 +405,12 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

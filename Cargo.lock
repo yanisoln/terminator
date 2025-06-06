@@ -926,6 +926,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "camino"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0da45bc31171d8d6960122e222a67740df867c1dd53b4d51caa297084c185cab"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "cargo-platform"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e35af189006b9c0f00a064685c727031e3ed2d8020f7ba284d78cc2671bd36ea"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "cargo_metadata"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5eb614ed4c27c5d706420e4320fbe3216ab31fa1c33cd8246ac36dae4479ba"
+dependencies = [
+ "camino",
+ "cargo-platform",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3632,7 +3664,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "pyo3",
- "pyo3-build-config",
+ "pyo3-build-config 0.25.0",
  "rustc-hash 2.1.1",
 ]
 
@@ -4318,7 +4350,7 @@ dependencies = [
  "memoffset 0.9.1",
  "once_cell",
  "portable-atomic",
- "pyo3-build-config",
+ "pyo3-build-config 0.25.0",
  "pyo3-ffi",
  "pyo3-macros",
  "unindent",
@@ -4351,6 +4383,16 @@ dependencies = [
 
 [[package]]
 name = "pyo3-build-config"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99636d423fa2ca130fa5acde3059308006d46f98caac629418e53f7ebb1e9999"
+dependencies = [
+ "once_cell",
+ "target-lexicon 0.13.2",
+]
+
+[[package]]
+name = "pyo3-build-config"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "755ea671a1c34044fa165247aaf6f419ca39caa6003aee791a0df2713d8f1b6d"
@@ -4366,7 +4408,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc95a2e67091e44791d4ea300ff744be5293f394f1bafd9f78c080814d35956e"
 dependencies = [
  "libc",
- "pyo3-build-config",
+ "pyo3-build-config 0.25.0",
 ]
 
 [[package]]
@@ -4389,19 +4431,21 @@ checksum = "9dff85ebcaab8c441b0e3f7ae40a6963ecea8a9f5e74f647e33fcf5ec9a1e89e"
 dependencies = [
  "heck",
  "proc-macro2",
- "pyo3-build-config",
+ "pyo3-build-config 0.25.0",
  "quote",
  "syn 2.0.101",
 ]
 
 [[package]]
 name = "pyo3-stub-gen"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1eaa038342df74bf2cbf9cd8e772be6110fe1187853a993a31730dea9abc6a"
+checksum = "61ebbf208fc5d7af8f5365b74204202996c2ec4dca38ee811486561d0da5c260"
 dependencies = [
  "anyhow",
+ "cargo_metadata",
  "chrono",
+ "either",
  "indexmap",
  "inventory",
  "itertools 0.13.0",
@@ -4410,16 +4454,18 @@ dependencies = [
  "num-complex",
  "numpy",
  "pyo3",
+ "pyo3-build-config 0.24.2",
  "pyo3-stub-gen-derive",
+ "semver",
  "serde",
  "toml",
 ]
 
 [[package]]
 name = "pyo3-stub-gen-derive"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f75511d4a203e2532f1a7ac360add5d6ce967f851b2b7d9575cb0052200a06cb"
+checksum = "23b582d0ff1c7c3bff13e8a04a1e41f783a6b8135531362c748ed655fbff14cb"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -4980,6 +5026,9 @@ name = "semver"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56e6fa9c48d24d85fb3de5ad847117517440f6beceb7798af16b4a87d616b8d0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "serde"
@@ -5332,6 +5381,21 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
+version = "0.30.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys 0.8.7",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "windows 0.52.0",
+]
+
+[[package]]
+name = "sysinfo"
 version = "0.34.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4b93974b3d3aeaa036504b8eefd4c039dced109171c1ae973f1dc63b2c7e4b2"
@@ -5430,7 +5494,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.34.2",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -5478,14 +5542,17 @@ dependencies = [
  "arboard",
  "async-stream",
  "chrono",
+ "criterion",
  "ctrlc",
  "dashmap",
  "futures",
  "notify",
+ "rand 0.8.5",
  "rdev",
  "regex",
  "serde",
  "serde_json",
+ "sysinfo 0.30.13",
  "tempfile",
  "terminator",
  "thiserror 1.0.69",
@@ -7122,9 +7189,9 @@ checksum = "ec107c4503ea0b4a98ef47356329af139c0a4f7750e621cf2973cd3385ebcb3d"
 
 [[package]]
 name = "xcap"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8c280bc7ebbb756eb06816efc2b16d63f85d7ef6c10dcc09bb612503cd78964"
+checksum = "ef2d00d06bcbe2c8e00092190fbd54f85a181473a5ccff8ccc8e01fffef94454"
 dependencies = [
  "dispatch2",
  "image 0.25.6",

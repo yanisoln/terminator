@@ -126,6 +126,13 @@ class Desktop:
         Returns:
             CommandOutput: The command output.
         """
+    async def get_active_monitor_name(self) -> str:
+        r"""
+        (async) Get the name of the currently active monitor.
+        
+        Returns:
+            str: The name of the active monitor.
+        """
     async def capture_monitor_by_name(self, name:builtins.str) -> ScreenshotResult:
         r"""
         (async) Capture a screenshot of a specific monitor.
@@ -634,6 +641,16 @@ class Locator:
         Returns:
             Optional[UIElement]: The window element, or None if not present.
         """
+    async def process_id(self, timeout_ms:typing.Optional[builtins.int]=None) -> int:
+        r"""
+        (async) Get the process ID of the application containing the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            int: The process ID of the application.
+        """
     async def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None, timeout_ms:typing.Optional[builtins.int]=None) -> None:
         r"""
         (async) Highlights the first matching element with a colored border.
@@ -645,6 +662,16 @@ class Locator:
         
         Returns:
             None
+        """
+    async def capture(self, timeout_ms:typing.Optional[builtins.int]=None) -> ScreenshotResult:
+        r"""
+        (async) Capture a screenshot of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            ScreenshotResult: The screenshot result containing the image data.
         """
 
 class ScreenshotResult:
@@ -915,6 +942,13 @@ class UIElement:
         Returns:
             ExploreResponse: Details about the element and its children.
         """
+    def process_id(self) -> builtins.int:
+        r"""
+        Get the process ID of the application containing this element.
+        
+        Returns:
+            int: The process ID.
+        """
     def highlight(self, color:typing.Optional[builtins.int]=None, duration_ms:typing.Optional[builtins.int]=None) -> None:
         r"""
         Highlights the element with a colored border.
@@ -925,6 +959,13 @@ class UIElement:
         
         Returns:
             None
+        """
+    def capture(self) -> ScreenshotResult:
+        r"""
+        Capture a screenshot of this element.
+        
+        Returns:
+            ScreenshotResult: The screenshot data containing image data and dimensions.
         """
 
 class UIElementAttributes:
