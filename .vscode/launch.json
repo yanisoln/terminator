@@ -48,27 +48,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug Rust Example Server",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=server"
-                ],
-                 "filter": {
-                    "name": "server",
-                    "kind": "example"
-                 }
-            },
-            "args": [],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "RUST_LOG": "debug"
-            }
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug Rust List Processes and Windows",
             "cargo": {
                 "args": [
