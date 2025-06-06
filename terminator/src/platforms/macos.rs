@@ -2957,71 +2957,6 @@ impl AccessibilityEngine for MacOSEngine {
         )))
     }
 
-    async fn find_window_by_criteria(
-        &self,
-        title_contains: Option<&str>,
-        _timeout: Option<Duration>, // Timeout not directly used
-    ) -> Result<UIElement, AutomationError> {
-        // Clone the filter string outside the loop/closure
-        let title_filter_clone = title_contains.map(|t| t.to_lowercase());
-
-        // Get all top-level application elements
-        let apps = self.get_applications()?;
-
-        // Print debug! statement of the applications name list
-        {
-            let mut app_names = Vec::new();
-            for app in &apps {
-                if let Some(macos_app) = app.as_any().downcast_ref::<MacOSUIElement>() {
-                    if let Ok(name) = macos_app.element.0.title() {
-                        app_names.push(name.to_string());
-                    }
-                }
-            }
-            debug!("Top-level applications found: {:?}", app_names);
-        }
-
-        for app in apps {
-            if let Some(macos_app) = app.as_any().downcast_ref::<MacOSUIElement>() {
-                // Clone the filter again for the closure
-                let filter_clone_inner = title_filter_clone.clone();
-                // Use ElementsCollectorWithWindows
-                let collector = ElementsCollectorWithWindows::new(&macos_app.element.0, move |e| {
-                    match e.role() {
-                        Ok(role) => {
-                            if role.to_string() == "AXWindow" {
-                                // If title filter exists, check if window title contains it
-                                if let Some(filter) = &filter_clone_inner {
-                                    // Use cloned filter
-                                    e.title().map_or(false, |t| {
-                                        t.to_string().to_lowercase().contains(filter)
-                                    })
-                                } else {
-                                    true
-                                }
-                            } else {
-                                false
-                            }
-                        }
-                        Err(_) => false,
-                    }
-                }); // Add None for implicit_wait
-
-                // Check only the first result if needed
-                if let Some(found_window) = collector.find_all().into_iter().next() {
-                    // Found a matching window
-                    return Ok(self.wrap_element(ThreadSafeAXUIElement::new(found_window)));
-                }
-            }
-        }
-
-        // If no window found after checking all apps
-        Err(AutomationError::ElementNotFound(format!(
-            "Could not find a window with title containing: {:?}",
-            title_contains
-        )))
-    }
-
     async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
         use accessibility::AXAttribute;
         use core_foundation::string::CFString;
@@ -3192,16 +3127,14 @@ impl AccessibilityEngine for MacOSEngine {
         }
     }
 
-    fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
-        Err(AutomationError::UnsupportedOperation(format!(
-            "get_window_tree_by_title for '{}' not yet implemented for macOS",
-            title
-        )))
-    }
-
-    fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {
+    fn get_window_tree(
+        &self, 
+        pid: u32, 
+        title: Option<&str>, 
+        _config: crate::platforms::TreeBuildConfig
+    ) -> Result<crate::UINode, AutomationError> {
         Err(AutomationError::UnsupportedOperation(
-            format!("get_window_tree_by_pid_and_title for PID {} and title {:?} not yet implemented for macOS", pid, title)
+            format!("get_window_tree for PID {} and title {:?} not yet implemented for macOS", pid, title)
         ))
     }
 
@@ -3233,22 +3166,5 @@ impl AccessibilityEngine for MacOSEngine {
     /// Enable downcasting to concrete engine types
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-
-    /// Enable or disable background cache warming for improved performance (macOS placeholder)
-    fn enable_background_cache_warmer(
-        &self,
-        _enable: bool,
-        _interval_seconds: Option<u64>,
-        _max_apps_to_cache: Option<usize>,
-    ) -> Result<(), AutomationError> {
-        Err(AutomationError::UnsupportedOperation(
-            "Background cache warming is not yet implemented for macOS".to_string()
-        ))
-    }
-
-    /// Check if the background cache warmer is currently running (macOS placeholder)
-    fn is_cache_warmer_enabled(&self) -> bool {
-        false
     }
 }

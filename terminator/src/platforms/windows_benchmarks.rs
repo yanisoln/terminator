@@ -131,65 +131,73 @@ mod performance_benchmarks {
                 }
             };
             
-            // Get memory usage before operation
-            let memory_before = get_process_memory_mb();
-            
-            // Benchmark tree building with multiple runs for accuracy
-            let mut durations = Vec::new();
-            let mut elements_processed = Vec::new();
-            
-            const BENCHMARK_RUNS: usize = 3;
-            
-            for run in 1..=BENCHMARK_RUNS {
-                print!("  Run {}/{}: ", run, BENCHMARK_RUNS);
-                
-                let start_time = Instant::now();
-                
-                match engine.get_window_tree_by_title(&window_title) {
-                    Ok(tree) => {
-                        let duration = start_time.elapsed();
-                        let element_count = count_tree_elements(&tree);
-                        
-                        durations.push(duration);
-                        elements_processed.push(element_count);
-                        
-                        println!("✅ {}ms ({} elements)", duration.as_millis(), element_count);
-                    },
-                    Err(e) => {
-                        println!("❌ Failed: {}", e);
-                        continue;
-                    }
+            // Get PID for the window tree API
+            let pid = match app_element.process_id() {
+                Ok(pid) => pid,
+                Err(e) => {
+                    println!("❌ Could not get process ID: {}", e);
+                    let _ = app_element.close();
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
                 }
-                
-                // Small delay between runs to reduce system load
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
+            };
             
-            // Get memory usage after operation
-            let memory_after = get_process_memory_mb();
-            let memory_delta = memory_after.saturating_sub(memory_before);
+            // Get baseline metrics before operation
+            let memory_before = get_process_memory_mb();
+            let cpu_before = get_system_cpu_usage();
+            let process_cpu_before = get_process_cpu_time();
             
-            // Calculate and display metrics
-            if !durations.is_empty() {
-                let avg_duration = durations.iter().sum::<Duration>() / durations.len() as u32;
-                let min_duration = durations.iter().min().unwrap();
-                let max_duration = durations.iter().max().unwrap();
-                let avg_elements = elements_processed.iter().sum::<usize>() / elements_processed.len();
-                
-                println!("\n  📈 Performance Metrics:");
-                println!("     Average Time: {}ms", avg_duration.as_millis());
-                println!("     Range: {}ms - {}ms", min_duration.as_millis(), max_duration.as_millis());
-                println!("     Elements Processed: {} (avg)", avg_elements);
-                println!("     Memory Delta: {}MB", memory_delta);
-                println!("     Throughput: {:.1} elements/ms", avg_elements as f64 / avg_duration.as_millis() as f64);
-                
-                // Enhanced performance assessment for different complexity levels
-                let performance_rating = assess_performance_enhanced(avg_duration, avg_elements, memory_delta, app_type);
-                println!("     Performance Rating: {}", performance_rating);
-                
-                // Add complexity assessment
-                let complexity_rating = assess_complexity(avg_elements);
-                println!("     Complexity Level: {}", complexity_rating);
+            let start_time = Instant::now();
+            
+            // Test with Fast property loading mode (current optimized version)
+            let config = crate::platforms::TreeBuildConfig {
+                property_mode: crate::platforms::PropertyLoadingMode::Fast,
+                timeout_per_operation_ms: Some(50),
+                yield_every_n_elements: Some(50),
+                batch_size: Some(50),
+            };
+            
+            match engine.get_window_tree(pid, Some(&window_title), config) {
+                Ok(tree) => {
+                    let duration = start_time.elapsed();
+                    let element_count = count_tree_elements(&tree);
+                    
+                    // Get final metrics after operation
+                    let memory_after = get_process_memory_mb();
+                    let cpu_after = get_system_cpu_usage();
+                    let process_cpu_after = get_process_cpu_time();
+                    
+                    let memory_delta = memory_after.saturating_sub(memory_before);
+                    let cpu_delta = cpu_after.saturating_sub(cpu_before);
+                    let process_cpu_delta = process_cpu_after.saturating_sub(process_cpu_before);
+                    
+                    println!("✅ {}ms ({} elements, +{}% CPU)", duration.as_millis(), element_count, cpu_delta);
+                    
+                    // Display detailed metrics
+                    println!("\n  📈 Performance Metrics:");
+                    println!("     Duration: {}ms", duration.as_millis());
+                    println!("     Elements Processed: {}", element_count);
+                    println!("     Memory Delta: {}MB", memory_delta);
+                    println!("     CPU Load: {}%", cpu_delta);
+                    println!("     Process CPU Time: {}ms", process_cpu_delta);
+                    println!("     Throughput: {:.1} elements/ms", element_count as f64 / duration.as_millis() as f64);
+                    
+                    // Enhanced performance assessment including CPU load
+                    let performance_rating = assess_performance_enhanced(duration, element_count, memory_delta, cpu_delta, app_type);
+                    println!("     Performance Rating: {}", performance_rating);
+                    
+                    // Add complexity assessment
+                    let complexity_rating = assess_complexity(element_count);
+                    println!("     Complexity Level: {}", complexity_rating);
+                    
+                    // Add CPU efficiency assessment
+                    let cpu_efficiency = assess_cpu_efficiency(cpu_delta, element_count);
+                    println!("     CPU Efficiency: {}", cpu_efficiency);
+                },
+                Err(e) => {
+                    println!("❌ Failed: {}", e);
+                    continue;
+                }
             }
             
             // Enhanced close handling with retry logic
@@ -270,39 +278,72 @@ mod performance_benchmarks {
         }
     }
     
+    /// Get system CPU usage in percentage
+    fn get_system_cpu_usage() -> u64 {
+        let output = Command::new("powershell")
+            .args(["-Command", 
+                   "Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1 | Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue"])
+            .output();
+            
+        match output {
+            Ok(output) => {
+                let cpu_str = String::from_utf8_lossy(&output.stdout);
+                cpu_str.trim().parse::<f64>().unwrap_or(0.0) as u64
+            },
+            Err(_) => 0,
+        }
+    }
+    
+    /// Get process CPU time in milliseconds
+    fn get_process_cpu_time() -> u64 {
+        let output = Command::new("powershell")
+            .args(["-Command", 
+                   &format!("Get-Process -Id {} | Select-Object -ExpandProperty TotalProcessorTime | Select-Object -ExpandProperty TotalMilliseconds", 
+                           std::process::id())])
+            .output();
+            
+        match output {
+            Ok(output) => {
+                let cpu_str = String::from_utf8_lossy(&output.stdout);
+                cpu_str.trim().parse::<f64>().unwrap_or(0.0) as u64
+            },
+            Err(_) => 0,
+        }
+    }
+    
     /// Enhanced performance assessment with different criteria for different app types
-    fn assess_performance_enhanced(duration: Duration, elements: usize, memory_mb: u64, app_type: &str) -> &'static str {
+    fn assess_performance_enhanced(duration: Duration, elements: usize, memory_mb: u64, cpu_per_run: u64, app_type: &str) -> &'static str {
         let ms = duration.as_millis();
         
         // Different thresholds based on application type and complexity
         match app_type {
             "browser" => {
                 // Browsers are expected to be slower due to complex web content
-                match (ms, elements, memory_mb) {
-                    (0..=100, 0..=100, 0..=15) => "🟢 Excellent - Fast even for web content",
-                    (101..=300, 0..=300, 0..=25) => "🟡 Good - Acceptable for web automation", 
-                    (301..=600, 0..=500, 0..=50) => "🟠 Fair - May struggle with complex sites",
-                    (601..=1200, 0..=1000, 0..=100) => "🔴 Poor - Too slow for frequent web automation",
+                match (ms, elements, memory_mb, cpu_per_run) {
+                    (0..=100, 0..=100, 0..=15, 0..=10) => "🟢 Excellent - Fast even for web content",
+                    (101..=300, 0..=300, 0..=25, 0..=20) => "🟡 Good - Acceptable for web automation", 
+                    (301..=600, 0..=500, 0..=50, 0..=30) => "🟠 Fair - May struggle with complex sites",
+                    (601..=1200, 0..=1000, 0..=100, 0..=40) => "🔴 Poor - Too slow for frequent web automation",
                     _ => "🔴 Very Poor - Unsuitable for web automation",
                 }
             },
             "system" => {
                 // System apps should be faster
-                match (ms, elements, memory_mb) {
-                    (0..=50, 0..=50, 0..=10) => "🟢 Excellent - Perfect for high-frequency system automation",
-                    (51..=150, 0..=150, 0..=20) => "🟡 Good - Suitable for system automation", 
-                    (151..=300, 0..=300, 0..=35) => "🟠 Fair - May struggle with frequent system calls",
-                    (301..=600, 0..=600, 0..=75) => "🔴 Poor - Too slow for system automation",
+                match (ms, elements, memory_mb, cpu_per_run) {
+                    (0..=50, 0..=50, 0..=10, 0..=10) => "🟢 Excellent - Perfect for high-frequency system automation",
+                    (51..=150, 0..=150, 0..=20, 0..=20) => "🟡 Good - Suitable for system automation", 
+                    (151..=300, 0..=300, 0..=35, 0..=30) => "🟠 Fair - May struggle with frequent system calls",
+                    (301..=600, 0..=600, 0..=75, 0..=40) => "🔴 Poor - Too slow for system automation",
                     _ => "🔴 Very Poor - Unsuitable for system automation",
                 }
             },
             _ => {
                 // Generic assessment
-                match (ms, memory_mb) {
-                    (0..=100, 0..=15) => "🟢 Excellent",
-                    (101..=250, 0..=30) => "🟡 Good", 
-                    (251..=500, 0..=60) => "🟠 Fair",
-                    (501..=1000, 0..=120) => "🔴 Poor",
+                match (ms, memory_mb, cpu_per_run) {
+                    (0..=100, 0..=15, 0..=10) => "🟢 Excellent",
+                    (101..=250, 0..=30, 0..=20) => "🟡 Good", 
+                    (251..=500, 0..=60, 0..=30) => "🟠 Fair",
+                    (501..=1000, 0..=120, 0..=40) => "🔴 Poor",
                     _ => "🔴 Very Poor",
                 }
             }
@@ -317,6 +358,23 @@ mod performance_benchmarks {
             101..=300 => "🟠 Complex - Rich interface with many elements", 
             301..=600 => "🔴 Heavy - Dense UI requiring careful optimization",
             _ => "🟣 Extreme - Very complex interface, high processing cost",
+        }
+    }
+    
+    /// Assess CPU efficiency based on CPU load and element count
+    fn assess_cpu_efficiency(cpu_per_run: u64, elements: usize) -> &'static str {
+        if elements == 0 {
+            return "⚠️ No data";
+        }
+        
+        let elements_per_cpu_percent = elements as f64 / (cpu_per_run as f64 + 0.1); // +0.1 to avoid division by zero
+        
+        match elements_per_cpu_percent as u64 {
+            0..=5 => "🔴 Poor - High CPU cost per element",
+            6..=15 => "🟠 Fair - Moderate CPU efficiency",
+            16..=30 => "🟡 Good - Decent CPU efficiency", 
+            31..=60 => "🟢 Very Good - Efficient CPU usage",
+            _ => "🟢 Excellent - Outstanding CPU efficiency",
         }
     }
 } 

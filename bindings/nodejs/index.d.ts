@@ -53,6 +53,28 @@ export interface ExploreResponse {
   parent: Element
   children: Array<ExploredElementDetail>
 }
+export interface UINode {
+  attributes: UIElementAttributes
+  children: Array<UINode>
+}
+export const enum PropertyLoadingMode {
+  /** Only load essential properties (role + name) - fastest */
+  Fast = 'Fast',
+  /** Load all properties for complete element data - slower but comprehensive */
+  Complete = 'Complete',
+  /** Load specific properties based on element type - balanced approach */
+  Smart = 'Smart'
+}
+export interface TreeBuildConfig {
+  /** Property loading strategy */
+  propertyMode: PropertyLoadingMode
+  /** Optional timeout per operation in milliseconds */
+  timeoutPerOperationMs?: number
+  /** Optional yield frequency for responsiveness */
+  yieldEveryNElements?: number
+  /** Optional batch size for processing elements */
+  batchSize?: number
+}
 /** Main entry point for desktop automation. */
 export declare class Desktop {
   /**
@@ -137,14 +159,6 @@ export declare class Desktop {
    */
   ocrScreenshot(screenshot: ScreenshotResult): Promise<string>
   /**
-   * (async) Find a window by criteria.
-   *
-   * @param {string} [titleContains] - Text that should be in the window title.
-   * @param {number} [timeoutMs] - Timeout in milliseconds.
-   * @returns {Promise<Element>} The found window element.
-   */
-  findWindowByCriteria(titleContains?: string | undefined | null, timeoutMs?: number | undefined | null): Promise<Element>
-  /**
    * (async) Get the currently focused browser window.
    *
    * @returns {Promise<Element>} The current browser window element.
@@ -194,6 +208,15 @@ export declare class Desktop {
    * @param {string} title - The window title to match.
    */
   activateBrowserWindowByTitle(title: string): void
+  /**
+   * Get the UI tree for a window identified by process ID and optional title.
+   *
+   * @param {number} pid - Process ID of the target application.
+   * @param {string} [title] - Optional window title filter.
+   * @param {TreeBuildConfig} [config] - Optional configuration for tree building.
+   * @returns {UINode} Complete UI tree starting from the identified window.
+   */
+  getWindowTree(pid: number, title?: string | undefined | null, config?: TreeBuildConfig | undefined | null): UINode
 }
 /** A UI element in the accessibility tree. */
 export declare class Element {

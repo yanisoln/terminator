@@ -83,20 +83,19 @@ async fn main() -> Result<(), AutomationError> {
         };
         // Get application accessible name/title if available
         let app_attrs = app.attributes();
+        
+        // Get fallback process name if needed
+        #[cfg(target_os = "windows")]
+        let fallback_process_name = {
+            use terminator::platforms::windows::get_process_name_by_pid;
+            get_process_name_by_pid(pid as i32).unwrap_or_else(|_| UNKNOWN_APP_NAME.to_string())
+        };
+        #[cfg(not(target_os = "windows"))]
+        let fallback_process_name = UNKNOWN_APP_NAME.to_string();
+        
         let app_title = app_attrs.name.as_deref()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| {
-                // Fallback to process name (reuse logic from get_app_info)
-                #[cfg(target_os = "windows")]
-                {
-                    use terminator::platforms::windows::get_process_name_by_pid;
-                    get_process_name_by_pid(pid as i32).as_deref().unwrap_or(UNKNOWN_APP_NAME)
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    UNKNOWN_APP_NAME
-                }
-            });
+            .unwrap_or(&fallback_process_name);
 
         // Skip unknown apps
         if app_title == UNKNOWN_APP_NAME {

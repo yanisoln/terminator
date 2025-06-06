@@ -565,9 +565,15 @@ impl UIElement {
     /// * `max_depth` - Maximum depth to traverse (inclusive). Use a reasonable limit to avoid huge trees.
     ///
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # use terminator::Desktop;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let desktop = Desktop::new(false, false)?;
+    /// let element = desktop.locator("name:Calculator").first(None).await?;
     /// let tree = element.to_serializable_tree(5);
     /// println!("{}", serde_json::to_string_pretty(&tree).unwrap());
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn to_serializable_tree(&self, max_depth: usize) -> SerializableUIElement {
         fn build(element: &UIElement, depth: usize, max_depth: usize) -> SerializableUIElement {
