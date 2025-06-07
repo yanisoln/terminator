@@ -2576,9 +2576,6 @@ impl UIElementImpl for WindowsUIElement {
                 let _ = DeleteObject(HGDIOBJ(hpen.0));
                 ReleaseDC(None, hdc);
             }
-
-            // Small delay between redraws to maintain visibility
-            thread::sleep(std::time::Duration::from_millis(50));
         }
 
         Ok(())
