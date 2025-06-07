@@ -28,7 +28,7 @@ pub struct ExcelAutomation {
 impl ExcelAutomation {
     /// Create a new Excel automation instance
     pub async fn new() -> Result<Self> {
-        let desktop = Desktop::new(false, false).await?;
+        let desktop = Desktop::new(false, false)?;
         Ok(Self { desktop })
     }
 
