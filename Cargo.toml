@@ -4,7 +4,8 @@ members = [
     "terminator",
     "terminator-workflow-recorder", 
     "bindings/python",
-    "bindings/nodejs"
+    "bindings/nodejs",
+    "terminator-mcp-agent"
 ]
 
 # Shared metadata for workspace members
