@@ -19,6 +19,7 @@ uni-ocr = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
+futures = "0.3"
 
 [lib]
 name = "terminator"
