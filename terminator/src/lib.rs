@@ -43,6 +43,8 @@ pub struct CommandOutput {
 /// Represents a node in the UI tree, containing its attributes and children.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UINode {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub attributes: UIElementAttributes,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
@@ -529,40 +531,6 @@ impl Desktop {
         );
 
         Ok(window_tree_root)
-    }
-
-    /// Convenience method: Get window tree by title only (assumes you have the PID)
-    /// For backward compatibility - you should prefer get_window_tree() with PID
-    #[instrument(skip(self, title))]
-    pub fn get_window_tree_by_title(&self, title: &str) -> Result<UINode, AutomationError> {
-        // This is a legacy method - in practice you should always use get_window_tree() with PID
-        // We'll try to find a window by title and extract its PID, but this is less reliable
-        
-        warn!("get_window_tree_by_title is deprecated - use get_window_tree() with PID for better reliability");
-        
-        // Try to find a window with this title to get its PID  
-        // This is a best-effort fallback for backward compatibility
-        let applications = self.engine.get_applications()?;
-        
-        for app in applications {
-            if let Ok(pid) = app.process_id() {
-                // Try this PID with the title
-                if let Ok(tree) = self.get_window_tree(pid, Some(title), None) {
-                    return Ok(tree);
-                }
-            }
-        }
-        
-        Err(AutomationError::ElementNotFound(
-            format!("Could not find window with title '{}' - consider using get_window_tree() with PID", title)
-        ))
-    }
-
-    /// Get window tree by PID and optional title (main recommended method)
-    #[instrument(skip(self, pid, title))]
-    pub fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<UINode, AutomationError> {
-        // This is now just a wrapper around the main get_window_tree method
-        self.get_window_tree(pid, title, None)
     }
 
     /// Get all window elements for a given application by name

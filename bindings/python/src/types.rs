@@ -139,6 +139,8 @@ pub struct ExploreResponse {
 #[derive(Clone, Serialize)]
 pub struct UINode {
     #[pyo3(get)]
+    pub id: Option<String>,
+    #[pyo3(get)]
     pub attributes: UIElementAttributes,
     #[pyo3(get)]
     pub children: Vec<UINode>,
@@ -215,6 +217,7 @@ impl From<CoreCommandOutput> for CommandOutput {
 impl From<::terminator_core::UINode> for UINode {
     fn from(node: ::terminator_core::UINode) -> Self {
         UINode {
+            id: node.id,
             attributes: UIElementAttributes::from(node.attributes),
             children: node.children.into_iter().map(UINode::from).collect(),
         }

@@ -70,6 +70,7 @@ pub struct ExploreResponse {
 
 #[napi(object, js_name = "UINode")]
 pub struct UINode {
+    pub id: Option<String>,
     pub attributes: UIElementAttributes,
     pub children: Vec<UINode>,
 }
@@ -121,6 +122,7 @@ impl From<terminator::ClickResult> for ClickResult {
 impl From<terminator::UINode> for UINode {
     fn from(node: terminator::UINode) -> Self {
         UINode {
+            id: node.id,
             attributes: UIElementAttributes::from(node.attributes),
             children: node.children.into_iter().map(UINode::from).collect(),
         }

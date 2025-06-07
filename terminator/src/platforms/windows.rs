@@ -3370,6 +3370,7 @@ fn build_ui_node_tree_configurable(
     }
     
     Ok(crate::UINode {
+        id: element.id(),
         attributes,
         children: children_nodes,
     })

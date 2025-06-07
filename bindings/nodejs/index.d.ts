@@ -54,6 +54,7 @@ export interface ExploreResponse {
   children: Array<ExploredElementDetail>
 }
 export interface UINode {
+  id?: string
   attributes: UIElementAttributes
   children: Array<UINode>
 }

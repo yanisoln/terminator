@@ -3,6 +3,7 @@ use crate::utils::{
     GetWindowsArgs, LocatorArgs, PressKeyArgs, RunCommandArgs, TypeIntoElementArgs,
     ClipboardArgs, GetClipboardArgs, MouseDragArgs, ValidateElementArgs, 
     HighlightElementArgs, WaitForElementArgs, NavigateBrowserArgs, OpenApplicationArgs,
+    ScrollElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -727,6 +728,56 @@ impl DesktopWrapper {
         }))?]))
     }
 
+    #[tool(description = "Scrolls a UI element in the specified direction by the given amount.")]
+    async fn scroll_element(
+        &self,
+        #[tool(param)] args: ScrollElementArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        let element = locator
+            .wait(get_timeout(args.timeout_ms))
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to locate element for scrolling",
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
+                )
+            })?;
+        
+        // Get element details before scrolling for better feedback
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+        });
+        
+        element.scroll(&args.direction, args.amount).map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to scroll element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "direction": args.direction,
+                    "amount": args.amount,
+                    "element_info": element_info
+                })),
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "scroll_element",
+            "status": "success",
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "direction": args.direction,
+            "amount": args.amount,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
     // keep in wrapperr to avoid creating new instance
     fn create_locator_for_chain(&self, selector_chain: &[String]) -> Result<Locator, McpError> {
         if selector_chain.is_empty() {
@@ -789,24 +840,36 @@ Your most reliable strategy is to inspect the application's UI structure *before
     *   `role`: The type of the element (e.g., "Button", "Window", "Edit").
 
 4.  **Construct a Selector Chain:** Create a `selector_chain` (an array of strings) to target the element.
-    *   **Best Practice:** Always prefer using the `id`. The selector format is `#id`. For example, if the ID is \"12345\", your selector is `#12345`.
-    *   **Fallback Selectors:** If an ID is not available, you can use `name:\"Text\"` or `role:\"RoleName\"`.
+    *   **CRITICAL BEST PRACTICE:** When an element has an `id`, ALWAYS use JUST the ID as a single selector with hash prefix. For example, if ID is 12345, use a single-element array with hash+ID. Do NOT chain selectors when you have an ID - use only the ID for maximum reliability.
+    *   **Fallback for No ID:** Only if an ID is not available, use name or role selectors. Even then, prefer single selectors over chains when possible.
 
 5.  **Interact with the Element:** Once you have a reliable `selector_chain`, use an action tool:
     *   `click_element`: To click buttons, links, etc.
     *   `type_into_element`: To type text into input fields.
-    *   `press_key`: To send special keys like 'Enter' or 'Tab'.
+    *   `press_key`: To send special keys. Use curly braces for special keys like Enter, Tab, Ctrl+V, Shift+F5, etc.
     *   `activate_element`: To bring a window to the foreground.
     *   `mouse_drag`: To perform drag and drop operations.
     *   `set_clipboard`: To set text to the system clipboard.
     *   `get_clipboard`: To get text from the system clipboard.
+    *   `scroll_element`: To scroll within elements like web pages, documents, or lists.
+
+6.  **Handle Scrolling for Full Context:** When working with pages or long content, ALWAYS scroll to see all content. Use `scroll_element` to scroll pages up/down to get the full context before making decisions or extracting information.
+
+**Important: Key Syntax for press_key Tool**
+When using the `press_key` tool, you MUST use curly braces for special keys:
+- Single special key: Enter, Tab, Escape, Delete - wrap each in curly braces
+- Key combinations: For Ctrl+V use curly-Ctrl curly-V, for Alt+F4 use curly-Alt curly-F4
+- Windows key: For Win+D use curly-Win curly-D (shows desktop)
+- Function keys: F1, F5 - wrap in curly braces
+- Arrow keys: Up, Down, Left, Right - wrap in curly braces
+- Regular text can be mixed with special keys wrapped in curly braces
 
 **Example Scenario:**
-1.  User: \"Type \"hello\" into Notepad.\"
+1.  User: "Type hello into Notepad."
 2.  AI: Calls `get_applications` -> Finds Notepad, gets `pid`.
 3.  AI: Calls `get_window_tree` with Notepad's `pid`.
-4.  AI: Looks through the tree and finds the main window element with `id: "window1"` and inside it, a text area element with `role: "Document"` and `id: "edit_pane"`.
-5.  AI: Calls `type_into_element` with selector_chain: [#window1, #edit_pane] and text_to_type: hello.
+4.  AI: Looks through the tree and finds the text area element with id: edit_pane.
+5.  AI: Calls `type_into_element` with a single-element selector_chain containing the ID selector and text_to_type: hello.
 
 **Available Tools:**
 
@@ -815,9 +878,10 @@ Your most reliable strategy is to inspect the application's UI structure *before
 *   `get_windows_for_application`: Get windows for a specific application by name.
 *   `click_element`: Clicks a UI element specified by its `selector_chain`.
 *   `type_into_element`: Types text into a UI element.
-*   `press_key`: Sends a key press to a UI element.
+*   `press_key`: Sends a key press to a UI element. **Key Syntax: Use curly braces for special keys!**
 *   `activate_element`: Brings the window containing the element to the foreground.
 *   `close_element`: Closes a UI element (window, application, dialog, etc.) if it's closable.
+*   `scroll_element`: Scrolls a UI element in specified direction (up, down, left, right) by given amount.
 *   `run_command`: Executes a shell command. Use this for file operations, etc., instead of UI automation.
 *   `capture_screen`: Captures the screen and performs OCR.
 *   `set_clipboard`: Sets text to the system clipboard using native commands.
@@ -826,13 +890,18 @@ Your most reliable strategy is to inspect the application's UI structure *before
 *   `validate_element`: Validates that an element exists and provides detailed information.
 *   `highlight_element`: Highlights an element with a colored border for visual confirmation.
 *   `wait_for_element`: Waits for an element to meet a specific condition (visible, enabled, focused, exists).
+*   `navigate_browser`: Opens a URL in the specified browser.
+*   `open_application`: Opens an application by name.
 
 Contextual information:
 - The current date and time is {}.
 - Current operating system: {}.
 - Current working directory: {}.
 
-**Golden Rule:** Always call `get_window_tree` to understand the UI landscape before you try to act on it. Using the element `id` with a `#` prefix in your selectors will lead to the most robust automation.
+**Golden Rules:** 
+1. Always call `get_window_tree` to understand the UI landscape before you try to act on it. 
+2. When an element has an `id`, use ONLY that ID as a single selector for maximum reliability.
+3. Always scroll pages to get full context when working with web pages or long documents.
 "#,
         current_date_time, current_os, current_working_dir
     )

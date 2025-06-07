@@ -137,6 +137,19 @@ pub struct ClipboardArgs {
     pub text: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(description = "Arguments for scrolling an element")]
+pub struct ScrollElementArgs {
+    pub selector_chain: Vec<String>,
+    #[serde(default)]
+    #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
+    pub direction: String,
+    #[serde(default)]
+    #[schemars(description = "Amount to scroll (number of lines or pages)")]
+    pub amount: f64,
+    pub timeout_ms: Option<u64>,
+}
+
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
