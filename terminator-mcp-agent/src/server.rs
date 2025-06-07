@@ -1,5 +1,5 @@
 use crate::utils::{
-    get_timeout, CaptureScreenArgs, DesktopWrapper, EmptyArgs, ExploreArgs, GetWindowTreeArgs,
+    get_timeout, DesktopWrapper, EmptyArgs, ExploreArgs, GetWindowTreeArgs,
     GetWindowsArgs, LocatorArgs, PressKeyArgs, RunCommandArgs, TypeIntoElementArgs,
 };
 use chrono::Local;
@@ -144,19 +144,41 @@ impl DesktopWrapper {
             .map_err(|e| {
                 McpError::internal_error(
                     "Failed to locate element",
-                    Some(json!({"reason": e.to_string()})),
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
                 )
             })?;
+        
+        // Get element details before typing for better feedback
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "enabled": element.is_enabled().unwrap_or(false),
+        });
+        
         element.type_text(&args.text_to_type, false).map_err(|e| {
             McpError::resource_not_found(
                 "Failed to type text",
-                Some(json!({"reason": e.to_string()})),
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "text_to_type": args.text_to_type,
+                    "element_info": element_info
+                })),
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(
-            "Text typed successfully",
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "type",
+            "status": "success",
+            "text_typed": args.text_to_type,
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
     }
 
     #[tool(description = "Clicks a UI element.")]
@@ -171,19 +193,39 @@ impl DesktopWrapper {
             .map_err(|e| {
                 McpError::internal_error(
                     "Failed to locate element",
-                    Some(json!({"reason": e.to_string()})),
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
                 )
             })?;
+        
+        // Get element details before clicking for better feedback
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "enabled": element.is_enabled().unwrap_or(false),
+        });
+        
         element.click().map_err(|e| {
             McpError::resource_not_found(
                 "Failed to click on element",
-                Some(json!({"reason": e.to_string()})),
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "element_info": element_info
+                })),
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(
-            "Element clicked successfully",
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "click",
+            "status": "success",
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
     }
 
     #[tool(description = "Sends a key press to a UI element.")]
@@ -236,90 +278,6 @@ impl DesktopWrapper {
         }))?]))
     }
 
-    #[tool(description = "Explores UI elements and their children.")]
-    async fn explore(&self, #[tool(param)] args: ExploreArgs) -> Result<CallToolResult, McpError> {
-        let root_element = if let Some(selector_chain) = &args.selector_chain {
-            if !selector_chain.is_empty() {
-                let locator = self.create_locator_for_chain(selector_chain)?;
-                locator
-                    .wait(get_timeout(args.timeout_ms))
-                    .await
-                    .map_err(|e| {
-                        McpError::internal_error(
-                            "Failed to locate element",
-                            Some(json!({"reason": e.to_string()})),
-                        )
-                    })?
-            } else {
-                self.desktop.root()
-            }
-        } else {
-            self.desktop.root()
-        };
-
-        // Get children of the element with timeout protection
-        let timeout_duration =
-            get_timeout(args.timeout_ms).unwrap_or(std::time::Duration::from_secs(30));
-        let root_element_clone = root_element.clone();
-        let children_result = tokio::time::timeout(timeout_duration, async {
-            tokio::task::spawn_blocking(move || root_element_clone.children()).await
-        })
-        .await;
-
-        let children = match children_result {
-            Ok(Ok(children)) => children,
-            Ok(Err(join_err)) => {
-                return Err(McpError::internal_error(
-                    "Task join error",
-                    Some(json!({"reason": join_err.to_string()})),
-                ));
-            }
-            Err(_) => {
-                return Err(McpError::internal_error(
-                    "Timeout getting children",
-                    Some(json!({"timeout_ms": timeout_duration.as_millis()})),
-                ));
-            }
-        }
-        .map_err(|e| {
-            McpError::internal_error(
-                "Failed to get children",
-                Some(json!({"reason": e.to_string()})),
-            )
-        })?;
-
-        // Convert to a format similar to Playwright's accessibility snapshot
-        let mut child_elements = Vec::new();
-        for (index, child) in children.iter().enumerate() {
-            let element_info = json!({
-                "index": index,
-                "role": child.role(),
-                "name": child.name().unwrap_or_default(),
-                "id": child.id().unwrap_or_default(),
-                "suggested_selector": format!("name:{}", child.name().unwrap_or_default()),
-                "bounds": child.bounds().map(|b| json!({
-                    "x": b.0, "y": b.1, "width": b.2, "height": b.3
-                })).unwrap_or(json!(null)),
-                "enabled": child.is_enabled().unwrap_or(false),
-                "visible": true, // Assume visible for now
-            });
-            child_elements.push(element_info);
-        }
-
-        let parent_info = json!({
-            "role": root_element.role(),
-            "name": root_element.name().unwrap_or_default(),
-            "id": root_element.id().unwrap_or_default(),
-            "suggested_selector": format!("name:{}", root_element.name().unwrap_or_default()),
-        });
-
-        Ok(CallToolResult::success(vec![Content::json(&json!({
-            "parent": parent_info,
-            "children": child_elements,
-            "total_children": children.len(),
-        }))?]))
-    }
-
     #[tool(
         description = "Activates the window containing the specified element, bringing it to the foreground."
     )]
@@ -353,7 +311,7 @@ impl DesktopWrapper {
     )]
     async fn capture_screen(
         &self,
-        #[tool(param)] _args: CaptureScreenArgs,
+        #[tool(param)] _args: EmptyArgs,
     ) -> Result<CallToolResult, McpError> {
         let screenshot = self.desktop.capture_screen().await.map_err(|e| {
             McpError::internal_error(
