@@ -185,7 +185,10 @@ pub fn create_engine(
     }
     #[cfg(target_os = "linux")]
     {
-        Err(AutomationError::UnsupportedPlatform("Linux platform not fully implemented in create_engine".to_string()))
+        Ok(Arc::new(linux::LinuxEngine::new(
+            use_background_apps,
+            activate_app,
+        )?))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
