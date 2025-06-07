@@ -5,7 +5,7 @@ alwaysApply: false
 ---
 # Terminator MCP Agent Development Guide
 
-## Building and Running
+## Building the MCP Agent
 
 ### Correct Build Command
 Always use the release build for MCP:
@@ -13,16 +13,7 @@ Always use the release build for MCP:
 cargo build --release --bin terminator-mcp-agent
 ```
 
-### Starting the Server
-```bash
-cargo run --release --bin terminator-mcp-agent
-```
-
-### Stopping the Server
-On Windows:
-```bash
-taskkill /f /im terminator-mcp-agent.exe
-```
+**Important**: Cursor IDE automatically runs the MCP server - you don't need to start/stop it manually. Just build with cargo and Cursor handles the rest.
 
 ## MCP Tool Implementation Patterns
 
@@ -122,6 +113,7 @@ capture_screen() -> OCR for text extraction
 - Main server implementation: [terminator-mcp-agent/src/server.rs](mdc:terminator-mcp-agent/src/server.rs)
 - Utility types and helpers: [terminator-mcp-agent/src/utils.rs](mdc:terminator-mcp-agent/src/utils.rs)
 - Build configuration: [terminator-mcp-agent/Cargo.toml](mdc:terminator-mcp-agent/Cargo.toml)
+
 
 
 

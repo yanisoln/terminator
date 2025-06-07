@@ -5,28 +5,25 @@ alwaysApply: false
 ---
 # MCP Debugging and Testing Guide
 
-## Server Lifecycle Management
+## MCP Development Workflow
 
-### Proper Server Restart Process
+### Proper Development Process
 ```bash
-# Kill any existing process
-taskkill /f /im terminator-mcp-agent.exe
-
-# Build with release for performance
+# Build the MCP agent (Cursor IDE will run it automatically)
 cargo build --release --bin terminator-mcp-agent
-
-# Run the server
-cargo run --release --bin terminator-mcp-agent
 ```
 
-### Server Status Checking
-```bash
-# Check if server is running
-tasklist | findstr terminator
+**Important**: Cursor IDE manages the MCP server lifecycle automatically:
+- No need to manually start/stop the server
+- Cursor automatically restarts the server when you rebuild
+- Just focus on building with cargo - Cursor handles the rest
 
-# Check server logs (if running in background)
-# Look for initialization messages and error output
-```
+### Debugging Server Issues
+If MCP tools aren't working:
+1. Check that the build completed successfully
+2. Look for compilation errors in cargo output  
+3. Restart Cursor IDE if needed (rare)
+4. Check MCP tool parameters match server expectations
 
 ## Common Issues and Solutions
 
@@ -48,10 +45,11 @@ Error: no result from tool. The user likely interrupted the tool call
 ```
 
 **Debugging Steps**:
-1. Check if server is actually running: `tasklist | findstr terminator`
-2. Look for server crash/error messages
-3. Test individual components (shell commands) manually
+1. Rebuild the MCP agent: `cargo build --release --bin terminator-mcp-agent`
+2. Check for compilation errors in cargo output
+3. Test individual components (shell commands) manually  
 4. Verify parameter formats are correct
+5. Restart Cursor IDE if tools still don't work
 
 ### Clipboard Operation Failures
 **Problem**: Complex clipboard implementations fail silently
@@ -74,9 +72,15 @@ Before implementing in MCP, test shell commands directly:
 echo "test data" | clip
 powershell -command "Get-Clipboard"
 
-# Test application launching
+# Test application launching  
 start notepad
 ```
+
+### MCP Development Cycle
+1. **Edit Code**: Make changes to MCP tools
+2. **Build**: `cargo build --release --bin terminator-mcp-agent`
+3. **Test**: Cursor automatically picks up the new build and tools are available
+4. **Debug**: Check compilation errors if tools don't work
 
 ### Progressive Testing Approach
 1. **Test Individual Tools**: Verify each tool works in isolation
@@ -172,4 +176,5 @@ const LONG_TIMEOUT: u64 = 10000;    // Application startup
 - Server implementation: [terminator-mcp-agent/src/server.rs](mdc:terminator-mcp-agent/src/server.rs)
 - Utility functions: [terminator-mcp-agent/src/utils.rs](mdc:terminator-mcp-agent/src/utils.rs)
 - Build configuration: [terminator-mcp-agent/Cargo.toml](mdc:terminator-mcp-agent/Cargo.toml)
+
 
