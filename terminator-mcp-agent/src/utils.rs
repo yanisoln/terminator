@@ -3,7 +3,7 @@ use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::time::Duration;
-use terminator::{Desktop, UIElement};
+use terminator::{Desktop};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
@@ -12,90 +12,130 @@ pub struct DesktopWrapper {
     pub desktop: Desktop,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowTreeArgs {
-    /// Process ID of the application.
+    #[schemars(description = "Process ID of the target application")]
     pub pid: u32,
-    /// Optional window title to filter by.
+    #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct EmptyArgs {}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowsArgs {
-    /// Name of the application to get windows for.
+    #[schemars(description = "Name of the application to get windows for")]
     pub app_name: String,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LocatorArgs {
-    /// An array of selector strings to locate the element.
+    #[schemars(description = "An array of selector strings to locate the element")]
     pub selector_chain: Vec<String>,
-    /// Optional timeout in milliseconds for the action.
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TypeIntoElementArgs {
-    /// An array of selector strings to locate the element.
+    #[schemars(description = "An array of selector strings to locate the element")]
     pub selector_chain: Vec<String>,
-    /// Optional timeout in milliseconds for the action.
-    pub timeout_ms: Option<u64>,
-    /// The text to type into the element.
+    #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct PressKeyArgs {
-    /// An array of selector strings to locate the element.
-    pub selector_chain: Vec<String>,
-    /// Optional timeout in milliseconds for the action.
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
-    /// The key or key combination to press (e.g., 'Enter', 'Ctrl+A').
-    pub key: String,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct PressKeyArgs {
+    #[schemars(description = "The key or key combination to press (e.g., 'Enter', 'Ctrl+A')")]
+    pub key: String,
+    #[schemars(description = "An array of selector strings to locate the element")]
+    pub selector_chain: Vec<String>,
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
-    /// The command to run on Windows.
+    #[schemars(description = "The command to run on Windows")]
     pub windows_command: Option<String>,
-    /// The command to run on Linux/macOS.
+    #[schemars(description = "The command to run on Linux/macOS")]
     pub unix_command: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ExploreArgs {
-    /// Optional selector chain to explore from a specific element.
-    pub selector_chain: Option<Vec<String>>,
-    /// Optional timeout in milliseconds for the action.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct EmptyArgs {}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetClipboardArgs {
+    #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
 }
 
-/// Response structure for exploration result
-#[derive(Serialize)]
-pub struct ExploredElementDetail {
-    pub role: String,
-    pub name: Option<String>, // Use 'name' consistently for the primary label/text
-    pub id: Option<String>,
-    pub bounds: Option<(f64, f64, f64, f64)>, // Include bounds for spatial context
-    pub value: Option<String>,
-    pub description: Option<String>,
-    pub text: Option<String>,
-    pub parent_id: Option<String>,
-    pub children_ids: Vec<String>,
-    pub suggested_selector: String,
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct MouseDragArgs {
+    #[schemars(description = "An array of selector strings to locate the element")]
+    pub selector_chain: Vec<String>,
+    #[schemars(description = "Start X coordinate")]
+    pub start_x: f64,
+    #[schemars(description = "Start Y coordinate")]
+    pub start_y: f64,
+    #[schemars(description = "End X coordinate")]
+    pub end_x: f64,
+    #[schemars(description = "End Y coordinate")]
+    pub end_y: f64,
+    #[schemars(description = "Optional timeout in milliseconds")]
+    pub timeout_ms: Option<u64>,
 }
 
-#[derive(Serialize)]
-pub struct ExploreResponse {
-    pub parent: UIElement,                    // The parent element explored
-    pub children: Vec<ExploredElementDetail>, // List of direct children details
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ValidateElementArgs {
+    #[schemars(description = "An array of selector strings to locate the element")]
+    pub selector_chain: Vec<String>,
+    #[schemars(description = "Optional timeout in milliseconds")]
+    pub timeout_ms: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct CaptureScreenArgs {}
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HighlightElementArgs {
+    #[schemars(description = "An array of selector strings to locate the element")]
+    pub selector_chain: Vec<String>,
+    #[schemars(description = "BGR color code (optional, default red)")]
+    pub color: Option<u32>,
+    #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
+    pub duration_ms: Option<u64>,
+    #[schemars(description = "Optional timeout in milliseconds")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WaitForElementArgs {
+    #[schemars(description = "An array of selector strings to locate the element")]
+    pub selector_chain: Vec<String>,
+    #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
+    pub condition: String,
+    #[schemars(description = "Optional timeout in milliseconds")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct NavigateBrowserArgs {
+    #[schemars(description = "URL to navigate to")]
+    pub url: String,
+    #[schemars(description = "Optional browser name")]
+    pub browser: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct OpenApplicationArgs {
+    #[schemars(description = "Name of the application to open")]
+    pub app_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ClipboardArgs {
+    #[schemars(description = "Text to set to clipboard")]
+    pub text: String,
+}
 
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")

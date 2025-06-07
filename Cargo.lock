@@ -301,6 +301,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "atspi"
+version = "0.26.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bc856e0c84fd64c928b9eb5c10981c97f625afca337585511cfb8526e62a2a0"
+dependencies = [
+ "atspi-common",
+ "atspi-connection",
+ "atspi-proxies",
+ "zbus",
+]
+
+[[package]]
+name = "atspi-common"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11403b6543c08ca237bef2a56791553fc9d2f35818e0cb5a439ef14902f7367f"
+dependencies = [
+ "enumflags2",
+ "serde",
+ "static_assertions",
+ "zbus",
+ "zbus-lockstep",
+ "zbus-lockstep-macros",
+ "zbus_names",
+ "zvariant",
+]
+
+[[package]]
+name = "atspi-connection"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df7d98a18e361e0c62e976f44167c1d4ef6555ac70c64db38467e645ba0f3520"
+dependencies = [
+ "atspi-common",
+ "atspi-proxies",
+ "futures-lite",
+ "zbus",
+]
+
+[[package]]
+name = "atspi-proxies"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24be28f5c02e529f7d285b5557d52eca32888ddfdba6d76930c66595a3512172"
+dependencies = [
+ "atspi-common",
+ "serde",
+ "zbus",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3286,6 +3337,16 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7649a7b4df05aed9ea7ec6f628c67c9953a43869b8bc50929569b2999d443fe"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
+name = "quick-xml"
 version = "0.37.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
@@ -4124,11 +4185,15 @@ dependencies = [
  "accessibility-sys",
  "anyhow",
  "async-trait",
+ "atspi",
+ "atspi-common",
+ "atspi-proxies",
  "axum",
  "base64 0.22.1",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "criterion",
+ "futures",
  "image",
  "objc",
  "objc-foundation",
@@ -4146,6 +4211,7 @@ dependencies = [
  "uni-ocr",
  "windows 0.61.1",
  "xcap",
+ "zbus",
 ]
 
 [[package]]
@@ -4317,6 +4383,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.52.0",
 ]
 
@@ -5509,12 +5576,37 @@ dependencies = [
  "ordered-stream",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "windows-sys 0.59.0",
  "winnow",
  "zbus_macros",
  "zbus_names",
+ "zvariant",
+]
+
+[[package]]
+name = "zbus-lockstep"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a22426b1bc2aca91de97772506f0655fa373448e6010d79d5d5880915c388409"
+dependencies = [
+ "zbus_xml",
+ "zvariant",
+]
+
+[[package]]
+name = "zbus-lockstep-macros"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "100ffec29ed51859052f4563061abe35557acb56ba574510571f8398efc70a29"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "zbus-lockstep",
+ "zbus_xml",
  "zvariant",
 ]
 
@@ -5542,6 +5634,19 @@ dependencies = [
  "serde",
  "static_assertions",
  "winnow",
+ "zvariant",
+]
+
+[[package]]
+name = "zbus_xml"
+version = "5.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "589e9a02bfafb9754bb2340a9e3b38f389772684c63d9637e76b1870377bec29"
+dependencies = [
+ "quick-xml 0.36.2",
+ "serde",
+ "static_assertions",
+ "zbus_names",
  "zvariant",
 ]
 

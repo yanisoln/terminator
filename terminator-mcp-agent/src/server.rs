@@ -1,6 +1,8 @@
 use crate::utils::{
     get_timeout, DesktopWrapper, EmptyArgs, GetWindowTreeArgs,
     GetWindowsArgs, LocatorArgs, PressKeyArgs, RunCommandArgs, TypeIntoElementArgs,
+    ClipboardArgs, GetClipboardArgs, MouseDragArgs, ValidateElementArgs, 
+    HighlightElementArgs, WaitForElementArgs, NavigateBrowserArgs, OpenApplicationArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -355,6 +357,376 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(&ocr_text)?]))
     }
 
+    #[tool(description = "Sets text to the system clipboard using shell commands.")]
+    async fn set_clipboard(
+        &self,
+        #[tool(param)] args: ClipboardArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let result = if cfg!(target_os = "windows") {
+            // Windows: echo "text" | clip
+            let command = format!("echo \"{}\" | clip", args.text.replace("\"", "\\\""));
+            self.desktop.run_command(Some(&command), None).await
+        } else if cfg!(target_os = "macos") {
+            // macOS: echo "text" | pbcopy
+            let command = format!("echo \"{}\" | pbcopy", args.text.replace("\"", "\\\""));
+            self.desktop.run_command(None, Some(&command)).await
+        } else {
+            // Linux: echo "text" | xclip -selection clipboard
+            let command = format!("echo \"{}\" | xclip -selection clipboard", args.text.replace("\"", "\\\""));
+            self.desktop.run_command(None, Some(&command)).await
+        };
+        
+        result.map_err(|e| {
+            McpError::internal_error(
+                "Failed to set clipboard", 
+                Some(json!({"reason": e.to_string(), "text": args.text}))
+            )
+        })?;
+        
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "set_clipboard",
+            "status": "success",
+            "text": args.text,
+            "method": "shell_command",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
+    #[tool(description = "Gets text from the system clipboard using shell commands.")]
+    async fn get_clipboard(
+        &self,
+        #[tool(param)] _args: GetClipboardArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let command_result = if cfg!(target_os = "windows") {
+            // Windows: powershell Get-Clipboard
+            self.desktop.run_command(Some("powershell -command \"Get-Clipboard\""), None).await
+        } else if cfg!(target_os = "macos") {
+            // macOS: pbpaste
+            self.desktop.run_command(None, Some("pbpaste")).await
+        } else {
+            // Linux: xclip -selection clipboard -o
+            self.desktop.run_command(None, Some("xclip -selection clipboard -o")).await
+        };
+
+        match command_result {
+            Ok(output) => {
+                Ok(CallToolResult::success(vec![Content::json(&json!({
+                    "action": "get_clipboard", 
+                    "status": "success",
+                    "text": output.stdout.trim(),
+                    "method": "shell_command",
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+            Err(e) => {
+                Err(McpError::internal_error(
+                    "Failed to get clipboard text",
+                    Some(json!({"reason": e.to_string()})),
+                ))
+            }
+        }
+    }
+
+    #[tool(description = "Performs a mouse drag operation from start to end coordinates.")]
+    async fn mouse_drag(
+        &self,
+        #[tool(param)] args: MouseDragArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        let element = locator
+            .wait(get_timeout(args.timeout_ms))
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to locate element",
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
+                )
+            })?;
+        
+        // Get element details before dragging for better feedback
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "enabled": element.is_enabled().unwrap_or(false),
+        });
+        
+        element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y).map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to perform mouse drag",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "start": (args.start_x, args.start_y),
+                    "end": (args.end_x, args.end_y),
+                    "element_info": element_info
+                })),
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "mouse_drag",
+            "status": "success",
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "start": (args.start_x, args.start_y),
+            "end": (args.end_x, args.end_y),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
+    #[tool(description = "Validates that an element exists and provides detailed information about it.")]
+    async fn validate_element(
+        &self,
+        #[tool(param)] args: ValidateElementArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        
+        match locator.wait(get_timeout(args.timeout_ms)).await {
+            Ok(element) => {
+                let element_info = json!({
+                    "exists": true,
+                    "name": element.name().unwrap_or_default(),
+                    "role": element.role(),
+                    "id": element.id().unwrap_or_default(),
+                    "bounds": element.bounds().map(|b| json!({
+                        "x": b.0, "y": b.1, "width": b.2, "height": b.3
+                    })).unwrap_or(json!(null)),
+                    "enabled": element.is_enabled().unwrap_or(false),
+                    "visible": element.is_visible().unwrap_or(false),
+                    "focused": element.is_focused().unwrap_or(false),
+                    "keyboard_focusable": element.is_keyboard_focusable().unwrap_or(false),
+                    "text": element.text(1).unwrap_or_default(),
+                    "value": element.attributes().value.unwrap_or_default(),
+                });
+
+                Ok(CallToolResult::success(vec![Content::json(&json!({
+                    "action": "validate_element",
+                    "status": "success",
+                    "element": element_info,
+                    "selector_chain": args.selector_chain,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+            Err(e) => {
+                Ok(CallToolResult::success(vec![Content::json(&json!({
+                    "action": "validate_element",
+                    "status": "failed",
+                    "exists": false,
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+        }
+    }
+
+    #[tool(description = "Highlights an element with a colored border for visual confirmation.")]
+    async fn highlight_element(
+        &self,
+        #[tool(param)] args: HighlightElementArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        let element = locator
+            .wait(get_timeout(args.timeout_ms))
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to locate element for highlighting",
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
+                )
+            })?;
+
+        let duration = args.duration_ms.map(|ms| std::time::Duration::from_millis(ms));
+        element.highlight(args.color, duration).map_err(|e| {
+            McpError::internal_error(
+                "Failed to highlight element",
+                Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
+            )
+        })?;
+
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "highlight_element",
+            "status": "success",
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "color": args.color.unwrap_or(0x0000FF),
+            "duration_ms": args.duration_ms.unwrap_or(1000),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
+    #[tool(description = "Waits for an element to meet a specific condition (visible, enabled, focused, exists).")]
+    async fn wait_for_element(
+        &self,
+        #[tool(param)] args: WaitForElementArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        let timeout = get_timeout(args.timeout_ms);
+        
+        let condition_lower = args.condition.to_lowercase();
+        let result = match condition_lower.as_str() {
+            "exists" => {
+                match locator.wait(timeout).await {
+                    Ok(_) => Ok(true),
+                    Err(_) => Ok(false)
+                }
+            }
+            "visible" => {
+                match locator.wait(timeout).await {
+                    Ok(element) => element.is_visible().map_err(|e| 
+                        McpError::internal_error("Failed to check visibility", Some(json!({"reason": e.to_string()})))
+                    ),
+                    Err(e) => Err(McpError::internal_error("Element not found", Some(json!({"reason": e.to_string()}))))
+                }
+            }
+            "enabled" => {
+                match locator.wait(timeout).await {
+                    Ok(element) => element.is_enabled().map_err(|e| 
+                        McpError::internal_error("Failed to check enabled state", Some(json!({"reason": e.to_string()})))
+                    ),
+                    Err(e) => Err(McpError::internal_error("Element not found", Some(json!({"reason": e.to_string()}))))
+                }
+            }
+            "focused" => {
+                match locator.wait(timeout).await {
+                    Ok(element) => element.is_focused().map_err(|e| 
+                        McpError::internal_error("Failed to check focus state", Some(json!({"reason": e.to_string()})))
+                    ),
+                    Err(e) => Err(McpError::internal_error("Element not found", Some(json!({"reason": e.to_string()}))))
+                }
+            }
+            _ => Err(McpError::invalid_params(
+                "Invalid condition. Valid conditions: exists, visible, enabled, focused",
+                Some(json!({"provided_condition": args.condition}))
+            ))
+        };
+
+        match result {
+            Ok(condition_met) => {
+                Ok(CallToolResult::success(vec![Content::json(&json!({
+                    "action": "wait_for_element",
+                    "status": "success",
+                    "condition": args.condition,
+                    "condition_met": condition_met,
+                    "selector_chain": args.selector_chain,
+                    "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+            Err(e) => Err(e)
+        }
+    }
+
+    #[tool(description = "Opens a URL in the specified browser (uses SDK's built-in browser automation).")]
+    async fn navigate_browser(
+        &self,
+        #[tool(param)] args: NavigateBrowserArgs,
+    ) -> Result<CallToolResult, McpError> {
+        self.desktop.open_url(&args.url, args.browser.as_deref()).map_err(|e| {
+            McpError::internal_error(
+                "Failed to open URL",
+                Some(json!({"reason": e.to_string(), "url": args.url, "browser": args.browser})),
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "navigate_browser",
+            "status": "success",
+            "url": args.url,
+            "browser": args.browser,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
+    #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
+    async fn open_application(
+        &self,
+        #[tool(param)] args: OpenApplicationArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self.desktop.open_application(&args.app_name).map_err(|e| {
+            McpError::internal_error(
+                "Failed to open application",
+                Some(json!({"reason": e.to_string(), "app_name": args.app_name})),
+            )
+        })?;
+
+        let element_info = json!({
+            "name": result.name().unwrap_or_default(),
+            "role": result.role(),
+            "id": result.id().unwrap_or_default(),
+            "pid": result.process_id().unwrap_or(0),
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "open_application",
+            "status": "success",
+            "app_name": args.app_name,
+            "application": element_info,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
+    #[tool(description = "Closes a UI element (window, application, dialog, etc.) if it's closable.")]
+    async fn close_element(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let locator = self.create_locator_for_chain(&args.selector_chain)?;
+        let element = locator
+            .wait(get_timeout(args.timeout_ms))
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to locate element for closing",
+                    Some(json!({"reason": e.to_string(), "selector_chain": args.selector_chain})),
+                )
+            })?;
+        
+        // Get element details before closing for better feedback
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": element.id().unwrap_or_default(),
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+        });
+        
+        element.close().map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to close element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "element_info": element_info
+                })),
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::json(&json!({
+            "action": "close_element",
+            "status": "success",
+            "element": element_info,
+            "selector_chain": args.selector_chain,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
+    }
+
     // keep in wrapperr to avoid creating new instance
     fn create_locator_for_chain(&self, selector_chain: &[String]) -> Result<Locator, McpError> {
         if selector_chain.is_empty() {
@@ -397,7 +769,7 @@ fn get_server_instructions() -> String {
     let current_os = env::consts::OS;
     let current_working_dir = env::current_dir()
         .map(|path| path.display().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string()); // Get current working directory
+        .unwrap_or_else(|_| "Unknown".to_string());
 
     format!(
         r#"
@@ -425,6 +797,9 @@ Your most reliable strategy is to inspect the application's UI structure *before
     *   `type_into_element`: To type text into input fields.
     *   `press_key`: To send special keys like 'Enter' or 'Tab'.
     *   `activate_element`: To bring a window to the foreground.
+    *   `mouse_drag`: To perform drag and drop operations.
+    *   `set_clipboard`: To set text to the system clipboard.
+    *   `get_clipboard`: To get text from the system clipboard.
 
 **Example Scenario:**
 1.  User: \"Type \"hello\" into Notepad.\"
@@ -442,15 +817,22 @@ Your most reliable strategy is to inspect the application's UI structure *before
 *   `type_into_element`: Types text into a UI element.
 *   `press_key`: Sends a key press to a UI element.
 *   `activate_element`: Brings the window containing the element to the foreground.
+*   `close_element`: Closes a UI element (window, application, dialog, etc.) if it's closable.
 *   `run_command`: Executes a shell command. Use this for file operations, etc., instead of UI automation.
 *   `capture_screen`: Captures the screen and performs OCR.
+*   `set_clipboard`: Sets text to the system clipboard using native commands.
+*   `get_clipboard`: Gets text from the system clipboard using native commands.
+*   `mouse_drag`: Performs a mouse drag operation from start to end coordinates.
+*   `validate_element`: Validates that an element exists and provides detailed information.
+*   `highlight_element`: Highlights an element with a colored border for visual confirmation.
+*   `wait_for_element`: Waits for an element to meet a specific condition (visible, enabled, focused, exists).
 
 Contextual information:
 - The current date and time is {}.
 - Current operating system: {}.
 - Current working directory: {}.
 
-**Golden Rule:** Always call `get_window_tree` to understand the UI landscape before you try to act on it. Using the element `id` with a `##` prefix in your selectors will lead to the most robust automation.
+**Golden Rule:** Always call `get_window_tree` to understand the UI landscape before you try to act on it. Using the element `id` with a `#` prefix in your selectors will lead to the most robust automation.
 "#,
         current_date_time, current_os, current_working_dir
     )
