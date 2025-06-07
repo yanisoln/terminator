@@ -797,7 +797,9 @@ fn generate_element_id(
 }
 
 /// Helper method to get accessible attributes using AccessibleProxy
-fn get_accessible_attributes(element: &LinuxUIElement) -> Result<std::collections::HashMap<String, String>, AutomationError> {
+fn get_accessible_attributes(
+    element: &LinuxUIElement,
+) -> Result<std::collections::HashMap<String, String>, AutomationError> {
     use std::sync::mpsc;
     let (resp_tx, resp_rx) = mpsc::channel();
     let this = element.clone();
@@ -1304,14 +1306,15 @@ impl AccessibilityEngine for LinuxEngine {
     }
 
     fn get_window_tree(
-        &self, 
-        pid: u32, 
-        title: Option<&str>, 
-        _config: crate::platforms::TreeBuildConfig
+        &self,
+        pid: u32,
+        title: Option<&str>,
+        _config: crate::platforms::TreeBuildConfig,
     ) -> Result<crate::UINode, AutomationError> {
-        Err(AutomationError::UnsupportedPlatform(
-            format!("get_window_tree for PID {} and title {:?} not yet implemented for Linux", pid, title)
-        ))
+        Err(AutomationError::UnsupportedPlatform(format!(
+            "get_window_tree for PID {} and title {:?} not yet implemented for Linux",
+            pid, title
+        )))
     }
 
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
@@ -1342,7 +1345,6 @@ impl AccessibilityEngine for LinuxEngine {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-
 }
 
 impl UIElementImpl for LinuxUIElement {
@@ -1395,17 +1397,18 @@ impl UIElementImpl for LinuxUIElement {
         attrs.name = self.name();
         attrs.value = Some(self.is_enabled().unwrap_or(false).to_string());
         attrs.is_keyboard_focusable = Some(self.is_focused().unwrap_or(false));
-        
+
         // Fetch additional attributes using AccessibleProxy
         if let Ok(attributes) = get_accessible_attributes(self) {
             // Convert HashMap<String, String> to HashMap<String, Option<serde_json::Value>>
-            let converted_attributes: std::collections::HashMap<String, Option<serde_json::Value>> = 
-                attributes.into_iter()
+            let converted_attributes: std::collections::HashMap<String, Option<serde_json::Value>> =
+                attributes
+                    .into_iter()
                     .map(|(k, v)| (k, Some(serde_json::Value::String(v))))
                     .collect();
             attrs.properties = converted_attributes;
         }
-        
+
         attrs
     }
 
