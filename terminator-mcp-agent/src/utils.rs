@@ -1,11 +1,11 @@
-use std::env;
 use anyhow::Result;
-use tracing::Level;
+use rmcp::{schemars, schemars::JsonSchema};
+use serde::{Deserialize, Serialize};
+use std::env;
 use std::time::Duration;
 use terminator::{Desktop, UIElement};
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
-use serde::{Deserialize, Serialize};
-use rmcp::{schemars, schemars::JsonSchema};
 
 #[derive(Clone)]
 pub struct DesktopWrapper {
@@ -13,11 +13,20 @@ pub struct DesktopWrapper {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct FindWindowArgs {
-    /// A substring of the window title to search for (case-insensitive).
-    pub title_contains: String,
-    /// Optional timeout in milliseconds.
-    pub timeout_ms: Option<u64>,
+pub struct GetWindowTreeArgs {
+    /// Process ID of the application.
+    pub pid: u32,
+    /// Optional window title to filter by.
+    pub title: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct EmptyArgs {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetWindowsArgs {
+    /// Name of the application to get windows for.
+    pub app_name: String,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -28,7 +37,6 @@ pub struct LocatorArgs {
     pub timeout_ms: Option<u64>,
 }
 
-
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct TypeIntoElementArgs {
     /// An array of selector strings to locate the element.
@@ -37,16 +45,6 @@ pub struct TypeIntoElementArgs {
     pub timeout_ms: Option<u64>,
     /// The text to type into the element.
     pub text_to_type: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct GetElementTextArgs {
-    /// An array of selector strings to locate the element.
-    pub selector_chain: Vec<String>,
-    /// Optional timeout in milliseconds for the action.
-    pub timeout_ms: Option<u64>,
-    /// Maximum depth to search for text within child elements.
-    pub max_depth: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -92,10 +90,9 @@ pub struct ExploredElementDetail {
 
 #[derive(Serialize)]
 pub struct ExploreResponse {
-    pub parent: UIElement, // The parent element explored
+    pub parent: UIElement,                    // The parent element explored
     pub children: Vec<ExploredElementDetail>, // List of direct children details
 }
-
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CaptureScreenArgs {}
@@ -123,4 +120,3 @@ pub fn init_logging() -> Result<()> {
 pub fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
     timeout_ms.map(Duration::from_millis)
 }
-
