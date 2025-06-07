@@ -993,90 +993,76 @@ impl AccessibilityEngine for LinuxEngine {
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-        let (resp_tx, resp_rx) = mpsc::channel();
-        let this = self.clone();
         let app_name = app_name.to_string();
-        let req = Box::new(move || {
-            erase_future(async move {
-                // First, try launching the application directly
-                let mut output = Command::new(&app_name)
-                    .spawn()
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()));
+        // First, try launching the application directly
+        let mut output = Command::new("setsid")
+            .arg(app_name.clone())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()));
 
-                // If direct launch fails, try fallbacks
-                if output.is_err() {
-                    debug!("Direct launch of '{}' failed, trying gtk-launch", app_name);
-                    output = Command::new("gtk-launch")
-                        .arg(&app_name)
-                        .spawn()
-                        .map_err(|e| {
-                            AutomationError::PlatformError(format!("gtk-launch failed: {}", e))
-                        });
-                }
-
-                // If all attempts fail, return the last error
-                let output = output?;
-                // Wait for the application to appear
-                let pid = output.id() as i32;
-
-                // Check if the process exists
-                let process_exists = Command::new("ps")
-                    .arg(pid.to_string())
-                    .output()
-                    .map(|output| output.status.success())
-                    .unwrap_or(false);
-
-                let pid = if !process_exists {
-                    debug!(
-                        "Process with PID {} has exited, using pgrep to find latest {}",
-                        pid, app_name
-                    );
-                    let pgrep_output = Command::new("pgrep")
-                        .arg("-n")
-                        .arg(&app_name)
-                        .output()
-                        .map_err(|e| {
-                            AutomationError::PlatformError(format!("pgrep failed: {}", e))
-                        })?;
-                    if pgrep_output.status.success() {
-                        let pid_str = String::from_utf8_lossy(&pgrep_output.stdout)
-                            .trim()
-                            .to_string();
-                        pid_str.parse::<i32>().map_err(|e| {
-                            AutomationError::PlatformError(format!(
-                                "Failed to parse PID from pgrep: {}",
-                                e
-                            ))
-                        })?
-                    } else {
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "No process found for '{}' using pgrep",
-                            app_name
-                        )));
-                    }
-                } else {
-                    pid
-                };
-
-                for _ in 0..10 {
-                    if let Ok(app) = this.get_application_by_pid(pid, None) {
-                        return Ok(vec![app]);
-                    }
-                    sleep(Duration::from_millis(500)).await;
-                }
-                Err(AutomationError::ElementNotFound(format!(
-                    "Application '{}' not found after launch",
-                    app_name
-                )))
-            })
-        });
-        get_worker().send((req, resp_tx)).unwrap();
-        match resp_rx.recv().unwrap() {
-            Ok(mut v) => v.pop().ok_or_else(|| {
-                AutomationError::ElementNotFound("No application found".to_string())
-            }),
-            Err(e) => Err(e),
+        // If direct launch fails, try fallbacks
+        if output.is_err() {
+            debug!("Direct launch of '{}' failed, trying gtk-launch", app_name);
+            output = Command::new("setsid")
+                .arg(format!("gtk-launch {}", app_name))
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map_err(|e| AutomationError::PlatformError(format!("gtk-launch failed: {}", e)));
         }
+
+        // If all attempts fail, return the last error
+        let output = output?;
+        // Wait for the application to appear
+        let pid = output.id() as i32;
+
+        // Check if the process exists
+        let process_exists = Command::new("ps")
+            .arg(pid.to_string())
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        let pid = if !process_exists {
+            debug!(
+                "Process with PID {} has exited, using pgrep to find latest {}",
+                pid, app_name
+            );
+            let pgrep_output = Command::new("pgrep")
+                .arg("-n")
+                .arg(&app_name)
+                .output()
+                .map_err(|e| AutomationError::PlatformError(format!("pgrep failed: {}", e)))?;
+            if pgrep_output.status.success() {
+                let pid_str = String::from_utf8_lossy(&pgrep_output.stdout)
+                    .trim()
+                    .to_string();
+                pid_str.parse::<i32>().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to parse PID from pgrep: {}", e))
+                })?
+            } else {
+                return Err(AutomationError::ElementNotFound(format!(
+                    "No process found for '{}' using pgrep",
+                    app_name
+                )));
+            }
+        } else {
+            pid
+        };
+
+        // Wait for the application to appear in the accessibility tree
+        for _ in 0..10 {
+            if let Ok(app) = self.get_application_by_pid(pid, None) {
+                return Ok(app);
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        Err(AutomationError::ElementNotFound(format!(
+            "Application '{}' not found after launch",
+            app_name
+        )))
     }
 
     fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
